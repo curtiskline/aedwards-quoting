@@ -67,3 +67,125 @@ def test_generate_quote_pdf():
         # Cleanup
         if output_path.exists():
             output_path.unlink()
+
+
+def test_generate_quote_pdf_with_template_b_fields():
+    """Test generating a quote PDF with Template B fields (details grid)."""
+    line_items = [
+        QuoteLineItem(
+            sort_order=1,
+            product_type="bag",
+            part_number="GTW 40-48in (14K)",
+            description="Geotextile Bag Weight 40-48in Pipe",
+            quantity=60,
+            unit_price=Decimal("229.99"),
+            total=Decimal("13799.40"),
+        ),
+        QuoteLineItem(
+            sort_order=2,
+            product_type="rental",
+            part_number="Fill Rack Rental",
+            description="Fill Rack rental per month",
+            quantity=1,
+            unit_price=Decimal("200.00"),
+            total=Decimal("200.00"),
+        ),
+    ]
+
+    quote = Quote(
+        quote_number="QUO-125-413",
+        customer_name="Price Gregory",
+        contact_name="Nina Durr",
+        contact_email="apinvoices@pricegregory.com",
+        contact_phone="(713) 835-3426",
+        ship_to={
+            "company": "Price Gregory",
+            "street": "24275 KATY FWY STE 500",
+            "city": "TBD (Lancaster County)",
+            "state": "PA",
+            "country": "United States",
+        },
+        line_items=line_items,
+        subtotal=Decimal("13999.40"),
+        shipping_amount=Decimal("4872.00"),
+        tax_amount=Decimal("0.00"),
+        total=Decimal("18871.40"),
+        notes="Freight included. Williams - Quarryville Loop Project.",
+        # Template B fields
+        sales_rep="",
+        payment_terms="Net 30",
+        shipping_terms="Prepay and Add",
+        shipping_method="Flatbed",
+        po_number=None,
+        requested_by_name="Nina Durr",
+        requested_by_email="ndurr@pricegregory.com",
+        requested_by_phone="(713) 835-3426 Direct#",
+    )
+
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+        output_path = Path(f.name)
+
+    try:
+        result_path = generate_quote_pdf(
+            quote,
+            output_path,
+            quote_date=date(2025, 7, 14),
+            expires_date=date(2025, 7, 21),
+        )
+
+        assert result_path.exists()
+        assert result_path.stat().st_size > 0
+
+        with open(result_path, "rb") as f:
+            header = f.read(8)
+            assert header.startswith(b"%PDF-")
+
+    finally:
+        if output_path.exists():
+            output_path.unlink()
+
+
+def test_generate_quote_pdf_with_shipping_and_tax():
+    """Test generating a quote PDF with shipping and tax amounts."""
+    line_item = QuoteLineItem(
+        sort_order=1,
+        product_type="sleeve",
+        part_number="S-12-38-50-10",
+        description='Sleeve, 12" ID, 3/8" w/t, A572 GR50, 10\' long',
+        quantity=5,
+        unit_price=Decimal("500.00"),
+        total=Decimal("2500.00"),
+    )
+
+    quote = Quote(
+        quote_number="126-100",
+        customer_name="Test Customer",
+        contact_name="John Doe",
+        contact_email="john@test.com",
+        contact_phone="555-555-5555",
+        ship_to={
+            "company": "Test Site",
+            "city": "Dallas",
+            "state": "TX",
+            "country": "United States",
+        },
+        line_items=[line_item],
+        subtotal=Decimal("2500.00"),
+        shipping_amount=Decimal("350.00"),
+        tax_amount=Decimal("237.50"),
+        total=Decimal("3087.50"),
+        notes=None,
+    )
+
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+        output_path = Path(f.name)
+
+    try:
+        result_path = generate_quote_pdf(quote, output_path, quote_date=date(2026, 3, 1))
+
+        assert result_path.exists()
+        assert result_path.stat().st_size > 0
+
+    finally:
+        if output_path.exists():
+            output_path.unlink()

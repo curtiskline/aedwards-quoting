@@ -100,6 +100,13 @@ class Quote:
     sales_rep: str = "Jamee Hamilton"
     payment_terms: str = "Net 30"
     shipping_terms: str = "Prepay & Add"
+    shipping_method: str = "Flatbed"
+    po_number: str | None = None
+
+    # Requested by (from RFQ)
+    requested_by_name: str | None = None
+    requested_by_email: str | None = None
+    requested_by_phone: str | None = None
 
 
 def calculate_sleeve_weight_per_ft(diameter: float, wall_thickness: float) -> Decimal:
