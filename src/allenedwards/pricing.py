@@ -95,13 +95,13 @@ class Quote:
     tax_amount: Decimal
     total: Decimal
     notes: str | None
+    po_number: str | None = None
 
     # Metadata
     sales_rep: str = "Jamee Hamilton"
     payment_terms: str = "Net 30"
     shipping_terms: str = "Prepay & Add"
     shipping_method: str = "Flatbed"
-    po_number: str | None = None
 
     # Requested by (from RFQ)
     requested_by_name: str | None = None
