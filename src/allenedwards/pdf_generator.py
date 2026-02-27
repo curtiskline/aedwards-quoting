@@ -180,6 +180,33 @@ def generate_quote_pdf(quote: Quote, output_path: Path, quote_date: date | None 
     elements.append(address_table)
     elements.append(Spacer(1, 18))
 
+    # Details grid
+    details_data = [
+        [Paragraph("<b>Sales Rep</b>", normal_style), Paragraph(quote.sales_rep, normal_style)],
+        [Paragraph("<b>Payment Terms</b>", normal_style), Paragraph(quote.payment_terms, normal_style)],
+        [
+            Paragraph("<b>PO #</b>", normal_style),
+            Paragraph(quote.po_number or "", normal_style),
+        ],
+        [Paragraph("<b>Shipping Method</b>", normal_style), Paragraph(quote.shipping_terms, normal_style)],
+    ]
+    details_table = Table(details_data, colWidths=[1.75 * inch, 5.75 * inch])
+    details_table.setStyle(
+        TableStyle(
+            [
+                ("GRID", (0, 0), (-1, -1), 0.5, BLACK),
+                ("BACKGROUND", (0, 0), (0, -1), colors.Color(0.95, 0.95, 0.95)),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
+    )
+    elements.append(details_table)
+    elements.append(Spacer(1, 18))
+
     # Line items table
     # Header row
     table_data = [

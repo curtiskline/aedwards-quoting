@@ -89,6 +89,7 @@ class Quote:
     contact_email: str | None
     contact_phone: str | None
     ship_to: dict[str, Any] | None
+    po_number: str | None
     line_items: list[QuoteLineItem]
     subtotal: Decimal
     shipping_amount: Decimal | None
@@ -325,6 +326,7 @@ def generate_quote(rfq: ParsedRFQ, quote_number: str) -> Quote:
         contact_email=rfq.contact_email,
         contact_phone=rfq.contact_phone,
         ship_to=ship_to_dict,
+        po_number=rfq.po_number,
         line_items=line_items,
         subtotal=subtotal,
         shipping_amount=None,

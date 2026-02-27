@@ -46,6 +46,7 @@ def serialize_parsed_rfq(rfq: ParsedRFQ) -> dict:
         "contact_email": rfq.contact_email,
         "contact_phone": rfq.contact_phone,
         "ship_to": asdict(rfq.ship_to) if rfq.ship_to else None,
+        "po_number": rfq.po_number,
         "items": [asdict(item) for item in rfq.items],
         "urgency": rfq.urgency,
         "notes": rfq.notes,
@@ -146,6 +147,8 @@ def quote(eml_file: Path, pdf: Path | None, json_output: Path | None, quote_numb
 
         click.echo(f"Quote {quote_number} generated:")
         click.echo(f"  Customer: {quote_data.customer_name}")
+        if quote_data.po_number:
+            click.echo(f"  PO #: {quote_data.po_number}")
         click.echo(f"  Items: {len(quote_data.line_items)}")
         click.echo(f"  Total: ${quote_data.total:,.2f}")
 
@@ -165,6 +168,7 @@ def quote(eml_file: Path, pdf: Path | None, json_output: Path | None, quote_numb
                 "contact_email": quote_data.contact_email,
                 "contact_phone": quote_data.contact_phone,
                 "ship_to": quote_data.ship_to,
+                "po_number": quote_data.po_number,
                 "line_items": [asdict(item) for item in quote_data.line_items],
                 "subtotal": float(quote_data.subtotal),
                 "shipping_amount": float(quote_data.shipping_amount)
@@ -224,6 +228,7 @@ def batch(directory: Path, output_dir: Path | None):
             json_data = {
                 "quote_number": quote_data.quote_number,
                 "customer_name": quote_data.customer_name,
+                "po_number": quote_data.po_number,
                 "line_items": [asdict(item) for item in quote_data.line_items],
                 "total": float(quote_data.total),
             }

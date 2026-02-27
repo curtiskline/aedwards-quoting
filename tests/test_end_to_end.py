@@ -25,6 +25,7 @@ def test_full_rfq_to_quote_flow():
     # Verify parsing
     assert rfq.customer_name == "FHR Pipeline and Terminals"
     assert rfq.contact_name == "Evan Bohlman"
+    assert rfq.po_number == "PO-2026-1042"
     assert len(rfq.items) == 1
 
     item = rfq.items[0]
@@ -41,6 +42,7 @@ def test_full_rfq_to_quote_flow():
     # Verify quote
     assert quote.quote_number == "126-TEST"
     assert quote.customer_name == "FHR Pipeline and Terminals"
+    assert quote.po_number == "PO-2026-1042"
     assert len(quote.line_items) == 1
 
     line = quote.line_items[0]
