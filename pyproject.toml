@@ -22,6 +22,7 @@ dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "ruff>=0.1",
+    "pyinstaller>=6.0",
 ]
 
 [project.scripts]
@@ -29,6 +30,9 @@ allenedwards = "allenedwards.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+allenedwards = ["assets/*.jpg"]
 
 [tool.ruff]
 line-length = 100

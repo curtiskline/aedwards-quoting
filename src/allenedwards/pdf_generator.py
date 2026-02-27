@@ -3,6 +3,7 @@
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+import sys
 
 from reportlab.graphics.barcode import code128
 from reportlab.lib import colors
@@ -26,8 +27,24 @@ BLACK = colors.black
 WHITE = colors.white
 GRAY = colors.Color(0.5, 0.5, 0.5)
 
-# Default logo path (relative to project root)
-DEFAULT_LOGO_PATH = Path(__file__).parent.parent.parent.parent.parent / "assets" / "logo.jpg"
+def _resolve_default_logo_path() -> Path:
+    """Resolve bundled logo path for source and frozen runtimes."""
+    if getattr(sys, "frozen", False):
+        bundle_root = Path(getattr(sys, "_MEIPASS", Path.cwd()))
+        bundled_logo = bundle_root / "allenedwards" / "assets" / "logo.jpg"
+        if bundled_logo.exists():
+            return bundled_logo
+        return bundle_root / "assets" / "logo.jpg"
+
+    package_logo = Path(__file__).parent / "assets" / "logo.jpg"
+    if package_logo.exists():
+        return package_logo
+
+    # Backward-compatible fallback for old source layouts.
+    return Path(__file__).parent.parent.parent.parent.parent / "assets" / "logo.jpg"
+
+
+DEFAULT_LOGO_PATH = _resolve_default_logo_path()
 
 
 def format_currency(amount: Decimal | None) -> str:
