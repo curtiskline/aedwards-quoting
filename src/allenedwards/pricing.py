@@ -89,7 +89,6 @@ class Quote:
     contact_email: str | None
     contact_phone: str | None
     ship_to: dict[str, Any] | None
-    po_number: str | None
     line_items: list[QuoteLineItem]
     subtotal: Decimal
     shipping_amount: Decimal | None
