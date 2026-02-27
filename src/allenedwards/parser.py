@@ -46,6 +46,7 @@ Return a JSON object with this structure:
         "postal_code": "ZIP",
         "country": "Country if specified"
     },
+    "po_number": "Customer purchase order number if provided",
     "items": [
         {
             "product_type": "sleeve|girth_weld|compression|bag|omegawrap|accessory|service",
@@ -116,6 +117,7 @@ class ParsedRFQ:
     contact_email: str | None
     contact_phone: str | None
     ship_to: ShipTo | None
+    po_number: str | None
     items: list[ParsedItem]
     urgency: str = "normal"
     notes: str | None = None
@@ -215,6 +217,7 @@ Return the parsed data as JSON."""
 
     # Call LLM
     result = provider.complete_json(prompt, system=PARSE_SYSTEM_PROMPT)
+    po_number = result.get("po_number") or _extract_po_number(body)
 
     # Convert to dataclasses
     ship_to = None
@@ -252,6 +255,7 @@ Return the parsed data as JSON."""
         contact_email=result.get("contact_email"),
         contact_phone=result.get("contact_phone"),
         ship_to=ship_to,
+        po_number=po_number,
         items=items,
         urgency=result.get("urgency", "normal"),
         notes=result.get("notes"),
@@ -260,6 +264,19 @@ Return the parsed data as JSON."""
         subject=subject,
         raw_body=body,
     )
+
+
+def _extract_po_number(body: str) -> str | None:
+    """Extract PO number from email body when present."""
+    patterns = [
+        r"\bP(?:urchase)?\.?\s*O(?:rder)?\.?\s*(?:#|No\.?|Number)?\s*[:\-]?\s*([A-Za-z0-9][A-Za-z0-9\-/_.]*)",
+        r"\bPO\s*(?:#|No\.?|Number)?\s*[:\-]?\s*([A-Za-z0-9][A-Za-z0-9\-/_.]*)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, body, re.IGNORECASE)
+        if match:
+            return match.group(1).rstrip(".,;")
+    return None
 
 
 def _parse_float(value: Any) -> float | None:

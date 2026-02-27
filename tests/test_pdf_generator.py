@@ -39,6 +39,7 @@ def test_generate_quote_pdf():
             "postal_code": "55016",
             "country": "United States",
         },
+        po_number="PO-2026-1042",
         line_items=[line_item],
         subtotal=Decimal("7773.30"),
         shipping_amount=None,

@@ -34,6 +34,7 @@ SAMPLE_RFQ_RESPONSE = {
         "postal_code": "55016",
         "country": "United States",
     },
+    "po_number": "PO-2026-1042",
     "items": [
         {
             "product_type": "sleeve",
