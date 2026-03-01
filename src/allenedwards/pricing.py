@@ -58,6 +58,12 @@ OTHER_PRICING: dict[str, tuple[Decimal, str]] = {
     "training_package": (Decimal("400"), "per_package"),
 }
 
+# Standard sleeve bundle sizing rule:
+# up to 24" diameter and 10' length are sold as bundles of 5 pieces (50 LF total).
+STANDARD_BUNDLE_MAX_DIAMETER = 24.0
+STANDARD_BUNDLE_LENGTH_FT = 10.0
+STANDARD_BUNDLE_PIECES = 5
+
 # Service pricing
 MILLING_PRICE = Decimal("30")
 PAINTING_PRICE = Decimal("40")
@@ -389,6 +395,52 @@ def generate_sleeve_description(
     return f"{desc}. Backing Strip Included."
 
 
+def _is_standard_bundle_sleeve(item: ParsedItem) -> bool:
+    """Return True when sleeve item uses the standard bundle sizing rule."""
+    if item.product_type != "sleeve":
+        return False
+    if item.diameter is None or item.length_ft is None:
+        return False
+    return item.diameter <= STANDARD_BUNDLE_MAX_DIAMETER and item.length_ft == STANDARD_BUNDLE_LENGTH_FT
+
+
+def _extract_bundle_count(text: str) -> int | None:
+    """Extract explicit bundle count from item description text."""
+    match = re.search(r"\b(\d+)\s*bundles?\b", text, re.IGNORECASE)
+    if not match:
+        return None
+    return int(match.group(1))
+
+
+def _quote_quantity_and_warning(item: ParsedItem) -> tuple[int, str | None]:
+    """Resolve displayed quote quantity in pieces and optional warning text."""
+    quote_quantity = item.quantity
+    warning: str | None = None
+
+    if not _is_standard_bundle_sleeve(item):
+        return quote_quantity, warning
+
+    bundle_count = _extract_bundle_count(item.description)
+    if bundle_count is not None:
+        expected_pieces = bundle_count * STANDARD_BUNDLE_PIECES
+        if item.quantity == bundle_count:
+            quote_quantity = expected_pieces
+        elif item.quantity != expected_pieces:
+            warning = (
+                f"WARNING: Sleeve quantity {item.quantity} does not match "
+                f"{bundle_count} bundle(s) ({expected_pieces} pcs expected)."
+            )
+
+    if quote_quantity % STANDARD_BUNDLE_PIECES != 0:
+        size = int(item.diameter) if item.diameter == int(item.diameter) else item.diameter
+        warning = (
+            f'WARNING: Sleeve quantity {quote_quantity} for {size}" x 10\' must be a multiple of '
+            f"{STANDARD_BUNDLE_PIECES} pcs (standard bundle size)."
+        )
+
+    return quote_quantity, warning
+
+
 def price_item(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
     """Calculate price for a single parsed item.
 
@@ -397,6 +449,8 @@ def price_item(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
     if item.product_type == "sleeve":
         if not all([item.diameter, item.wall_thickness, item.grade, item.length_ft]):
             return None
+
+        quote_quantity, _ = _quote_quantity_and_warning(item)
 
         unit_price, weight_per_ft, price_per_lb = calculate_sleeve_price(
             item.diameter,
@@ -407,7 +461,7 @@ def price_item(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
             item.painting,
         )
 
-        total = unit_price * Decimal(str(item.quantity))
+        total = unit_price * Decimal(str(quote_quantity))
 
         return QuoteLineItem(
             sort_order=sort_order,
@@ -428,7 +482,7 @@ def price_item(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
                 item.milling,
                 item.painting,
             ),
-            quantity=item.quantity,
+            quantity=quote_quantity,
             unit_price=unit_price,
             total=total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
             weight_per_ft=weight_per_ft,
@@ -505,8 +559,12 @@ def _build_rfq_contact_text(rfq: ParsedRFQ) -> str | None:
 def generate_quote(rfq: ParsedRFQ, quote_number: str) -> Quote:
     """Generate a complete quote from a parsed RFQ."""
     line_items: list[QuoteLineItem] = []
+    quantity_warnings: list[str] = []
 
     for i, item in enumerate(rfq.items, start=1):
+        _, warning = _quote_quantity_and_warning(item)
+        if warning:
+            quantity_warnings.append(warning)
         priced = price_item(item, i)
         if priced:
             line_items.append(priced)
@@ -531,6 +589,20 @@ def generate_quote(rfq: ParsedRFQ, quote_number: str) -> Quote:
                 product_type="note",
                 part_number="",
                 description=rfq_contact_text,
+                quantity=0,
+                unit_price=Decimal("0.00"),
+                total=Decimal("0.00"),
+                is_note=True,
+            )
+        )
+
+    for warning in quantity_warnings:
+        line_items.append(
+            QuoteLineItem(
+                sort_order=len(line_items) + 1,
+                product_type="note",
+                part_number="",
+                description=warning,
                 quantity=0,
                 unit_price=Decimal("0.00"),
                 total=Decimal("0.00"),
