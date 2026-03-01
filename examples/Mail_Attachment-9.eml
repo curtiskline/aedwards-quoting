@@ -1,0 +1,598 @@
+Received: from BL3PR04MB8010.namprd04.prod.outlook.com (2603:10b6:208:345::20)
+ by SN6PR04MB4128.namprd04.prod.outlook.com with HTTPS; Mon, 2 Feb 2026
+ 22:26:39 +0000
+Received: from MN2PR05CA0006.namprd05.prod.outlook.com (2603:10b6:208:c0::19)
+ by BL3PR04MB8010.namprd04.prod.outlook.com (2603:10b6:208:345::20) with
+ Microsoft SMTP Server (version=TLS1_2,
+ cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384) id 15.20.9587.6; Mon, 2 Feb
+ 2026 22:26:37 +0000
+Received: from BN2PEPF000044AB.namprd04.prod.outlook.com
+ (2603:10b6:208:c0:cafe::d) by MN2PR05CA0006.outlook.office365.com
+ (2603:10b6:208:c0::19) with Microsoft SMTP Server (version=TLS1_3,
+ cipher=TLS_AES_256_GCM_SHA384) id 15.20.9587.12 via Frontend Transport; Mon,
+ 2 Feb 2026 22:26:38 +0000
+Received: from mx0a-001c4c01.pphosted.com (148.163.156.161) by
+ BN2PEPF000044AB.mail.protection.outlook.com (10.167.243.106) with Microsoft
+ SMTP Server (version=TLS1_3, cipher=TLS_AES_256_GCM_SHA384) id 15.20.9587.10
+ via Frontend Transport; Mon, 2 Feb 2026 22:26:35 +0000
+Received: from pps.filterd (m0081927.ppops.net [127.0.0.1])
+	by mx0a-001c4c01.pphosted.com (8.18.1.11/8.18.1.11) with ESMTP id 612IkIMd1860434
+	for <jhamilton@allanedwards.com>; Mon, 2 Feb 2026 16:26:34 -0600
+Received: from byapr05cu005.outbound.protection.outlook.com (mail-westusazon11010007.outbound.protection.outlook.com [52.101.85.7])
+	by mx0a-001c4c01.pphosted.com (PPS) with ESMTPS id 4c1c5sdstm-1
+	(version=TLSv1.3 cipher=TLS_AES_256_GCM_SHA384 bits=256 verify=NOT)
+	for <jhamilton@allanedwards.com>; Mon, 02 Feb 2026 16:26:34 -0600 (CST)
+Received: from LV0PR20MB994524.namprd20.prod.outlook.com
+ (2603:10b6:408:33e::10) by SAWPR20MB994666.namprd20.prod.outlook.com
+ (2603:10b6:806:4ea::9) with Microsoft SMTP Server (version=TLS1_2,
+ cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384) id 15.20.9564.16; Mon, 2 Feb
+ 2026 22:26:32 +0000
+Received: from LV0PR20MB994524.namprd20.prod.outlook.com
+ ([fe80::f05a:3f2d:983d:3fb4]) by LV0PR20MB994524.namprd20.prod.outlook.com
+ ([fe80::f05a:3f2d:983d:3fb4%7]) with mapi id 15.20.9564.016; Mon, 2 Feb 2026
+ 22:26:32 +0000
+From: "Pipe, Adam R" <Adam.R.Pipe@p66.com>
+To: Jamee Hamilton <jhamilton@allanedwards.com>
+Subject: 8" B-Sleeve Order
+Thread-Topic: 8" B-Sleeve Order
+Thread-Index: AdyUko60Fuef3Lx3SX+AcIb5uzcSAw==
+Date: Mon, 2 Feb 2026 22:26:32 +0000
+Message-ID:
+ <LV0PR20MB994524F3EB2763A8B99E0BB8DEB29AA@LV0PR20MB994524.namprd20.prod.outlook.com>
+Accept-Language: en-US
+Content-Language: en-US
+X-MS-Exchange-Organization-AuthSource:
+ BN2PEPF000044AB.namprd04.prod.outlook.com
+X-MS-Has-Attach: yes
+X-MS-Exchange-Organization-Network-Message-Id:
+ d22cbce3-4db8-41f3-64f6-08de62aa2064
+X-MS-TNEF-Correlator:
+X-MS-Exchange-Organization-RecordReviewCfmType: 0
+x-ms-publictraffictype: Email
+received-spf: TempError (protection.outlook.com: error in processing during
+ lookup of p66.com: DNS Timeout)
+x-ms-exchange-organization-originalclientipaddress: 148.163.156.161
+x-ms-exchange-organization-originalserveripaddress: 10.167.243.106
+arc-seal: i=1; a=rsa-sha256; s=arcselector10001; d=microsoft.com; cv=none;
+ b=Jr6CMbgCJZjGYNfvOq4L+F1m1uBIkJ9CsD+uhjsf5+xj7/FvmT1skCzJhTcDrjoXxLo15and7y02mukSRfcwaGZcncxNzpA92/BHy47f7T+Xl3P/SNOBbEYP1w7oT6kFB6fYOKTh4hd52UZe6Y9QAD+evuImHl4AqTgolDExh90cRNprD1rTe3jf0eBTU2Fm1az5m2YIL3h0SP8WLHmxWptnTLAuSCNz6qS5LlrqYTgVKP4B+UYqBtEOpVBBOJyVQA1oeI6fQOSYOwdOwa7SkRDgT3ZGTi3xNE4n2RZOI2/lWDgv7FhoKnYPZKgHObU/j5JqY3y04W0b1DyNECgFxw==
+arc-message-signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=microsoft.com;
+ s=arcselector10001;
+ h=From:Date:Subject:Message-ID:Content-Type:MIME-Version:X-MS-Exchange-AntiSpam-MessageData-ChunkCount:X-MS-Exchange-AntiSpam-MessageData-0:X-MS-Exchange-AntiSpam-MessageData-1;
+ bh=magwxaLCLisFo1TZFq1QmzKClsWRwz7lNcTzi1SSem4=;
+ b=ofQW8kroHp55L+z6SpSHk8QhsxSk61szNZj9GDcwB2vdzI3ZuX7OgKZsX7VVCLOwB76A7dRwx/NcUwojrsHrV5YLY9P8XWePjE5Ei8XofeCw9YvAnUfLqRYnYDsNS3YE1yW1Kh+dkzjT1oughtJtUkDQM/KgRqy3GNUhKCYoz+fijdSKgxFZ14dyFdgdFjzmw23V9jUB0hGkLHkr6v+wzNvDt6yonCcYsQi7lOadL3n7ywzig/8jgFyiIJPa3KcHJR81vetpo6Kl6q/4JCGFlNbjTHfS5x/CKZCDUcFN3E9M55jeYmESVWINzVhgou6OjQlOT52y45ERGYMW2ecnxg==
+arc-authentication-results: i=1; mx.microsoft.com 1; spf=pass
+ smtp.mailfrom=p66.com; dmarc=pass action=none header.from=p66.com; dkim=pass
+ header.d=p66.com; arc=none
+dkim-signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=p66.com; h=
+	content-type:date:from:message-id:mime-version:subject:to; s=	s2048;
+ bh=magwxaLCLisFo1TZFq1QmzKClsWRwz7lNcTzi1SSem4=; b=aJPSAa
+	L01hv2hT6TlvRrudfUU3enTh8Eh6ngWYxw0Nd3waUp9sN2Ym4i7PK+77GT0hn7bM
+	cwweVZrrRqyUO74/V2foWTY8LwtanBSwYwxBgA+F7cqCgnhMs5NNTKGVTUWq9KcO
+	A3VY9MF9YBu84RO8K00elBZGgI0UjVSEg2BC+R8jGA0GravgJ5cZhGv/9bae5NSu
+	+yptqAEbk7W93sTvQ/5Q4y6/oeshmrtDsEDnLxXIvXp5sOrAcwB0cdSJxrN1mNfE
+	p2UbN/GezTnda3IctWJ95Tc4ZLwj3PSt6x04JhyyOF55TNZXoKWqJzPrEH7D1kPO
+	R9NwIkA/rvLSQ+fA==
+authentication-results: spf=temperror (sender IP is 148.163.156.161)
+ smtp.mailfrom=p66.com; dkim=pass (signature was verified)
+ header.d=p66.com;dmarc=pass action=none header.from=p66.com;compauth=pass
+ reason=100
+x-ms-office365-filtering-correlation-id: d22cbce3-4db8-41f3-64f6-08de62aa2064
+x-ms-traffictypediagnostic:
+ LV0PR20MB994524:EE_|SAWPR20MB994666:EE_|BN2PEPF000044AB:EE_|BL3PR04MB8010:EE_|SN6PR04MB4128:EE_
+x-ms-exchange-senderadcheck: 1
+x-microsoft-antispam:
+ BCL:0;ARA:13230040|35042699022|6049299003|19092799006|13003099007|14062099003|54012099003|8096899003|4076899003|4053099003;
+x-forefront-antispam-report:
+ CIP:148.163.156.161;CTRY:US;LANG:en;SCL:1;SRV:;IPV:NLI;SFV:NSPM;H:mx0a-001c4c01.pphosted.com;PTR:mx0a-001c4c01.pphosted.com;CAT:NONE;SFS:(13230040)(35042699022)(6049299003)(19092799006)(13003099007)(14062099003)(54012099003)(8096899003)(4076899003)(4053099003);DIR:INB;
+x-ms-exchange-crosstenant-authas: Anonymous
+x-ms-exchange-crosstenant-authsource:
+ BN2PEPF000044AB.namprd04.prod.outlook.com
+x-ms-exchange-crosstenant-network-message-id:
+ d22cbce3-4db8-41f3-64f6-08de62aa2064
+x-ms-exchange-crosstenant-originalarrivaltime: 02 Feb 2026 22:26:35.5978 (UTC)
+x-ms-exchange-crosstenant-fromentityheader: Internet
+x-ms-exchange-crosstenant-id: 055e5bde-1fda-4a76-bd72-576a69a48d72
+x-ms-exchange-transport-crosstenantheadersstamped: BL3PR04MB8010
+x-microsoft-antispam-untrusted:
+ BCL:0;ARA:13230040|366016|6049299003|376014|10070799003|19092799006|1800799024|38070700021|8096899003|4053099003;
+x-microsoft-antispam-message-info-original:
+ =?Windows-1252?Q?VldOk6qibzKNvC9s31bZlC9klr+4FdX/1B8UGv3326MexA8jcSLnRYxv?=
+ =?Windows-1252?Q?RkOB73yfboy5neYSQmBi7+zhppN+NpCQZnQRbUvnUhONgSKVqDvOH945?=
+ =?Windows-1252?Q?6z2gqBwUbcwx67o8tjFYvxnKGGL4TYK2NXOu2cDjLOCtei4nLvRIAjIy?=
+ =?Windows-1252?Q?dfYjqQ4Eb/xvjDYUX0bpAFZ5WEuBYT01t7aISSKv1FnUIamrcz5fd/QI?=
+ =?Windows-1252?Q?4UvaLMZuFPhzTe4KcHkA3F/c4rW4PmC8MSk4cDobVermSZmCYk3HM6hG?=
+ =?Windows-1252?Q?yZ98aFv6h/Mnrwgsaownd9YJx8TAM94UZpgHjAgFa2Jk+ssxphH1594W?=
+ =?Windows-1252?Q?rwy8UBntRsb5wj9zHw3r5lwEmVUBl5FLSFNenKVAMHeThunh55hCmzQY?=
+ =?Windows-1252?Q?psWEeHoGr1FvAZPAkOYihxSLZ18stLNC0SeltYcZOaY/VfmhtaCcjIO1?=
+ =?Windows-1252?Q?rhe0V97l9Sbh337nX8OfqHDhpzKHXbWw+KQIABojHV1K8yybhnQ8D5aA?=
+ =?Windows-1252?Q?lUPJS2WbKWDYKg5wS5uhIR6VKqKUfseSJmfGMVazkerIZoC4p7EgiW5R?=
+ =?Windows-1252?Q?xqMUMvDY16uFFkP7hxv6T+Yr57toCuw9DoaW06NXxvuK7zWmAAE+oQsF?=
+ =?Windows-1252?Q?froJ8Z1g/hT24sgbIPTlSnXvO6pJ1HkrHLPNm3ptgcrdoaNJHbMhAHFh?=
+ =?Windows-1252?Q?vqhv9mJkrXz+qj0dLgnOV2+idMSOppmVoo+Z+QJfOLTMdAGUgzA3BUIu?=
+ =?Windows-1252?Q?+fzrirVBxzHEZvhB7CgHBcfXdR/NpxtjLhOEBgNBd6JcM9061N3ql0IA?=
+ =?Windows-1252?Q?dH3K7zRcbFBEUzHk98QH/9ma8xwbMnK4edjU4IdF8G0hzMk8ODFuJA4s?=
+ =?Windows-1252?Q?pQ46IbkVZL5W1DwtzJkVLVEgUTQdQbg06Wt6uWTa6YnMNRnoI6kil+7p?=
+ =?Windows-1252?Q?Avqw+EkqKVz9LxeYmzzKYojgeIX5FhWO617TrYKXHOmcGZE+WC7RO0VK?=
+ =?Windows-1252?Q?2bpArqEOtsmVyhYP2oeEcSj0juyxuXzCvQWevdWhJK6JQOoO9hLcKiNn?=
+ =?Windows-1252?Q?hZF4CncefgnkL4l1omWqCET2WXWdKgOZh8yBuOplW5kyDcc4ePFJop3H?=
+ =?Windows-1252?Q?pSqUbJHfYuz3mkbtUPWQ6+R6E03HZC5zIrPxvA4zamWJDbUpZy3B79Dm?=
+ =?Windows-1252?Q?Tsc/wQY/qDaI7R04XweOMSkciaWOlBa+1RzUhiRWaOQ4RH5afSbs/Gsx?=
+ =?Windows-1252?Q?d8vyG1cPancf7iDpSK3H1FH81RkxP3d/1CxinWFYy5YkSc2l+mmW/lHS?=
+ =?Windows-1252?Q?6T3Zcv7SoRdClqAQo4lMAGj/B+SvehotXZOu3oqqh+m3dJ7sYlqLCQUu?=
+ =?Windows-1252?Q?rcQND5Z3Z4z4ZfKvSr9EKtrBEKUR6rV7/NQU2HuoNyg021vMq13Krgkd?=
+ =?Windows-1252?Q?BsiwPVEl/KVMYTaE3x3rkw/BIE7+czVYwU69GI22jhrmqHGcSq1NI+db?=
+ =?Windows-1252?Q?zeqCzIDZviVMwAEJUyMxgTdf4Bvfr3cXW9TXvU0pRVKcQKL5x+rbKSWk?=
+ =?Windows-1252?Q?lOPMTJv+X6Zg5i/6Ma6HqmhGanMooYB6qTtrUc10he4zkE7323Ujt5dv?=
+ =?Windows-1252?Q?6kA8Mtdd9RVXTbUs6XC3ziwY9Soj16cpD9B3RCLAXI0+5Kax7j1oY1CS?=
+ =?Windows-1252?Q?NInMVGvhxkA=3D?=
+x-forefront-antispam-report-untrusted:
+ CIP:255.255.255.255;CTRY:;LANG:en;SCL:1;SRV:;IPV:NLI;SFV:NSPM;H:LV0PR20MB994524.namprd20.prod.outlook.com;PTR:;CAT:NONE;SFS:(13230040)(366016)(6049299003)(376014)(10070799003)(19092799006)(1800799024)(38070700021)(8096899003)(4053099003);DIR:OUT;SFP:1101;
+x-eopattributedmessage: 0
+x-eoptenantattributedmessage: 055e5bde-1fda-4a76-bd72-576a69a48d72:0
+x-ms-exchange-transport-crosstenantheadersstripped:
+ BN2PEPF000044AB.namprd04.prod.outlook.com
+x-ms-office365-filtering-correlation-id-prvs:
+ 44c2c1e3-8753-42e6-ebbe-08de62aa1e7d
+x-organizationheaderspreserved: SAWPR20MB994666.namprd20.prod.outlook.com
+x-crosspremisesheadersfiltered: BN2PEPF000044AB.namprd04.prod.outlook.com
+x-ms-exchange-transport-endtoendlatency: 00:00:03.9144589
+x-ms-exchange-processed-by-bccfoldering: 15.20.9587.000
+x-ms-exchange-antispam-relay: 0
+x-proofpoint-guid: 5bjNZO5dtPLHSuijw-IvfWLttoZLrrwv
+x-proofpoint-orig-guid: 5bjNZO5dtPLHSuijw-IvfWLttoZLrrwv
+x-proofpoint-spam-reason: orgsafe
+x-ms-exchange-antispam-messagedata-original-chunkcount: 1
+x-ms-exchange-antispam-messagedata-original-0:
+ =?Windows-1252?Q?SmSVqmkh6AE/9tcBEcZYoE1L8X/7Ojkgw3p1V8K1iBElvrMMhOxRqG18?=
+ =?Windows-1252?Q?iEPB7tmvVr39VfuP4TgR+y9u9oI6glerBqCKiQslg6qFo6pLEcHITy4U?=
+ =?Windows-1252?Q?yry+t3hhWa2yWVKDuURM4ZilGV4cgUbbAQ5x9tfMDh2wLlFBrATECfjV?=
+ =?Windows-1252?Q?n58cgAkOGBcqYpze/TyyqnxRX4VVWnKWYaHBng2eKPseu76hZneeIotD?=
+ =?Windows-1252?Q?LPyG9pvBuPNw/0buu/j11JBnnm/7iO03PwI7ugmrZ6Z3qt1Dg+YMlkK6?=
+ =?Windows-1252?Q?iw6fSoPvAizMVkMqnYXPTQYFFmC6TQjqYAxtMJfG41Sl1n5JwxPZWR3Z?=
+ =?Windows-1252?Q?OXQ/uO8efOj1Y9a2GRuZ3VaUfGT9wIfAQ9dtV1+77a6TC6xr4Ba6DWH8?=
+ =?Windows-1252?Q?8Ajzjp7TW1CAxUGUDN7ulWw1aLj/sbjnp5SE3RKFjtTs0SokyMlRVEpo?=
+ =?Windows-1252?Q?5dOtudMHJx1wGzYi7UVDy4Q+JR16gIDi0P2aYTv72HaXSPHfU60phZUF?=
+ =?Windows-1252?Q?/CS5bnvaqC24DVMN4rrUH06w5IrxvNpnOpI5qwdNP0fUpmR05TOFQJYq?=
+ =?Windows-1252?Q?ifWW1t176t9VbPvWpQ0OiIcSZhkkcN4T6to/Glz2n1kx2qVpTZe92IgL?=
+ =?Windows-1252?Q?BD994x9D9S56kjasPVeZ0GWpDfrfQMc443UuVUbEUqxzdUE/xI88HJpj?=
+ =?Windows-1252?Q?9OEQOzGz9dHi2BvWrjS1bLJuLIYDvREtVF+oVodG5Cx/OcvLGEcm0MGf?=
+ =?Windows-1252?Q?UIXnQHu0kJrxsMVnJ7SrGM1X7CGb/HPJLjlHKgUlPOdXrtLIAgRl1Abt?=
+ =?Windows-1252?Q?WNA2hxPkhPskqmrNwTXtlOiVPMxdFLRpLG2PQmn/6ZaNCyH1062OaM2B?=
+ =?Windows-1252?Q?i6AY670Sr3Bq4m+LffOtIIC9QeNQhcAHp72AqTSyfPpJShluheriOjkV?=
+ =?Windows-1252?Q?qEzqx0yyO9rXMJ9MAAH4tYcD+vAFkWsf2O8j9JmvP23yJuRyAKUfmuSO?=
+ =?Windows-1252?Q?wO5y6ygR0JfXthbO/ckq8Qeh9I1AAAj7kZWkGyGPd7bChHhiRctGAv5f?=
+ =?Windows-1252?Q?Z40yMuS5u3Ujbgm7FWrLf8hn1QAdtNlqebI0wqSyKwcEceHro6kDlqpf?=
+ =?Windows-1252?Q?ia89Hq6/P4CGFXRoDXdErbYdhas6hrQ6rfcfg6VxPPSWZQmMPT0Sx4A0?=
+ =?Windows-1252?Q?sKoWQVs3jBEADNAq3lELrbz4yQ6/MGP2YLpMAOMHMIrDEhnpRQHJb7H2?=
+ =?Windows-1252?Q?WIJUcXpNkYse30SyLk/D4WVfgzRbrWtJc7I4j7AIJTZBbLQXe/vcjcWW?=
+ =?Windows-1252?Q?SxXhhYy5AqLHGTGOq4noRv0ROYW9rOomS1aFx4AQZsUsOatg/z7Ws6Nt?=
+ =?Windows-1252?Q?ARuMw73qGTcx+zbyGi+cjZWs/EFMSuy+29QCpsUZ8wTOeqtKmTgUUE+c?=
+ =?Windows-1252?Q?h/GJYD7UzpvkHbV/Ap4ugMioPHkcUtmn/zIIFZ8b5VGDZcjjNg8wQeXm?=
+ =?Windows-1252?Q?hdurzj0/qJw0I6xquCaAqkvY5GOuVDHKCKiu//oc+lmirVGVSaCvTNve?=
+ =?Windows-1252?Q?UDItTpIWbcrLHXbXTXeaj6VfV5fi82+7A3C+RW7WxGuO7wtURIgk+DeN?=
+ =?Windows-1252?Q?W5vgksZrxKTDeOa3AN77gNFnQpGyGGgMM9WwQ9sQ+kYVwrfLb+7Iz6sH?=
+ =?Windows-1252?Q?PaJo754GOVtLStgacdjYUaRm4Sdc/UkDOx/T04I2Ln1OR/638VPdkCsE?=
+ =?Windows-1252?Q?JjCkePGU+ED8dwOQARkwOpcvfNpGvJW7CiLJJTm1LpBqmiTcSkz2mQe4?=
+ =?Windows-1252?Q?nFPOX6Bd9uVI+17loRWM+Ev38TafwCb8SALsHTxifSkd58NeHfG5syvj?=
+ =?Windows-1252?Q?g08Wwtq9UWLswnjKnWpEbNEgsIJPlhRY/KY=3D?=
+X-Microsoft-Antispam-Mailbox-Delivery:
+ ucf:0;jmr:0;auth:0;dest:I;ENG:(910005)(944506478)(944626604)(920097)(930201)(20251009114)(140003);
+X-Microsoft-Antispam-Message-Info:
+ =?Windows-1252?Q?DJqSjcSY8ZRsWLsLNblg26uLd6amqYQv06muhOka2812h/qR7MpqLrWT?=
+ =?Windows-1252?Q?0AupUl8peV/mobJYWM5G6eSS2HwY27rfwGD9Y33XXrV6jqV0dtC7QD28?=
+ =?Windows-1252?Q?qobT3t9Yz1DKD/B2MMwZgIK70ovPay2ZdaWkfo1bYaEt+KkMy9MpizyJ?=
+ =?Windows-1252?Q?Rf1XhpPAqHQmxX8/V0CYH+yKyly2jiunp1xsSDhztmxVg7Z7ChKNbYj1?=
+ =?Windows-1252?Q?ED5U8UJ2TnDStHdGbRbA8FzTOyGiCkvDUEujWvm94uxNnGZAEMuE+jNV?=
+ =?Windows-1252?Q?o0LkvT8ujT8jqRdQ3l4psBmMBTcGB+zdEIowtVHwscnFg6Iu+oEQHtZf?=
+ =?Windows-1252?Q?NUHF8Pe/Bz73NfF6CT2nwnYX9rKEYRkT6DNRHZGHhRXX1kIA0HwVZ+WB?=
+ =?Windows-1252?Q?GmP3skz12RvXjfH8enguqusIKq43SSlZE25IlEmTBWgcV5lyU5G35YAw?=
+ =?Windows-1252?Q?P/sTxkHTQIH69xrQktiWtgguDih9NeeyY0CPOO+jvrw+qXGOymHCL1C7?=
+ =?Windows-1252?Q?mtYK/irq3T17hw/Q7hZh3SwlGpVzztxNtH50C5sKRHWcoTKDFuCAW7o+?=
+ =?Windows-1252?Q?l8iDMNQnjk/kLNakUwL7o6d+uaw/PxiWfig4DhZw35Me5/C5/nMor0dR?=
+ =?Windows-1252?Q?iwFbI2GtEryV2g/mWsBO2zRbtt0QQMM7XKi/E4ay0vOsa8RBE3mUK4mG?=
+ =?Windows-1252?Q?n9vDgdX0E1W6o1IgJryvXW25eMGDN+MPQY124fvi+NOsb/rtS/EBA/ij?=
+ =?Windows-1252?Q?f6QEfCjJbqzA/W1PYbwYwt7kLj7CUruOAs9En5av3ZLgEBV3uj2V7JUh?=
+ =?Windows-1252?Q?JTcAjmBRuT6cpBHPkQwr+KhPPNdi7Cv+LNk/DEPe36KBsVhZaltX3T0e?=
+ =?Windows-1252?Q?dNLyc54c3rP9xETc2jfbAVbk/h0pkEvjCVTCNDNTBDvNhEdvfSL9haye?=
+ =?Windows-1252?Q?d9X5dI420NakWBfRSVlw16yxM7INSGWEkW+hLiX3vA+RSjLOAvH84dZ2?=
+ =?Windows-1252?Q?r8j5RCt3w688RE8j4FRnZSDaPO3jt6kgd592H8wYDbc5rohhIERR51DS?=
+ =?Windows-1252?Q?rw4C73rdvYB3jmcUyV48GBaGVxkQ3nWBLuYvaK+l0jaAZNS5xtnE7Xop?=
+ =?Windows-1252?Q?upeEsuXNe9MsBqQZmQLKKgyWIztaceXUkKL2J+3kWa+sCx1DoBdQ7Ihg?=
+ =?Windows-1252?Q?ux8hZjErJ6cC4K7aNuPjUHkFNal88IE9sgKhJxOr9RuCg4d7GHsjHsyF?=
+ =?Windows-1252?Q?S9w/lsWcEdQo75ZilDeRQYtVkfkstz4o8ShNjK10Hj5uxa5itcio668h?=
+ =?Windows-1252?Q?xRvjbGWmNn5+/1LLfh49ZGp4kQrVMeK78oMHvTEtIO697+tgJ68Jp8Uh?=
+ =?Windows-1252?Q?wSFeDBtvsbTZ5yDuCranfM0Sz/q9fhUCOd64iI++N1X2ssA6kengTS4W?=
+ =?Windows-1252?Q?JDfVR5aofxfm1LtzQnEdrdGc7S3pZSH5xznDmZaezx8yO1VU623irJGn?=
+ =?Windows-1252?Q?2sXD2E5i31O+3ruUlsm7CxBW3OynIWfA1oxxg+9IZUQOxmU6exXfaQvO?=
+ =?Windows-1252?Q?9dXKZbcc1cmfru8vaxiSjo+FUP5edx+ZUTqGpkyTVzNOYcKG1YvTLV0K?=
+ =?Windows-1252?Q?n07lN0pnOKqzp3Nk8DvpGHw/lRw71lR7LhgFht5MO8s0VV7OrcW2gJN/?=
+ =?Windows-1252?Q?PUhWtOhB6cpCYb5kLB0OljAgBK/wF1/UnoBD16fUVyeaEQy2he1DSTZJ?=
+ =?Windows-1252?Q?Ig0EjVH3A7ln1lPHAo9eeCDvCGXg83Brmb3Rb7/VbswKrviHZe2hYxsv?=
+ =?Windows-1252?Q?52/Q+EyuK/kLLkuj4uDwI9mUAR6F066RcHFBT7a+4abyMY4hexCXqE9x?=
+ =?Windows-1252?Q?G5HNwPt3S8SGwrTw1jvWDb2bTdV9KKVCUHHn8D7P4oNTuUF/61LOdpGi?=
+ =?Windows-1252?Q?Ra//v/HYTR7HC0DeoXsHU3X9yxybkGn9rhR/rNi5is/2h35RogQgUnmw?=
+ =?Windows-1252?Q?hVKXVhmORO9UdsneeMJh3u6vY9UvZgXZ0FKS1k2MHm7sH3114x2fUQYV?=
+ =?Windows-1252?Q?16vQG+bUI52PBRSl5fdQC2Pv5++hIGsdcmp2A2xBJBkFfwCt4D8zrYIT?=
+ =?Windows-1252?Q?+xsEm/H80HSO+liuNmeydWk1bqtZWB3ym3JheKG0ffAr0Vh6bTcW1xn4?=
+ =?Windows-1252?Q?9InrduAUxrmEWIbFRCnO6rifL7tmWfhhxJhARvUUZrLus848zFnoTd5I?=
+ =?Windows-1252?Q?yycJkc42vhCuNE027BTra4Uct+xhUinwSEJYIPNHnaxWXUn6COnJJu7W?=
+ =?Windows-1252?Q?Rs7LI3g2It3vVJtP41BfbnqMh6qLRkZ7Kimbsff+4fZO3D0fj1BsP2TM?=
+ =?Windows-1252?Q?06vi+dmxWK9gh7hiHQknBt/t1ppRWJe1rohocOhI5vSPV+hoLL7zXKg7?=
+ =?Windows-1252?Q?SGKk29tZBepIqOb/KoTaR8gz7PXPFlbXXGUMZ4hrZ3EAKMxe8BA3JwtR?=
+ =?Windows-1252?Q?Rtn1PlrzYoOhFXD42ogy/sNmaBLfYOt6IEoJcKuyai+hy/t+kmwyTrNS?=
+ =?Windows-1252?Q?cVOTkJKYFAIvxqwu4TAva96AEN9e6Navw8KbXaIdBKrZKXfSn63n9A5z?=
+ =?Windows-1252?Q?krCHtGqrcUhSrFvGQe6VB5UnIR/ApMQzvI8Yx+qAd13k5GoBmQ0YeH+z?=
+ =?Windows-1252?Q?yzU8vTlrpRLnycUKWNQKrFVPvHrQQxYz1AgoJZ/XEqA8EQln9MyHA86I?=
+ =?Windows-1252?Q?xMKntH/Dn2njvvkRHJoAInoTDewIhfzN8i0o9Tp56ynvHrBwJVB6k3ha?=
+ =?Windows-1252?Q?bIlck71ciACYyAxXf0OO1Cua8lIVCdw8qLioPOnlJw4vGv8GFZtE9ysV?=
+ =?Windows-1252?Q?XSyA9GRKt2N3ZdhBNVHafEyRMTDWzNktzSQ=3D?=
+Content-Type: multipart/related;
+	boundary="_005_LV0PR20MB994524F3EB2763A8B99E0BB8DEB29AALV0PR20MB994524_";
+	type="multipart/alternative"
+X-Message-Flag: Follow up
+MIME-Version: 1.0
+
+--_005_LV0PR20MB994524F3EB2763A8B99E0BB8DEB29AALV0PR20MB994524_
+Content-Type: multipart/alternative;
+	boundary="_000_LV0PR20MB994524F3EB2763A8B99E0BB8DEB29AALV0PR20MB994524_"
+
+--_000_LV0PR20MB994524F3EB2763A8B99E0BB8DEB29AALV0PR20MB994524_
+Content-Type: text/plain; charset="Windows-1252"
+Content-Transfer-Encoding: quoted-printable
+
+[EXTERNAL EMAIL] DO NOT CLICK links or attachments unless you recognize the=
+ sender and know the content is safe.
+
+Hey Jamee,
+
+
+
+Looking to get a quote for the following B-Sleeve material. Pipe Specs are =
+below:
+
+*       OD =3D 8.625=94
+*       WT =3D .219=94
+*       X42
+
+
+
+Quantity =3D 10 (50ft of pipe to sleeve)
+
+
+
+Shipping would be to:
+
+
+
+2200 West 34th st
+
+Odessa, TX, 79764
+
+USA
+
+
+
+
+
+
+
+Adam Pipe
+Field Integrity Engineer
+
+M: 832-548-3596
+HQ-08-S830-04 | 2331 CityWest Blvd | Houston, TX 77042-2862
+phillips66.com<https://www.phillips66.com/>
+
+
+
+
+
+
+--_000_LV0PR20MB994524F3EB2763A8B99E0BB8DEB29AALV0PR20MB994524_
+Content-Type: text/html; charset="Windows-1252"
+Content-ID: <86A1D5720F81D04F9C323AE2949FEAF0@namprd04.prod.outlook.com>
+Content-Transfer-Encoding: quoted-printable
+
+<html xmlns:v=3D"urn:schemas-microsoft-com:vml" xmlns:o=3D"urn:schemas-micr=
+osoft-com:office:office" xmlns:w=3D"urn:schemas-microsoft-com:office:word" =
+xmlns:m=3D"http://schemas.microsoft.com/office/2004/12/omml" xmlns=3D"http:=
+//www.w3.org/TR/REC-html40">
+<head>
+<meta http-equiv=3D"Content-Type" content=3D"text/html; charset=3DWindows-1=
+252">
+<meta name=3D"Generator" content=3D"Microsoft Word 15 (filtered medium)">
+<!--[if !mso]><style>v\:* {behavior:url(#default#VML);}
+o\:* {behavior:url(#default#VML);}
+w\:* {behavior:url(#default#VML);}
+.shape {behavior:url(#default#VML);}
+</style><![endif]--><style><!--
+/* Font Definitions */
+@font-face
+	{font-family:Wingdings;
+	panose-1:5 0 0 0 0 0 0 0 0 0;}
+@font-face
+	{font-family:"Cambria Math";
+	panose-1:2 4 5 3 5 4 6 3 2 4;}
+@font-face
+	{font-family:Aptos;}
+/* Style Definitions */
+p.MsoNormal, li.MsoNormal, div.MsoNormal
+	{margin:0in;
+	font-size:12.0pt;
+	font-family:"Aptos",sans-serif;
+	mso-ligatures:standardcontextual;}
+p.MsoListParagraph, li.MsoListParagraph, div.MsoListParagraph
+	{mso-style-priority:34;
+	margin-top:0in;
+	margin-right:0in;
+	margin-bottom:0in;
+	margin-left:.5in;
+	font-size:12.0pt;
+	font-family:"Aptos",sans-serif;
+	mso-ligatures:standardcontextual;}
+span.EmailStyle17
+	{mso-style-type:personal-compose;
+	font-family:"Aptos",sans-serif;
+	color:windowtext;}
+p.xxmsonormal, li.xxmsonormal, div.xxmsonormal
+	{mso-style-name:x_x_msonormal;
+	margin:0in;
+	font-size:10.0pt;
+	font-family:"Aptos",sans-serif;}
+.MsoChpDefault
+	{mso-style-type:export-only;}
+@page WordSection1
+	{size:8.5in 11.0in;
+	margin:1.0in 1.0in 1.0in 1.0in;}
+div.WordSection1
+	{page:WordSection1;}
+/* List Definitions */
+@list l0
+	{mso-list-id:958880944;
+	mso-list-type:hybrid;
+	mso-list-template-ids:792345560 67698689 67698691 67698693 67698689 676986=
+91 67698693 67698689 67698691 67698693;}
+@list l0:level1
+	{mso-level-number-format:bullet;
+	mso-level-text:\F0B7;
+	mso-level-tab-stop:none;
+	mso-level-number-position:left;
+	text-indent:-.25in;
+	font-family:Symbol;}
+@list l0:level2
+	{mso-level-number-format:bullet;
+	mso-level-text:o;
+	mso-level-tab-stop:none;
+	mso-level-number-position:left;
+	text-indent:-.25in;
+	font-family:"Courier New";}
+@list l0:level3
+	{mso-level-number-format:bullet;
+	mso-level-text:\F0A7;
+	mso-level-tab-stop:none;
+	mso-level-number-position:left;
+	text-indent:-.25in;
+	font-family:Wingdings;}
+@list l0:level4
+	{mso-level-number-format:bullet;
+	mso-level-text:\F0B7;
+	mso-level-tab-stop:none;
+	mso-level-number-position:left;
+	text-indent:-.25in;
+	font-family:Symbol;}
+@list l0:level5
+	{mso-level-number-format:bullet;
+	mso-level-text:o;
+	mso-level-tab-stop:none;
+	mso-level-number-position:left;
+	text-indent:-.25in;
+	font-family:"Courier New";}
+@list l0:level6
+	{mso-level-number-format:bullet;
+	mso-level-text:\F0A7;
+	mso-level-tab-stop:none;
+	mso-level-number-position:left;
+	text-indent:-.25in;
+	font-family:Wingdings;}
+@list l0:level7
+	{mso-level-number-format:bullet;
+	mso-level-text:\F0B7;
+	mso-level-tab-stop:none;
+	mso-level-number-position:left;
+	text-indent:-.25in;
+	font-family:Symbol;}
+@list l0:level8
+	{mso-level-number-format:bullet;
+	mso-level-text:o;
+	mso-level-tab-stop:none;
+	mso-level-number-position:left;
+	text-indent:-.25in;
+	font-family:"Courier New";}
+@list l0:level9
+	{mso-level-number-format:bullet;
+	mso-level-text:\F0A7;
+	mso-level-tab-stop:none;
+	mso-level-number-position:left;
+	text-indent:-.25in;
+	font-family:Wingdings;}
+ol
+	{margin-bottom:0in;}
+ul
+	{margin-bottom:0in;}
+--></style>
+</head>
+<body lang=3D"EN-US" link=3D"#467886" vlink=3D"#96607D" style=3D"word-wrap:=
+break-word">
+<p style=3D"border:1px; border-style:solid; border-color: #FFCACA; backgrou=
+nd-color: #FFCACA; padding: 1em;">
+<span style=3D"font-size:12.0pt;color:black;"><b>[EXTERNAL EMAIL]</span></b=
+> <span style=3D"font-size:10.0pt;color:black">
+DO NOT CLICK links or attachments unless you recognize the sender and know =
+the content is safe.</span></p>
+<div>
+<div class=3D"WordSection1">
+<p class=3D"MsoNormal">Hey Jamee,<o:p></o:p></p>
+<p class=3D"MsoNormal"><o:p>&nbsp;</o:p></p>
+<p class=3D"MsoNormal">Looking to get a quote for the following B-Sleeve ma=
+terial. Pipe Specs are below:<o:p></o:p></p>
+<ul style=3D"margin-top:0in" type=3D"disc">
+<li class=3D"MsoListParagraph" style=3D"margin-left:0in;mso-list:l0 level1 =
+lfo1">OD =3D 8.625=94<o:p></o:p></li><li class=3D"MsoListParagraph" style=
+=3D"margin-left:0in;mso-list:l0 level1 lfo1">WT =3D .219=94<o:p></o:p></li>=
+<li class=3D"MsoListParagraph" style=3D"margin-left:0in;mso-list:l0 level1 =
+lfo1">X42<o:p></o:p></li></ul>
+<p class=3D"MsoNormal"><o:p>&nbsp;</o:p></p>
+<p class=3D"MsoNormal">Quantity =3D 10 (50ft of pipe to sleeve)<o:p></o:p><=
+/p>
+<p class=3D"MsoNormal"><o:p>&nbsp;</o:p></p>
+<p class=3D"xxmsonormal"><span style=3D"font-size:12.0pt">Shipping would be=
+ to: <o:p>
+</o:p></span></p>
+<p class=3D"xxmsonormal"><span style=3D"font-size:12.0pt">&nbsp;<o:p></o:p>=
+</span></p>
+<table class=3D"MsoNormalTable" border=3D"0" cellspacing=3D"0" cellpadding=
+=3D"0" width=3D"340" style=3D"width:255.0pt;border-collapse:collapse">
+<tbody>
+<tr style=3D"height:.25in">
+<td width=3D"340" nowrap=3D"" style=3D"width:255.0pt;border:solid #BFBFBF 1=
+.0pt;border-right:solid black 1.0pt;padding:0in 5.4pt 0in 5.4pt;height:.25i=
+n">
+<p class=3D"xxmsonormal"><span style=3D"font-family:&quot;Arial&quot;,sans-=
+serif;color:black">2200 West 34th st</span><span style=3D"font-size:12.0pt"=
+><o:p></o:p></span></p>
+</td>
+</tr>
+<tr style=3D"height:.25in">
+<td width=3D"340" nowrap=3D"" style=3D"width:255.0pt;border-top:none;border=
+-left:solid #BFBFBF 1.0pt;border-bottom:solid #BFBFBF 1.0pt;border-right:so=
+lid black 1.0pt;padding:0in 5.4pt 0in 5.4pt;height:.25in">
+<p class=3D"xxmsonormal"><span style=3D"font-family:&quot;Arial&quot;,sans-=
+serif;color:black">Odessa, TX, 79764</span><span style=3D"font-size:12.0pt"=
+><o:p></o:p></span></p>
+</td>
+</tr>
+<tr style=3D"height:.25in">
+<td width=3D"340" nowrap=3D"" style=3D"width:255.0pt;border-top:none;border=
+-left:solid #BFBFBF 1.0pt;border-bottom:solid windowtext 1.0pt;border-right=
+:solid black 1.0pt;padding:0in 5.4pt 0in 5.4pt;height:.25in">
+<p class=3D"xxmsonormal"><span style=3D"font-family:&quot;Arial&quot;,sans-=
+serif;color:black">USA</span><span style=3D"font-size:12.0pt"><o:p></o:p></=
+span></p>
+</td>
+</tr>
+</tbody>
+</table>
+<p class=3D"MsoNormal"><o:p>&nbsp;</o:p></p>
+<p class=3D"MsoNormal"><o:p>&nbsp;</o:p></p>
+<p class=3D"MsoNormal"><span style=3D"font-size:13.5pt;color:black"><img wi=
+dth=3D"47" height=3D"29" style=3D"width:.4916in;height:.3in" id=3D"Picture_=
+x0020_1" src=3D"cid:image001.png@01DC9460.B05EB400" alt=3D"Phillips 66 bran=
+ding bar"><span style=3D"mso-ligatures:none"><o:p></o:p></span></span></p>
+<p class=3D"MsoNormal" style=3D"margin-bottom:6.0pt"><b><span style=3D"font=
+-size:9.0pt;font-family:&quot;Arial&quot;,sans-serif;color:black;letter-spa=
+cing:.2pt;mso-ligatures:none">Adam Pipe<br>
+Field Integrity Engineer</span></b><span style=3D"font-size:13.5pt;color:bl=
+ack;mso-ligatures:none"><o:p></o:p></span></p>
+<p class=3D"MsoNormal"><span style=3D"font-size:8.5pt;font-family:&quot;Ari=
+al&quot;,sans-serif;color:#95866F;letter-spacing:.2pt;mso-ligatures:none">M=
+: 832-548-3596<br>
+HQ-08-S830-04 | 2331 CityWest Blvd | Houston, TX 77042-2862<br>
+<a href=3D"https://www.phillips66.com/"><span style=3D"color:#95866F">phill=
+ips66.com</span></a>&nbsp;</span><span style=3D"font-size:13.5pt;color:blac=
+k;mso-ligatures:none"><o:p></o:p></span></p>
+<p class=3D"MsoNormal"><span style=3D"font-size:13.5pt;color:black"><img bo=
+rder=3D"0" width=3D"44" height=3D"55" style=3D"width:.4583in;height:.575in"=
+ id=3D"Picture_x0020_2" src=3D"cid:image002.png@01DC9460.B05EB400" alt=3D"P=
+hillips 66 Logo"><span style=3D"mso-ligatures:none"><o:p></o:p></span></spa=
+n></p>
+<p class=3D"MsoNormal"><o:p>&nbsp;</o:p></p>
+</div>
+</div>
+</body>
+</html>
+
+--_000_LV0PR20MB994524F3EB2763A8B99E0BB8DEB29AALV0PR20MB994524_--
+
+--_005_LV0PR20MB994524F3EB2763A8B99E0BB8DEB29AALV0PR20MB994524_
+Content-Type: image/png; name="image001.png"
+Content-Description: image001.png
+Content-Disposition: inline; filename="image001.png"; size=307;
+	creation-date="Mon, 02 Feb 2026 22:26:32 GMT";
+	modification-date="Wed, 11 Feb 2026 14:58:40 GMT"
+Content-ID: <image001.png@01DC9460.B05EB400>
+Content-Transfer-Encoding: base64
+
+iVBORw0KGgoAAAANSUhEUgAAAC8AAAAdCAIAAAC196JdAAAACXBIWXMAAAsTAAALEwEAmpwYAAAA
+5UlEQVRYhe2VywqCQBSGXWRtCsEpF2Z0W1Tv/w5B0cIunMkoeohKN6lpx0ta07KROD8/w+HjMHyr
+GSWsUhTZAoWQjThkIw7ZiFMxm/tyftGUq9WMeuu1osaz2USCQ86tN94t8vSe0uYH/rJw05SQ72Ib
+b2tDp+FMuxILTPXPR7RZg9E4zCyJhXZkcyIbsiGbv7fZ2NCuOxNTYoHVktfPXS24oTpDBgPdGbNo
+wJNnQ18vETwh5Uh4Njw5H+WbeHnMMzJKFviTc1a77yHEXzPwvMD3ZdZ1A/w1f/9RfwnZiEM24pCN
+OA9RVP3KDKM+EAAAAABJRU5ErkJggg==
+
+--_005_LV0PR20MB994524F3EB2763A8B99E0BB8DEB29AALV0PR20MB994524_
+Content-Type: image/png; name="image002.png"
+Content-Description: image002.png
+Content-Disposition: inline; filename="image002.png"; size=3151;
+	creation-date="Mon, 02 Feb 2026 22:26:32 GMT";
+	modification-date="Wed, 11 Feb 2026 14:58:40 GMT"
+Content-ID: <image002.png@01DC9460.B05EB400>
+Content-Transfer-Encoding: base64
+
+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
+Jbi4jAAAAABJRU5ErkJggg==
+
+--_005_LV0PR20MB994524F3EB2763A8B99E0BB8DEB29AALV0PR20MB994524_--

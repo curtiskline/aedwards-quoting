@@ -1,0 +1,772 @@
+Received: from SA1PR04MB8824.namprd04.prod.outlook.com (2603:10b6:806:38a::13)
+ by SN6PR04MB4128.namprd04.prod.outlook.com with HTTPS; Mon, 8 Dec 2025
+ 23:20:23 +0000
+Received: from CH2PR16CA0017.namprd16.prod.outlook.com (2603:10b6:610:50::27)
+ by SA1PR04MB8824.namprd04.prod.outlook.com (2603:10b6:806:38a::13) with
+ Microsoft SMTP Server (version=TLS1_2,
+ cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384) id 15.20.9388.14; Mon, 8 Dec
+ 2025 23:20:21 +0000
+Received: from CH2PEPF0000009F.namprd02.prod.outlook.com
+ (2603:10b6:610:50:cafe::c9) by CH2PR16CA0017.outlook.office365.com
+ (2603:10b6:610:50::27) with Microsoft SMTP Server (version=TLS1_3,
+ cipher=TLS_AES_256_GCM_SHA384) id 15.20.9388.14 via Frontend Transport; Mon,
+ 8 Dec 2025 23:20:14 +0000
+Received: from us.cloud-sec-av.com (35.174.145.124) by
+ CH2PEPF0000009F.mail.protection.outlook.com (10.167.244.21) with Microsoft
+ SMTP Server (version=TLS1_3, cipher=TLS_AES_256_GCM_SHA384) id 15.20.9412.4
+ via Frontend Transport; Mon, 8 Dec 2025 23:20:21 +0000
+Received: from emails-6492105-46-mt-prod-3.avanan.net (ip-10-10-71-68.ec2.internal [10.10.71.68])
+	by mta-outgoing-46-mt-prod-3.avanan.net (Postfix) with ESMTPS id C53597FF20
+	for <jhamilton@allanedwards.com>; Mon,  8 Dec 2025 23:20:20 +0000 (UTC)
+Received: from BYAPR02CA0048.namprd02.prod.outlook.com (2603:10b6:a03:54::25)
+ by BY5PR04MB6771.namprd04.prod.outlook.com (2603:10b6:a03:226::8) with
+ Microsoft SMTP Server (version=TLS1_2,
+ cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384) id 15.20.9388.14; Mon, 8 Dec
+ 2025 23:20:11 +0000
+Received: from CO1PEPF000044F4.namprd05.prod.outlook.com
+ (2603:10b6:a03:54:cafe::dd) by BYAPR02CA0048.outlook.office365.com
+ (2603:10b6:a03:54::25) with Microsoft SMTP Server (version=TLS1_3,
+ cipher=TLS_AES_256_GCM_SHA384) id 15.20.9388.14 via Frontend Transport; Mon,
+ 8 Dec 2025 23:20:14 +0000
+Received: from mx0b-001f4f02.pphosted.com (205.220.182.187) by
+ CO1PEPF000044F4.mail.protection.outlook.com (10.167.241.74) with Microsoft
+ SMTP Server (version=TLS1_3, cipher=TLS_AES_256_GCM_SHA384) id 15.20.9412.4
+ via Frontend Transport; Mon, 8 Dec 2025 23:20:10 +0000
+Received: from pps.filterd (m0297631.ppops.net [127.0.0.1])
+	by mx0a-001f4f02.pphosted.com (8.18.1.11/8.18.1.11) with ESMTP id 5B8K7lYY634228
+	for <jhamilton@allanedwards.com>; Mon, 8 Dec 2025 23:20:09 GMT
+Received: from co1pr03cu002.outbound.protection.outlook.com (mail-westus2azon11010000.outbound.protection.outlook.com [52.101.46.0])
+	by mx0a-001f4f02.pphosted.com (PPS) with ESMTPS id 4ax5eh8pem-2
+	(version=TLSv1.3 cipher=TLS_AES_256_GCM_SHA384 bits=256 verify=NOT)
+	for <jhamilton@allanedwards.com>; Mon, 08 Dec 2025 23:20:09 +0000 (GMT)
+Received: from SJ2PR13MB6069.namprd13.prod.outlook.com (2603:10b6:a03:4f6::21)
+ by DS1PR13MB7097.namprd13.prod.outlook.com (2603:10b6:8:215::6) with
+ Microsoft SMTP Server (version=TLS1_2,
+ cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384) id 15.20.9388.14; Mon, 8 Dec
+ 2025 23:20:05 +0000
+Received: from SJ2PR13MB6069.namprd13.prod.outlook.com
+ ([fe80::1a18:ce30:7240:dcca]) by SJ2PR13MB6069.namprd13.prod.outlook.com
+ ([fe80::1a18:ce30:7240:dcca%6]) with mapi id 15.20.9388.013; Mon, 8 Dec 2025
+ 23:20:05 +0000
+From: Zafar Shaikh <zafar.shaikh@enbridge.com>
+To: Chris Catterall <ccatterall@allanedwards.com>, Jamee Hamilton
+	<jhamilton@allanedwards.com>
+Subject: URGENT RFQ - REQ-7080-1001222 - Enbridge/Allen Edwards
+Thread-Topic: URGENT RFQ - REQ-7080-1001222 - Enbridge/Allen Edwards
+Thread-Index: Adxol/jTWUrrDgbnTHeJLbXY6hF+xA==
+Date: Mon, 8 Dec 2025 23:20:04 +0000
+Message-ID:
+ <SJ2PR13MB6069B3E9F7CA244416DDDC7CF1A2A@SJ2PR13MB6069.namprd13.prod.outlook.com>
+Accept-Language: en-US
+Content-Language: en-US
+X-MS-Exchange-Organization-AuthSource:
+ CH2PEPF0000009F.namprd02.prod.outlook.com
+X-MS-Has-Attach: yes
+X-MS-Exchange-Organization-Network-Message-Id:
+ 510914c1-8b7e-4311-ceed-08de36b05bac
+X-MS-TNEF-Correlator:
+X-MS-Exchange-Organization-RecordReviewCfmType: 0
+msip_labels:
+ MSIP_Label_b1a6f161-e42b-4c47-8f69-f6a81e023e2d_ActionId=55fdd0f5-8b93-4756-8f4d-038cd9651d98;MSIP_Label_b1a6f161-e42b-4c47-8f69-f6a81e023e2d_ContentBits=0;MSIP_Label_b1a6f161-e42b-4c47-8f69-f6a81e023e2d_Enabled=true;MSIP_Label_b1a6f161-e42b-4c47-8f69-f6a81e023e2d_Method=Standard;MSIP_Label_b1a6f161-e42b-4c47-8f69-f6a81e023e2d_Name=b1a6f161-e42b-4c47-8f69-f6a81e023e2d;MSIP_Label_b1a6f161-e42b-4c47-8f69-f6a81e023e2d_SetDate=2025-12-08T22:32:41Z;MSIP_Label_b1a6f161-e42b-4c47-8f69-f6a81e023e2d_SiteId=271df5c2-953a-497b-93ad-7adf7a4b3cd7;MSIP_Label_b1a6f161-e42b-4c47-8f69-f6a81e023e2d_Tag=10,
+ 3, 0, 1;
+x-ms-publictraffictype: Email
+received-spf: Pass (protection.outlook.com: domain of enbridge.com designates
+ 205.220.182.187 as permitted sender) receiver=protection.outlook.com;
+ client-ip=205.220.182.187; helo=mx0b-001f4f02.pphosted.com; pr=C
+x-ms-exchange-organization-originalclientipaddress: 35.174.145.124
+x-ms-exchange-organization-originalserveripaddress: 10.167.244.21
+arc-seal: i=1; a=rsa-sha256; s=arcselector10001; d=microsoft.com; cv=none;
+ b=eXizpFfZPryLqOKF7INOALExIlB+pUZfqJF4HOkI0UeS3+7bba72Y2Ypjy2eB/ysKdAKZ7khUeltX6H3Q2gHUxqyM9zOxo9PtimLunMGjHoRAE5+kdryYnFPr/Gfd+H2erj5yhf+iAF6oJRkOhCLUWtCDw0tzvasPoAR95F3kZIF/ByxHNwXA/bfd7aCu19BKArvdEycQGSbxV/xPjVECYiaxLfpheMeWh211HsIJZTJNItYlgAvzLaarWz4rykZIcJfZgC2rM8EygjubVywft6M0HhHWZRZrQ0O9MFcPnHnQs+YS+sXB8DQzS2w/lXSBabLa67p0wJXcRxN/jyb2g==
+arc-message-signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=microsoft.com;
+ s=arcselector10001;
+ h=From:Date:Subject:Message-ID:Content-Type:MIME-Version:X-MS-Exchange-AntiSpam-MessageData-ChunkCount:X-MS-Exchange-AntiSpam-MessageData-0:X-MS-Exchange-AntiSpam-MessageData-1;
+ bh=xco/Swo/xSbubwTen/Q1XZz+7WXz1nbLRYRSLPRwFMo=;
+ b=OLDk4x0SybDIY+9/ZLY0ICNIPlx1lV/zmm4FsSMGclFWRX/k0qy+wQAJgU4tTlbmfHoCynB46MGo87EleK6O1/Ezu6IVnNFcbBF8VzWlW377tnn9j5sHS3F8R3KeXTqWLjHJU+j4uviGgQTSJEenz24b3z1HjCujQZYGj1i8kFbf7TUE3UKgrRho6iw+r8UVE2/eurLsj9nTKQTFNsT/DWoWiftgsaPEFlbdcaj6HLh6Jt42S7xg3u/6SdqQ6btE1oezyf0h7vsaA6a1OAZNtcdCCr3uEfkEp7z67DZKV+798STOUee8YRpznB0gJM3PYwNx0UwOWsEnzUEkLS4tag==
+arc-authentication-results: i=1; mx.microsoft.com 1; spf=pass
+ smtp.mailfrom=enbridge.com; dmarc=pass action=none header.from=enbridge.com;
+ dkim=pass header.d=enbridge.com; arc=none
+dkim-signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+ d=enbridge.onmicrosoft.com; s=selector2-enbridge-onmicrosoft-com;
+ h=From:Date:Subject:Message-ID:Content-Type:MIME-Version:X-MS-Exchange-SenderADCheck;
+ bh=xco/Swo/xSbubwTen/Q1XZz+7WXz1nbLRYRSLPRwFMo=;
+ b=To8kv4t5VhljnALuahyfsXpvpnapfMddCCcSohqTy+OVnVwPaFecoqXWGw8H4pyh06fSzP+AiCWHvy1TjSYGsq0Ts/45ddzgiPEDUIWrzmuv78VfSW+qgY01rDkqR7KXv86UHHjfTWfeosrL2mDSTQpT9oCxdrzLsUhrk2X+xRk=
+authentication-results: spf=softfail (sender IP is 35.174.145.124)
+ smtp.mailfrom=enbridge.com; dkim=fail (body hash did not verify)
+ header.d=enbridge.com;dkim=fail (body hash did not verify)
+ header.d=enbridge.onmicrosoft.com;dmarc=fail action=oreject
+ header.from=enbridge.com;compauth=none reason=452
+x-ms-office365-filtering-correlation-id: 510914c1-8b7e-4311-ceed-08de36b05bac
+x-ms-traffictypediagnostic:
+ SJ2PR13MB6069:EE_|DS1PR13MB7097:EE_|CO1PEPF000044F4:EE_|BY5PR04MB6771:EE_|CH2PEPF0000009F:EE_|SA1PR04MB8824:EE_|SN6PR04MB4128:EE_
+x-ms-exchange-senderadcheck: 1
+x-microsoft-antispam:
+ BCL:0;ARA:13230040|35042699022|82310400026|13003099007|4053099003|8096899003|4076899003;
+x-forefront-antispam-report:
+ CIP:35.174.145.124;CTRY:US;LANG:en;SCL:-1;SRV:;IPV:CAL;SFV:SKN;H:us.cloud-sec-av.com;PTR:us.cloud-sec-av.com;CAT:NONE;SFS:(13230040)(35042699022)(82310400026)(13003099007)(4053099003)(8096899003)(4076899003);DIR:INB;
+x-ms-exchange-crosstenant-authas: Anonymous
+x-ms-exchange-crosstenant-authsource:
+ CH2PEPF0000009F.namprd02.prod.outlook.com
+x-ms-exchange-crosstenant-network-message-id:
+ 510914c1-8b7e-4311-ceed-08de36b05bac
+x-ms-exchange-crosstenant-originalarrivaltime: 08 Dec 2025 23:20:21.0381 (UTC)
+x-ms-exchange-crosstenant-fromentityheader: Internet
+x-ms-exchange-crosstenant-id: 055e5bde-1fda-4a76-bd72-576a69a48d72
+x-ms-exchange-transport-crosstenantheadersstamped: SA1PR04MB8824
+authentication-results-original: spf=pass (sender IP is 205.220.182.187)
+ smtp.mailfrom=enbridge.com; dkim=pass (signature was verified)
+ header.d=enbridge.com;dkim=pass (signature was verified)
+ header.d=enbridge.onmicrosoft.com;dmarc=pass action=none
+ header.from=enbridge.com;compauth=pass reason=100
+x-microsoft-antispam-untrusted:
+ BCL:0;ARA:13230040|35042699022|8096899003|13003099007|4053099003|4076899003;
+x-microsoft-antispam-message-info-original:
+ =?Windows-1252?Q?Dv7MZSUVbCprbPoCq9HJbEQa4N2am9Bfd5GX/FXtbYXODpGzbjrLLN9m?=
+ =?Windows-1252?Q?F041OTMuqz6P16A3rvP7yuaulIEuwnru2YLfDpQT0jHM25J1WcQQ04XK?=
+ =?Windows-1252?Q?9kVbDt6JxAUD07KCbdo1LUVlbVQjDH9d+cdZAs80TJoelTJWpevpvURi?=
+ =?Windows-1252?Q?fFm12H/tEBuoWr4eqn2fCGHN+SNfS5ch6YHyvcC37uPKOPJ/NxUstZJU?=
+ =?Windows-1252?Q?48MpevL5RUnupDmoZqvVRxYX1xvj5CIBDfL9n5guntBSGLMJzh5Ji8Q4?=
+ =?Windows-1252?Q?Qxt7z9hQXwW21vp8zSA0SyS4rp4NCB2iJtBE9BYIoaessKAxbuOaYfDV?=
+ =?Windows-1252?Q?HloTdnjw4BbthoGljLmFNkBnUPl9Xg0dxucjlYLv1OyORxISCagvPMry?=
+ =?Windows-1252?Q?JViTKlfCfNs8RbA+MRyMtAAuF8o87TXlQVDxXCR2WIkDq1uVXnIsSR2I?=
+ =?Windows-1252?Q?YBM/GHlqA/5DeqreO2wEvdV8KhvRdoAtm1H6UDj3BN6WMYXeAIYP5/fP?=
+ =?Windows-1252?Q?NBMiT9xudAkPS+056H+HqIzLeu5sitEwlK12VUfK1j/xIbUG4rzkYD1K?=
+ =?Windows-1252?Q?Nv+d3pS/BeJDw2EEBKS+GaICO+rg9G6dS9EVUNLc6W4xOU09eK3iFtOk?=
+ =?Windows-1252?Q?8uZfWmZVSh0bfpxIJrbdF/X5BAaSxN04+U0gfER4wWaCsFkn0PWksV5I?=
+ =?Windows-1252?Q?L9u/sxOjRR0qtQKlLqbPw35zeruvbsOVrOkzkZkf5/gpn9AHUS3lgYCZ?=
+ =?Windows-1252?Q?G1rD6u3OM3wV754XLwyLIeJS9/Iu+su86fMW6sSdWXrswm/uGm1y2MHH?=
+ =?Windows-1252?Q?8V7aWkLVWTnvUvaUk9MZVzJLSFtvJ8CL7/K4mFiyrPO90wHAZaId/F8B?=
+ =?Windows-1252?Q?4gKWo9YJXyDL3jG/4zn5BRYaHE2bONGYfJHJl6ODa+Yb/j1SHIqq4jMh?=
+ =?Windows-1252?Q?35SAqSjWu3hhdEB2xJg5DkfIqqOXbPRGlB/Pnxonnkg3W4dO0gHsP/bO?=
+ =?Windows-1252?Q?M2+NP8ceJULErO7yuKwIp+JP0y4HYjPQyn3aSj4eK7Jmcp6cgpKiEX3R?=
+ =?Windows-1252?Q?EL1dyU+EFBPYSpTBCKR0uKbniQpL6Fru1aIFFOi4SB9+MjWnJ774V4Gd?=
+ =?Windows-1252?Q?BrKnPXxaLw0qoSzATWKMhkmAqDlhu31cV4SfOSghuUW3lAVeOJNvIYM0?=
+ =?Windows-1252?Q?SjsvmXF/Pu2IWF76FYif80GdkUMp6/1lV8Ip0UtHHlujWMJc7IED9KnJ?=
+ =?Windows-1252?Q?c5xJYdZEHglIcpilOBEt6kXHzwDzIOvrUIEoVdGWxVKbgHJrk34fcY4H?=
+ =?Windows-1252?Q?mxeDehchNuTpC0Iz+GB6U7S67KhTZqUfBIHMbRcpqGnogW1n2JqBl0IK?=
+ =?Windows-1252?Q?ZtzurF+frLFILIsnLgrQsf6XfAy4LkvpuPS/RyfDcan4CA0BBfhkvGZW?=
+ =?Windows-1252?Q?aV9niCpmhjizPYKawOeigS9ygTXuUk97PkZOE/o8GbOQyMLZpyqUudGs?=
+ =?Windows-1252?Q?i8S9+Vm75dRSX1s7NIED2t3zJM5HaDUL9XBssJOr1rRAhcwxlLcIqh3m?=
+ =?Windows-1252?Q?DE+r/V+nJoyHnSzKK1jLRj5xjpg764MD2wA0aJPOYfES2345nCPpzoqu?=
+ =?Windows-1252?Q?tcQuGT+mhQZ3CKzbdoCT9mdI?=
+x-forefront-antispam-report-untrusted:
+ CIP:205.220.182.187;CTRY:US;LANG:en;SCL:-1;SRV:;IPV:NLI;SFV:SKA;H:mx0b-001f4f02.pphosted.com;PTR:mx0b-001f4f02.pphosted.com;CAT:NONE;SFS:(13230040)(35042699022)(8096899003)(13003099007)(4053099003)(4076899003);DIR:INB;
+x-proofpoint-virus-version:
+x-eopattributedmessage: 1
+x-eoptenantattributedmessage: 055e5bde-1fda-4a76-bd72-576a69a48d72:1
+x-ms-exchange-transport-crosstenantheadersstripped:
+ CH2PEPF0000009F.namprd02.prod.outlook.com
+x-ms-office365-filtering-correlation-id-prvs:
+ 2357e087-5163-49e7-ce6f-08de36b05579
+x-ld-processed: 271df5c2-953a-497b-93ad-7adf7a4b3cd7,ExtAddr
+x-ms-exchange-transport-endtoendlatency: 00:00:02.8990567
+x-ms-exchange-processed-by-bccfoldering: 15.20.9388.012
+x-ms-exchange-antispam-relay: 0
+x-proofpoint-guid: A7dYkNgZ_MmC9_vQO8TR3_s9sAM7hZW8
+x-proofpoint-orig-guid: A7dYkNgZ_MmC9_vQO8TR3_s9sAM7hZW8
+x-proofpoint-spam-reason: safe
+x-ms-exchange-antispam-messagedata-original-chunkcount: 1
+x-ms-exchange-antispam-messagedata-original-0:
+ =?Windows-1252?Q?lNLcgBbRfaNrUXHVbF5WUyKNaQIjLqlRC5HjblM8kgSpmzt5L78/wqwH?=
+ =?Windows-1252?Q?/OTYWVlAYcZsOUbH3MSk+mQC3J2gf3Rof2w0qQocvC4skEzIazwHOLng?=
+ =?Windows-1252?Q?HShOmu2Azda08/XTGzs+qbHs3Xs0cDn+odqf1VRmEvvm30mYwPx3GJKN?=
+ =?Windows-1252?Q?Q7Z3QuYuADMFDqbS8sn+bEq08TxBuAqvQMS95cI0FPh2FJLmnQL58O8F?=
+ =?Windows-1252?Q?ljuxwS88d7vRZ7EP3cRT2oYuuUuq0QH3OamlF1inaL+TFNn3453MD/7k?=
+ =?Windows-1252?Q?Q77xNuMJR6S4iQBIUoqnQD5/0SJ4K4h/xY+uOPxMihFd9jEjPStwrjxm?=
+ =?Windows-1252?Q?8YYGTCaczVo1JGJwWNfLg5a9vtGVpnwxG8ClUMK46QTGoYsYP3t//8hm?=
+ =?Windows-1252?Q?YgUF/uS8jz+YEVdHKDR9qyN8aWGNJsyaMMpWW7rmJ4+uE3XCkvE5hT4o?=
+ =?Windows-1252?Q?dJNo3AGjQ18oWVyFrtdp1JnLp9BKH0kXgYRaKC+8x86llGFoq31RBnFe?=
+ =?Windows-1252?Q?wp3Lza3qdQNtXdI8O48A8/0Mjm42FCm7pdCH4eYi/5cBPGef95cXu2OF?=
+ =?Windows-1252?Q?8ZE3fuKaWKdSFajCvaQ+Gyu4K/4g0wp853KBEzQaNSmQUlgLSw9kNogM?=
+ =?Windows-1252?Q?VuHAW5YXsmVyfcjewHpqAgqGfdo34Fwt4CU5CFPevSKK8Kzb69QGSsxB?=
+ =?Windows-1252?Q?fUjmwAAqcnToFPzy/j5NFdmmDkg/0lIoWj1X9cs3xsBjIcgUnwnyckQT?=
+ =?Windows-1252?Q?Q9PpD9n1lPREctF2bDrysBI8KxJBjI36x68ASb3e/XC3+b9bQ7HHf2H5?=
+ =?Windows-1252?Q?NAWxuZo9b16OIpm2r1A33o90c5AIgZGh+wxRxiqN0/2Q3i87qffkhJVR?=
+ =?Windows-1252?Q?3Gji+pLacyaS22GxicQtjQjn/yARFjjOljoeKo2N5et5URmEYb9RoP0c?=
+ =?Windows-1252?Q?42Dq8ecMthuCtbWfRVzZzeo99G7YZ/bKHmL7cU/yWMbvZMAtdbthnTdk?=
+ =?Windows-1252?Q?lOxap8ySkAht6mNZmqzwNt4S7wleEMbKUpgSYmyd4y585wpbVwYKLWYb?=
+ =?Windows-1252?Q?dS4elIziXS7S2svbjPyIzlQQnnkpA9VLUUDrD4BjhknWaUnd5hXLVebC?=
+ =?Windows-1252?Q?v/GJooWBVBqRqcDq715GJN1DhnpybHrE1uCY5QO/GkVBEzDtW9wiab8d?=
+ =?Windows-1252?Q?StQ/VrI89F5J0jZ0NeDd2teb3pUp7NoDOv72vc3Zc9QQ5T09iOGxbVoe?=
+ =?Windows-1252?Q?uSlEgkjpdNNAgPBnktCYM24i7mESg9gwQhWBJC7kEgeIIE3Sd0X6in/t?=
+ =?Windows-1252?Q?ZhdHz3ieU3reBpjET0bNaV3pTPDwWnpmFWvuri3ZC1KovwbT6/OXBSkS?=
+ =?Windows-1252?Q?RHkE+wgBMk+gaQcRVyRLZxYlTQbI8lrgNGZyUteO8koHuVzn2udJ6Zff?=
+ =?Windows-1252?Q?7pq2b/7qBfl1wTmmfYAEk8Ece9oeT9t/svN0S+rDxm4dftq3Aa0TbqbV?=
+ =?Windows-1252?Q?tx+JrGzHOedc5VJUSEd03RzTeSzb/MbssQhz9R3E56VWB2N1Hljt2rfN?=
+ =?Windows-1252?Q?xN4Dug+M0oo5IXfaxV6LM1MubT3Jiw9pw93zLIIXOGyWA+ON1QxOL/ou?=
+ =?Windows-1252?Q?tdlpkE1+TcWzhQdYNqYcfyoKqbNjQ5pbK6XTLbPbneq09cxGv/alsnmT?=
+ =?Windows-1252?Q?0zZErqzHzMRHJAZOhlykXqwY9IqPj/sw?=
+X-Microsoft-Antispam-Mailbox-Delivery:
+ ucf:0;jmr:0;auth:0;dest:I;ENG:(910005)(944506478)(944626604)(920097)(930097)(140003);
+X-Microsoft-Antispam-Message-Info:
+ =?Windows-1252?Q?Ua+443nN9FmUkcQmAK+lsqzG0VskGkaQ1Zgrb4O5aZ72TLf4bBNd/AzI?=
+ =?Windows-1252?Q?EbJTvyCwSgqRzsniuIZWpj/LUISWX7WrRCUq5erQCc9QB0OpnBGIohQh?=
+ =?Windows-1252?Q?yhcZFmb9tKqpcilRxVFL8VyvXBq4naTqijap6WLTIqJKL52vfz4vO4CA?=
+ =?Windows-1252?Q?SqMQ59WKr9LX7oczAwM/HrWtPkq5MG3Jawh2zfKOiAbg9ulkLdsKwVIP?=
+ =?Windows-1252?Q?WJ0qAwmVx3w4XKFdLN/wQ7k2zGVXbokb/K/RmWv9sJgo2mSJn+eDinOP?=
+ =?Windows-1252?Q?xPP0idQpKb/o+vAZrVlM1PLRkLwSmHsDHqxtCBqvXAm8LjpGjMcf6wpq?=
+ =?Windows-1252?Q?5ArvK9s9+pJtS/AJIZszk7yW4XDM5sipl4BM96RGjoHsm8CdVrVjpaNC?=
+ =?Windows-1252?Q?a6+5EJ3qCfS6tD4fwyyWaJ+wSI9jXSdhA0aE2Z9yCav/ReUaDn6qVDqg?=
+ =?Windows-1252?Q?ls/ka2XHSJ5ycWpx1ILRj1vAYWU252O+XGS78U35RjWAI5StkqD/D/R2?=
+ =?Windows-1252?Q?zywlq5q+YfSlazbINttTVnWOQjagt77pN0335moskI1shx7tfj65RLQz?=
+ =?Windows-1252?Q?+4OHlHatJ6NZ+BdUYi3XrR6DhcJjR7rMvldqbkUnP1vQCQMDEeovR7IC?=
+ =?Windows-1252?Q?EIS+6nR8SkFB0aRw5ElhBBcHDSWeFkdcr2DWchzEpUGnoS9mugFjTnXk?=
+ =?Windows-1252?Q?7fCATOwkFvWOyTZvsYOhVb1UNKgfhLphFOkdaBILVPNUBb913w1wte2b?=
+ =?Windows-1252?Q?dCPFedD6l5dRACDBDWHZUgs58w5FTx1B9e0c+1FS3Mjdp8F+c1Us0o9o?=
+ =?Windows-1252?Q?Mk93rbZaeasc29VXGlc3JtEoqW9wByoZk7Lx0I9kX34b0pKdoSw6n3vt?=
+ =?Windows-1252?Q?aprEer9voMUPu3+hkE/oMBWmKVhaH3IMOda4pdjRDWBsKQpGrbCUGFHE?=
+ =?Windows-1252?Q?+qycRK6Jq5gLyWFhpgENKzJnkFo4p/sQxWecB89lZi/RyDD/KOuawOba?=
+ =?Windows-1252?Q?hFSHsbeOdkQcFrFW6TtuE47whKP6+pdcqZz+XlspYYW8MyVRPH/yU/Ps?=
+ =?Windows-1252?Q?LoOnYZ6NPRH78zHzakL9S2NbdbZ8kVbfj2Abzia1hEC6GoXcQF6bhdnF?=
+ =?Windows-1252?Q?q1R6CEjrf1dWsVJeKX9S6udKMyKbWZF3ZLkR7deN4CZeB4PdMZe6sxEe?=
+ =?Windows-1252?Q?lMetC47DxMYIDTPBJgnUyWBFDdE+QJb9Aawu69S+rN0oqR52Z0/6urW6?=
+ =?Windows-1252?Q?Hwo0SMj5TXcQMB4qpa8c6zrapnRhLEU79TQDjFlpLRX0GGfjrteZQ34F?=
+ =?Windows-1252?Q?UvHpQ2vlTEPre5VOO5NDzG3W3RRBrbcdtIJUg5uOdN8LO//lbPNGdz7R?=
+ =?Windows-1252?Q?xnptFGO75cIPI9/qdMYuDgTyHhRDzBYCDre08Kyr0qKfPHMkaVCGB/1O?=
+ =?Windows-1252?Q?ei1XO9bD2qe+9NpiSfK+RzvXfpf8zr8pHRA4rxSizYEP7kJvrfsQbxge?=
+ =?Windows-1252?Q?SC88YTW0wJTHLHe7Gv6P4C/Ze47uZeszgCJHXvhzvFlZ8fU6u/mVdZsa?=
+ =?Windows-1252?Q?cxzzGbXYy3e2FzWw/bLtTUXJm+AvKM28ryL5U05PMXMiH3ERfBz07RQP?=
+ =?Windows-1252?Q?y1Yd47vhMohATN4AppsvruNbKDRtC+wmYempY64TM6LI1O9WhLkPLCP8?=
+ =?Windows-1252?Q?bSZir/5iUtu14JSsU09+ie5mBpL6+cnSshrmt9alajfgRA7alBTfZDv1?=
+ =?Windows-1252?Q?HH7pRxViWjJiuq/PHv9Ed/MOvIq1IQghz4yi2lp5vt80xCzFKdK3MeE8?=
+ =?Windows-1252?Q?cdORXOlkXVn2ItPfUCf5maeL9fPsWaf5yXEztt9G17pCHf2AnhwLRLAG?=
+ =?Windows-1252?Q?wt013ow/93XbzdSiyPLypnT2wVmHoorZhYfnkmhu2OmuM7FM8Q3V0ZIh?=
+ =?Windows-1252?Q?vSm8t88ohIXRJPvuWuYt/wl9hWTPZYU7J5v22aOl5nnh0o7B6lm84wHA?=
+ =?Windows-1252?Q?KGPZFOUDiyX4PcUqlM27zI9NjCJPBEZTT5UPNiLSL8yD/mUWBm8sJwMr?=
+ =?Windows-1252?Q?fiei1ykWj2M3s6w3Zqparfp/EvfscEISUGfBJgo+f8tzQ1ALYHMnFe5Q?=
+ =?Windows-1252?Q?2Iq8KO1UqkDor4S/lE4tKtY+tfSVuo4OqFEThVw+ee8ryD4+6zmcnkkb?=
+ =?Windows-1252?Q?6PmnChv2gu7PJawBfeIeFxMVMrdo27UMmZBa3Bjw2MxYreDMtzapk5ak?=
+ =?Windows-1252?Q?Ce4uyRzMFWCqH/tz1ZIPJFFx99EhJYBDnQHDmO5i+eX3h2sw71bW8gAK?=
+ =?Windows-1252?Q?S0cEEDk2xJgX9/4DTBtgu7csGs2vi0wnz0WVbWcMr9is6wUO5xQ3RNO6?=
+ =?Windows-1252?Q?AA7q5RDcgqiOlm9HGO4ZxMd/Mn13JUDBm2NuyIiPqA+0vk2rhO7vhiT9?=
+ =?Windows-1252?Q?x2sse5XpgwYXa/lwY/Wv/CdlYnqYFUZZp7aphIECqMKC0tsZLTyJQqas?=
+ =?Windows-1252?Q?/F6YXq/yFZZ5rFxy9T7GQr4mB4i/WG3Z2w+TeMxa63MDJzbJB+JnabDB?=
+ =?Windows-1252?Q?aNFDKWcgGQXsCuEDVQFRJxpfzHb76ODAPI91AdMS0Fr3BJ7oGV8XnnQp?=
+ =?Windows-1252?Q?lKojbEed1Md8rNJTAHANsbvsSqg2cvVJRRcz9lpQj7ZMLL4G3rU+lEJe?=
+ =?Windows-1252?Q?cz6XHRPad4Jd4N3NObw0+uzR6Kk1Qgh30LrEwU1u0dtHI08l9Q36yf1Y?=
+ =?Windows-1252?Q?Dy/hryYcWMHsKUqPiuXO7U4SMc6//DK3LNhOsFPuhLiSIEwp9+dLnNwE?=
+ =?Windows-1252?Q?GX3KVylFwrzq9f2C3WKKFMZx2aE+K7mlfq9R4z94PS0KY+JOIV+IP3+/?=
+ =?Windows-1252?Q?uj2x4xGDmzc//FxP1fZBptiQZ4sEbTSl6tjiuqDJ0xtvxZLd/6eUwYop?=
+ =?Windows-1252?Q?qKDEFB33uwlopZt3kn+RkSWj+6Cpolah/4PuwLZS7UaqEtP1JCnbBHMR?=
+ =?Windows-1252?Q?gyVh3alj/McQv26srsax1j7FwzeC6RV9E8Hj/pkdh0fbxUMFyvb+Fgtq?=
+ =?Windows-1252?Q?ZhzAs78JtxJyssiRc63IpmsiWQo/6e0ah2uXEbx61hCKBzlV+W57iGTL?=
+ =?Windows-1252?Q?w6EAPRkxHvTGitkOppdyOn5lgSOgH1/2OwobIw+B1wcG1IC2XmXrw79Z?=
+ =?Windows-1252?Q?2k5KXYseMDTAEGNRNU/hSZdgfTr642vT0d13ZhdmD5c+RidZhpigpH6u?=
+ =?Windows-1252?Q?TwfL73sb1ZNoWLT6jc0=3D?=
+Content-Type: multipart/related;
+	boundary="_004_SJ2PR13MB6069B3E9F7CA244416DDDC7CF1A2ASJ2PR13MB6069namp_";
+	type="multipart/alternative"
+X-Message-Flag: Follow up
+Importance: high
+X-Priority: 1
+MIME-Version: 1.0
+
+--_004_SJ2PR13MB6069B3E9F7CA244416DDDC7CF1A2ASJ2PR13MB6069namp_
+Content-Type: multipart/alternative;
+	boundary="_000_SJ2PR13MB6069B3E9F7CA244416DDDC7CF1A2ASJ2PR13MB6069namp_"
+
+--_000_SJ2PR13MB6069B3E9F7CA244416DDDC7CF1A2ASJ2PR13MB6069namp_
+Content-Type: text/plain; charset="Windows-1252"
+Content-Transfer-Encoding: quoted-printable
+
+[EXTERNAL EMAIL] DO NOT CLICK links or attachments unless you recognize the=
+ sender and know the content is safe.
+
+Hello,
+
+
+
+You have been invited to submit a quote for Enbridge. Please ensure your qu=
+ote includes valid pricing and lead time scheduling.
+
+
+
+REQUEST FOR QUOTATION
+
+
+
+RFQ TITLE/NUMBER: REQ-7080-1001222
+
+REQUIRED AT SITE DATE: Jan 12, 2026
+
+SHIP TO ADDRESS: 8912-81 Ave, FORT ST. JOHN BC V1J 6T7, CANADA
+
+DELIVERY TERMS (INCOTERMS): DAP
+
+QUOTE SUBMISSION DEADLINE: December 10, 2025
+
+
+
+MATERIAL REQUIRED
+
+
+
+1.      20 sets, 40 pcs, reg half-sole, 30" ID, 0.375" w/t, A572 GR65, 10' =
+long, No circumferential groove. Milled longitudinal groove required. 40 pc=
+s of 1-1/4" x 16GA, 10' long, pre-crimped backing strips.
+
+Quantity: 40
+
+2.      2.5 sets, 5 pcs, ovsz half-sole, 30.75" ID, 0.5" w/t, A572 GR66, 10=
+' long, No circumferential groove. Milled longitudinal groove required. 5 p=
+cs of 1-1/4" x 16GA, 10' long, pre-crimped backing strips.
+
+Quantity: 5
+
+3.      5 sets, 10 pcs, reg half sole, 30" ID, 0.5" w/t, A572 GR66, 10' lon=
+g, No circumferential groove. Milled longitudinal groove required. 10 pcs o=
+f 1-1/4" x 16GA, 10' long, precrimped backing strips.
+
+Quantity: 5 sets (10 pieces)
+
+4.      1.5 sets, 3 pcs, ovsz half-sole, 31" ID, 0.5" w/t, A572 GR66, 10' l=
+ong, No circumferential groove. Milled longitudinal groove required. 3 pcs =
+of 1-1/4" x 16GA, 10' long, pre-crimped backing strips.
+5.      1 set, 2 pcs, ovsz half-sole, 31" ID, 0.5" w/t, A572 GR66, 10' long=
+, No circumferential groove. Milled longitudinal groove required. 2 pcs of =
+1-1/4" x 16GA, 10' long, pre-crimped backing strips.
+
+Quantity: 1 sets (2 pieces)
+
+
+
+SPECIAL NOTES: NO JSW PLATE TO BE USED FOR THIS ORDER** Please send MTRs fo=
+r approval prior to production beginning. Vendor to organize shipping.
+
+
+
+Regards,
+
+
+
+Zafar Shaikh
+
+Buyer III
+
+SCM Procurement & Delivery Center (PDC)
+
+=97
+
+
+
+
+
+PH: 780-378-2243
+
+Email: zafar.shaikh@enbridge.com
+
+10175 101 Street NW, Edmonton AB T5J 0H3
+enbridge.com<http://www.enbridge.com/>
+Safety. Integrity. Respect. Inclusion.
+
+
+
+
+--_000_SJ2PR13MB6069B3E9F7CA244416DDDC7CF1A2ASJ2PR13MB6069namp_
+Content-Type: text/html; charset="Windows-1252"
+Content-ID: <A1F4050839F7FC4B8171CA2D6E0C8F20@namprd04.prod.outlook.com>
+Content-Transfer-Encoding: quoted-printable
+
+<html xmlns:v=3D"urn:schemas-microsoft-com:vml" xmlns:o=3D"urn:schemas-micr=
+osoft-com:office:office" xmlns:w=3D"urn:schemas-microsoft-com:office:word" =
+xmlns:m=3D"http://schemas.microsoft.com/office/2004/12/omml" xmlns=3D"http:=
+//www.w3.org/TR/REC-html40">
+<head>
+<meta http-equiv=3D"Content-Type" content=3D"text/html; charset=3DWindows-1=
+252">
+<meta name=3D"Generator" content=3D"Microsoft Word 15 (filtered medium)">
+<!--[if !mso]><style>v\:* {behavior:url(#default#VML);}
+o\:* {behavior:url(#default#VML);}
+w\:* {behavior:url(#default#VML);}
+.shape {behavior:url(#default#VML);}
+</style><![endif]--><style><!--
+/* Font Definitions */
+@font-face
+	{font-family:"Cambria Math";
+	panose-1:2 4 5 3 5 4 6 3 2 4;}
+@font-face
+	{font-family:Calibri;
+	panose-1:2 15 5 2 2 2 4 3 2 4;}
+@font-face
+	{font-family:Aptos;}
+/* Style Definitions */
+p.MsoNormal, li.MsoNormal, div.MsoNormal
+	{margin:0in;
+	font-size:12.0pt;
+	font-family:"Aptos",sans-serif;
+	mso-ligatures:standardcontextual;}
+p.MsoListParagraph, li.MsoListParagraph, div.MsoListParagraph
+	{mso-style-priority:34;
+	margin-top:0in;
+	margin-right:0in;
+	margin-bottom:0in;
+	margin-left:.5in;
+	font-size:12.0pt;
+	font-family:"Aptos",sans-serif;
+	mso-ligatures:standardcontextual;}
+span.EmailStyle17
+	{mso-style-type:personal-compose;
+	font-family:"Aptos",sans-serif;
+	color:windowtext;}
+.MsoChpDefault
+	{mso-style-type:export-only;}
+@page WordSection1
+	{size:8.5in 11.0in;
+	margin:1.0in 1.0in 1.0in 1.0in;}
+div.WordSection1
+	{page:WordSection1;}
+/* List Definitions */
+@list l0
+	{mso-list-id:1009865147;
+	mso-list-type:hybrid;
+	mso-list-template-ids:574887462 521985868 67698713 67698715 67698703 67698=
+713 67698715 67698703 67698713 67698715;}
+@list l0:level1
+	{mso-level-tab-stop:none;
+	mso-level-number-position:left;
+	text-indent:-.25in;
+	mso-ascii-font-family:Arial;
+	mso-fareast-font-family:Calibri;
+	mso-hansi-font-family:Arial;
+	mso-bidi-font-family:Arial;
+	color:windowtext;}
+@list l0:level2
+	{mso-level-number-format:alpha-lower;
+	mso-level-tab-stop:none;
+	mso-level-number-position:left;
+	text-indent:-.25in;}
+@list l0:level3
+	{mso-level-number-format:roman-lower;
+	mso-level-tab-stop:none;
+	mso-level-number-position:right;
+	text-indent:-9.0pt;}
+@list l0:level4
+	{mso-level-tab-stop:none;
+	mso-level-number-position:left;
+	text-indent:-.25in;}
+@list l0:level5
+	{mso-level-number-format:alpha-lower;
+	mso-level-tab-stop:none;
+	mso-level-number-position:left;
+	text-indent:-.25in;}
+@list l0:level6
+	{mso-level-number-format:roman-lower;
+	mso-level-tab-stop:none;
+	mso-level-number-position:right;
+	text-indent:-9.0pt;}
+@list l0:level7
+	{mso-level-tab-stop:none;
+	mso-level-number-position:left;
+	text-indent:-.25in;}
+@list l0:level8
+	{mso-level-number-format:alpha-lower;
+	mso-level-tab-stop:none;
+	mso-level-number-position:left;
+	text-indent:-.25in;}
+@list l0:level9
+	{mso-level-number-format:roman-lower;
+	mso-level-tab-stop:none;
+	mso-level-number-position:right;
+	text-indent:-9.0pt;}
+@list l1
+	{mso-list-id:1272854836;
+	mso-list-type:hybrid;
+	mso-list-template-ids:574887462 -1 -1 -1 -1 -1 -1 -1 -1 -1;}
+@list l1:level1
+	{mso-level-tab-stop:none;
+	mso-level-number-position:left;
+	text-indent:-.25in;
+	mso-ascii-font-family:Arial;
+	mso-fareast-font-family:Calibri;
+	mso-hansi-font-family:Arial;
+	mso-bidi-font-family:Arial;
+	color:windowtext;}
+@list l1:level2
+	{mso-level-number-format:alpha-lower;
+	mso-level-tab-stop:none;
+	mso-level-number-position:left;
+	text-indent:-.25in;}
+@list l1:level3
+	{mso-level-number-format:roman-lower;
+	mso-level-tab-stop:none;
+	mso-level-number-position:right;
+	text-indent:-9.0pt;}
+@list l1:level4
+	{mso-level-tab-stop:none;
+	mso-level-number-position:left;
+	text-indent:-.25in;}
+@list l1:level5
+	{mso-level-number-format:alpha-lower;
+	mso-level-tab-stop:none;
+	mso-level-number-position:left;
+	text-indent:-.25in;}
+@list l1:level6
+	{mso-level-number-format:roman-lower;
+	mso-level-tab-stop:none;
+	mso-level-number-position:right;
+	text-indent:-9.0pt;}
+@list l1:level7
+	{mso-level-tab-stop:none;
+	mso-level-number-position:left;
+	text-indent:-.25in;}
+@list l1:level8
+	{mso-level-number-format:alpha-lower;
+	mso-level-tab-stop:none;
+	mso-level-number-position:left;
+	text-indent:-.25in;}
+@list l1:level9
+	{mso-level-number-format:roman-lower;
+	mso-level-tab-stop:none;
+	mso-level-number-position:right;
+	text-indent:-9.0pt;}
+@list l2
+	{mso-list-id:1289093598;
+	mso-list-type:hybrid;
+	mso-list-template-ids:-1336750626 67698703 67698713 67698715 67698703 6769=
+8713 67698715 67698703 67698713 67698715;}
+@list l2:level1
+	{mso-level-tab-stop:none;
+	mso-level-number-position:left;
+	text-indent:-.25in;}
+@list l2:level2
+	{mso-level-number-format:alpha-lower;
+	mso-level-tab-stop:none;
+	mso-level-number-position:left;
+	text-indent:-.25in;}
+@list l2:level3
+	{mso-level-number-format:roman-lower;
+	mso-level-tab-stop:none;
+	mso-level-number-position:right;
+	text-indent:-9.0pt;}
+@list l2:level4
+	{mso-level-tab-stop:none;
+	mso-level-number-position:left;
+	text-indent:-.25in;}
+@list l2:level5
+	{mso-level-number-format:alpha-lower;
+	mso-level-tab-stop:none;
+	mso-level-number-position:left;
+	text-indent:-.25in;}
+@list l2:level6
+	{mso-level-number-format:roman-lower;
+	mso-level-tab-stop:none;
+	mso-level-number-position:right;
+	text-indent:-9.0pt;}
+@list l2:level7
+	{mso-level-tab-stop:none;
+	mso-level-number-position:left;
+	text-indent:-.25in;}
+@list l2:level8
+	{mso-level-number-format:alpha-lower;
+	mso-level-tab-stop:none;
+	mso-level-number-position:left;
+	text-indent:-.25in;}
+@list l2:level9
+	{mso-level-number-format:roman-lower;
+	mso-level-tab-stop:none;
+	mso-level-number-position:right;
+	text-indent:-9.0pt;}
+ol
+	{margin-bottom:0in;}
+ul
+	{margin-bottom:0in;}
+--></style><!--[if gte mso 9]><xml>
+<o:shapedefaults v:ext=3D"edit" spidmax=3D"1026" />
+</xml><![endif]--><!--[if gte mso 9]><xml>
+<o:shapelayout v:ext=3D"edit">
+<o:idmap v:ext=3D"edit" data=3D"1" />
+</o:shapelayout></xml><![endif]-->
+</head>
+<body lang=3D"EN-US" link=3D"#467886" vlink=3D"#96607D" style=3D"word-wrap:=
+break-word">
+<p style=3D"border:1px; border-style:solid; border-color: #FFCACA; backgrou=
+nd-color: #FFCACA; padding: 1em;">
+<span style=3D"font-size:12.0pt;color:black;"><b>[EXTERNAL EMAIL]</span></b=
+> <span style=3D"font-size:10.0pt;color:black">
+DO NOT CLICK links or attachments unless you recognize the sender and know =
+the content is safe.</span></p>
+<div>
+<div class=3D"WordSection1">
+<p class=3D"MsoNormal">Hello,<o:p></o:p></p>
+<p class=3D"MsoNormal"><o:p>&nbsp;</o:p></p>
+<p class=3D"MsoNormal">You have been invited to submit a quote for Enbridge=
+. Please ensure your quote includes valid pricing and lead time scheduling.=
+<o:p></o:p></p>
+<p class=3D"MsoNormal"><o:p>&nbsp;</o:p></p>
+<p class=3D"MsoNormal"><b><u>REQUEST FOR QUOTATION<o:p></o:p></u></b></p>
+<p class=3D"MsoNormal"><b><o:p>&nbsp;</o:p></b></p>
+<p class=3D"MsoNormal"><b>RFQ TITLE/NUMBER: REQ-7080-1001222<o:p></o:p></b>=
+</p>
+<p class=3D"MsoNormal"><b>REQUIRED AT SITE DATE: Jan 12, 2026<o:p></o:p></b=
+></p>
+<p class=3D"MsoNormal"><b>SHIP TO ADDRESS: 8912-81 Ave, FORT ST. JOHN BC V1=
+J 6T7, CANADA<o:p></o:p></b></p>
+<p class=3D"MsoNormal"><b>DELIVERY TERMS (INCOTERMS): DAP<o:p></o:p></b></p=
+>
+<p class=3D"MsoNormal"><b>QUOTE SUBMISSION DEADLINE: December 10, 2025<o:p>=
+</o:p></b></p>
+<p class=3D"MsoNormal"><b><o:p>&nbsp;</o:p></b></p>
+<p class=3D"MsoNormal"><b><u>MATERIAL REQUIRED<o:p></o:p></u></b></p>
+<p class=3D"MsoNormal"><b><u><o:p><span style=3D"text-decoration:none">&nbs=
+p;</span></o:p></u></b></p>
+<ol style=3D"margin-top:0in" start=3D"1" type=3D"1">
+<li class=3D"MsoListParagraph" style=3D"margin-left:0in;mso-list:l2 level1 =
+lfo4"><b>20 sets, 40 pcs, reg half-sole, 30&quot; ID, 0.375&quot; w/t, A572=
+ GR65, 10' long, No circumferential groove. Milled longitudinal groove requ=
+ired. 40 pcs of 1-1/4&quot; x 16GA, 10' long, pre-crimped
+ backing strips.<o:p></o:p></b></li></ol>
+<p class=3D"MsoListParagraph"><b>Quantity: 40<o:p></o:p></b></p>
+<ol style=3D"margin-top:0in" start=3D"2" type=3D"1">
+<li class=3D"MsoListParagraph" style=3D"margin-left:0in;mso-list:l2 level1 =
+lfo4"><b>2.5 sets, 5 pcs, ovsz half-sole, 30.75&quot; ID, 0.5&quot; w/t, A5=
+72 GR66, 10' long, No circumferential groove. Milled longitudinal groove re=
+quired. 5 pcs of 1-1/4&quot; x 16GA, 10' long, pre-crimped
+ backing strips.<o:p></o:p></b></li></ol>
+<p class=3D"MsoListParagraph"><b>Quantity: 5<o:p></o:p></b></p>
+<ol style=3D"margin-top:0in" start=3D"3" type=3D"1">
+<li class=3D"MsoListParagraph" style=3D"margin-left:0in;mso-list:l2 level1 =
+lfo4"><b>5 sets, 10 pcs, reg half sole, 30&quot; ID, 0.5&quot; w/t, A572 GR=
+66, 10' long, No circumferential groove. Milled longitudinal groove require=
+d. 10 pcs of 1-1/4&quot; x 16GA, 10' long, precrimped
+ backing strips.<o:p></o:p></b></li></ol>
+<p class=3D"MsoListParagraph"><b>Quantity: 5 sets (10 pieces) <o:p></o:p></=
+b></p>
+<ol style=3D"margin-top:0in" start=3D"4" type=3D"1">
+<li class=3D"MsoListParagraph" style=3D"margin-left:0in;mso-list:l2 level1 =
+lfo4"><b>1.5 sets, 3 pcs, ovsz half-sole, 31&quot; ID, 0.5&quot; w/t, A572 =
+GR66, 10' long, No circumferential groove. Milled longitudinal groove requi=
+red. 3 pcs of 1-1/4&quot; x 16GA, 10' long, pre-crimped
+ backing strips.<o:p></o:p></b></li><li class=3D"MsoListParagraph" style=3D=
+"margin-left:0in;mso-list:l2 level1 lfo4"><b>1 set, 2 pcs, ovsz half-sole, =
+31&quot; ID, 0.5&quot; w/t, A572 GR66, 10' long, No circumferential groove.=
+ Milled longitudinal groove required. 2 pcs of 1-1/4&quot; x 16GA, 10' long=
+, pre-crimped
+ backing strips.<o:p></o:p></b></li></ol>
+<p class=3D"MsoListParagraph"><b>Quantity: 1 sets (2 pieces)<o:p></o:p></b>=
+</p>
+<p class=3D"MsoNormal"><b><o:p>&nbsp;</o:p></b></p>
+<p class=3D"MsoNormal"><b>SPECIAL NOTES: NO JSW PLATE TO BE USED FOR THIS O=
+RDER** Please send MTRs for approval prior to production beginning. Vendor =
+to organize shipping.</b><o:p></o:p></p>
+<p class=3D"MsoNormal"><b><o:p>&nbsp;</o:p></b></p>
+<p class=3D"MsoNormal"><b>Regards,<o:p></o:p></b></p>
+<p class=3D"MsoNormal"><o:p>&nbsp;</o:p></p>
+<p class=3D"MsoNormal"><b><span lang=3D"EN-CA" style=3D"font-size:11.0pt;co=
+lor:#FFC000">Zafar Shaikh<o:p></o:p></span></b></p>
+<p class=3D"MsoNormal"><span style=3D"font-size:9.0pt;color:#153D63">Buyer =
+III<o:p></o:p></span></p>
+<p class=3D"MsoNormal"><span style=3D"font-size:9.0pt;color:#153D63">SCM Pr=
+ocurement &amp; Delivery Center (PDC)</span><span lang=3D"EN-CA" style=3D"f=
+ont-size:9.0pt;color:#FFC000"><o:p></o:p></span></p>
+<p class=3D"MsoNormal"><span lang=3D"EN-CA" style=3D"font-size:8.0pt;font-f=
+amily:&quot;Arial&quot;,sans-serif;color:#FFC000">=97<o:p></o:p></span></p>
+<p class=3D"MsoNormal"><span lang=3D"EN-CA" style=3D"font-size:3.0pt;font-f=
+amily:&quot;Arial&quot;,sans-serif;color:#8F8F8F"><br>
+</span><span lang=3D"EN-CA" style=3D"color:#2F5496"><img width=3D"90" heigh=
+t=3D"24" style=3D"width:.9375in;height:.25in" id=3D"Picture_x0020_1" src=3D=
+"cid:image001.png@01DC6858.4FD67DE0"></span><span style=3D"font-size:8.0pt;=
+font-family:&quot;Arial&quot;,sans-serif;color:#555555"><o:p></o:p></span><=
+/p>
+<p class=3D"MsoNormal"><span lang=3D"EN-CA" style=3D"font-size:5.0pt;font-f=
+amily:&quot;Arial&quot;,sans-serif;color:#D91A3E"><br>
+</span><span style=3D"font-size:8.0pt;color:#555555">PH: 780-378-2243<o:p><=
+/o:p></span></p>
+<p class=3D"MsoNormal"><span style=3D"font-size:8.0pt;color:#555555">Email:=
+ zafar.shaikh@enbridge.com<o:p></o:p></span></p>
+<p class=3D"MsoNormal"><span style=3D"font-size:8.0pt;color:#555555">10175 =
+101 Street NW, Edmonton AB T5J 0H3</span><span style=3D"font-size:8.0pt;fon=
+t-family:&quot;Arial&quot;,sans-serif;color:#555555"><br>
+</span><span style=3D"color:#2F5496"><a href=3D"http://www.enbridge.com/"><=
+span style=3D"font-size:8.0pt;font-family:&quot;Arial&quot;,sans-serif;colo=
+r:#595959">enbridge.com</span></a></span><span lang=3D"EN-CA" style=3D"font=
+-size:5.0pt;font-family:&quot;Arial&quot;,sans-serif;color:#7F7F7F"><br>
+</span><b><span lang=3D"EN-CA" style=3D"font-size:8.0pt;font-family:&quot;A=
+rial&quot;,sans-serif;color:#555555">Safety. Integrity. Respect. Inclusion.=
+</span></b><span style=3D"font-size:8.0pt;color:#555555"><o:p></o:p></span>=
+</p>
+<p class=3D"MsoNormal"><o:p>&nbsp;</o:p></p>
+</div>
+</div>
+</body>
+</html>
+
+--_000_SJ2PR13MB6069B3E9F7CA244416DDDC7CF1A2ASJ2PR13MB6069namp_--
+
+--_004_SJ2PR13MB6069B3E9F7CA244416DDDC7CF1A2ASJ2PR13MB6069namp_
+Content-Type: image/png; name="image001.png"
+Content-Description: image001.png
+Content-Disposition: inline; filename="image001.png"; size=3848;
+	creation-date="Mon, 08 Dec 2025 23:20:04 GMT";
+	modification-date="Wed, 11 Feb 2026 14:58:43 GMT"
+Content-ID: <image001.png@01DC6858.4FD67DE0>
+Content-Transfer-Encoding: base64
+
+iVBORw0KGgoAAAANSUhEUgAAAFoAAAAYCAYAAAB6OOplAAAACXBIWXMAAAsTAAALEwEAmpwYAAAG
+oGlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0w
+TXBDZWhpSHpyZVN6TlRjemtjOWQiPz4gPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRh
+LyIgeDp4bXB0az0iQWRvYmUgWE1QIENvcmUgNy4xLWMwMDAgNzkuOWNjYzRkZTkzLCAyMDIyLzAz
+LzE0LTE0OjA3OjIyICAgICAgICAiPiA8cmRmOlJERiB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMu
+b3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiPiA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91
+dD0iIiB4bWxuczp4bXA9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8iIHhtbG5zOmRjPSJo
+dHRwOi8vcHVybC5vcmcvZGMvZWxlbWVudHMvMS4xLyIgeG1sbnM6cGhvdG9zaG9wPSJodHRwOi8v
+bnMuYWRvYmUuY29tL3Bob3Rvc2hvcC8xLjAvIiB4bWxuczp4bXBNTT0iaHR0cDovL25zLmFkb2Jl
+LmNvbS94YXAvMS4wL21tLyIgeG1sbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEu
+MC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIgeG1wOkNyZWF0b3JUb29sPSJBZG9iZSBQaG90b3Nob3Ag
+MjMuMyAoTWFjaW50b3NoKSIgeG1wOkNyZWF0ZURhdGU9IjIwMTQtMDktMTJUMTY6NTc6MzAtMDY6
+MDAiIHhtcDpNb2RpZnlEYXRlPSIyMDIyLTA1LTE3VDExOjAwOjMwLTA2OjAwIiB4bXA6TWV0YWRh
+dGFEYXRlPSIyMDIyLTA1LTE3VDExOjAwOjMwLTA2OjAwIiBkYzpmb3JtYXQ9ImltYWdlL3BuZyIg
+cGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIgeG1wTU06SW5zdGFuY2VJRD0ieG1wLmlpZDplNjViYWZm
+OS01Y2NlLTQxNWMtODc4Yy1hNWRlNDY3ZDA0ZDUiIHhtcE1NOkRvY3VtZW50SUQ9ImFkb2JlOmRv
+Y2lkOnBob3Rvc2hvcDozNjRmMWI2Mi01ODJiLTllNDQtOTZjYi1jM2Y4ZTc3MzVkZDUiIHhtcE1N
+Ok9yaWdpbmFsRG9jdW1lbnRJRD0ieG1wLmRpZDo5ZDA1MGI1NC05ZGY5LTQwMTAtYWVkZS1kNThk
+YWY2OWRlOTQiPiA8eG1wTU06SGlzdG9yeT4gPHJkZjpTZXE+IDxyZGY6bGkgc3RFdnQ6YWN0aW9u
+PSJjcmVhdGVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOjlkMDUwYjU0LTlkZjktNDAxMC1h
+ZWRlLWQ1OGRhZjY5ZGU5NCIgc3RFdnQ6d2hlbj0iMjAxNC0wOS0xMlQxNjo1NzozMC0wNjowMCIg
+c3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIDIzLjMgKE1hY2ludG9zaCkiLz4g
+PHJkZjpsaSBzdEV2dDphY3Rpb249InNhdmVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOjJm
+MDIzNTUzLWE1MDktNGZkNy05NjRjLTA0N2JmYzg5ZGEwNyIgc3RFdnQ6d2hlbj0iMjAyMi0wNS0x
+N1QxMDo1NTowNS0wNjowMCIgc3RFdnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIDIz
+LjMgKE1hY2ludG9zaCkiIHN0RXZ0OmNoYW5nZWQ9Ii8iLz4gPHJkZjpsaSBzdEV2dDphY3Rpb249
+InNhdmVkIiBzdEV2dDppbnN0YW5jZUlEPSJ4bXAuaWlkOmU2NWJhZmY5LTVjY2UtNDE1Yy04Nzhj
+LWE1ZGU0NjdkMDRkNSIgc3RFdnQ6d2hlbj0iMjAyMi0wNS0xN1QxMTowMDozMC0wNjowMCIgc3RF
+dnQ6c29mdHdhcmVBZ2VudD0iQWRvYmUgUGhvdG9zaG9wIDIzLjMgKE1hY2ludG9zaCkiIHN0RXZ0
+OmNoYW5nZWQ9Ii8iLz4gPC9yZGY6U2VxPiA8L3htcE1NOkhpc3Rvcnk+IDwvcmRmOkRlc2NyaXB0
+aW9uPiA8L3JkZjpSREY+IDwveDp4bXBtZXRhPiA8P3hwYWNrZXQgZW5kPSJyIj8+p67G0QAACAtJ
+REFUaIHt2XmMXVUdB/DPvW+m05npdIN2ugEVClVERKEiRDbBgIKJC4tKRAWFxOACimACAhGDgAal
+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
+
+--_004_SJ2PR13MB6069B3E9F7CA244416DDDC7CF1A2ASJ2PR13MB6069namp_--

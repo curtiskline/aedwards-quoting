@@ -251,16 +251,24 @@ class QuotePDFBuilder:
             ship_to_lines.append([Paragraph(contact_line, self.styles["normal"])])
 
         if self.quote.ship_to:
+            if self.quote.ship_to.get("company"):
+                ship_to_lines.append([Paragraph(self.quote.ship_to["company"], self.styles["normal"])])
+            if self.quote.ship_to.get("attention"):
+                ship_to_lines.append([Paragraph(self.quote.ship_to["attention"], self.styles["normal"])])
             if self.quote.ship_to.get("street"):
                 ship_to_lines.append([Paragraph(self.quote.ship_to["street"], self.styles["normal"])])
-            # City, State on one line
-            location_parts = []
+
+            city_state_zip_parts = []
             if self.quote.ship_to.get("city"):
-                location_parts.append(self.quote.ship_to["city"])
+                city_state_zip_parts.append(self.quote.ship_to["city"])
             if self.quote.ship_to.get("state"):
-                location_parts.append(self.quote.ship_to["state"])
-            if location_parts:
-                ship_to_lines.append([Paragraph(", ".join(location_parts), self.styles["normal"])])
+                city_state_zip_parts.append(self.quote.ship_to["state"])
+            if self.quote.ship_to.get("postal_code"):
+                city_state_zip_parts.append(self.quote.ship_to["postal_code"])
+            if city_state_zip_parts:
+                ship_to_lines.append([Paragraph(", ".join(city_state_zip_parts), self.styles["normal"])])
+            if self.quote.ship_to.get("country"):
+                ship_to_lines.append([Paragraph(self.quote.ship_to["country"], self.styles["normal"])])
 
         ship_to_table = Table(ship_to_lines, colWidths=[3.5 * inch])
         ship_to_table.setStyle(TableStyle([
