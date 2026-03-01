@@ -46,7 +46,7 @@ def test_full_rfq_to_quote_flow():
     assert len(quote.line_items) == 3
 
     line = quote.line_items[0]
-    assert line.part_number == "S-6.625-14-50-10"
+    assert line.part_number == "S-6.58-14-50-10"
     assert line.quantity == 30
     assert line.is_note is False
 

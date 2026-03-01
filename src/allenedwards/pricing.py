@@ -62,6 +62,42 @@ OTHER_PRICING: dict[str, tuple[Decimal, str]] = {
 MILLING_PRICE = Decimal("30")
 PAINTING_PRICE = Decimal("40")
 
+# Standard sleeve diameter lookup from quoting-spreadsheet.xlsm ("Part Number Description" tab)
+# Maps parsed decimal ID -> (part-number diameter code, display text for descriptions)
+SLEEVE_DIAMETER_LOOKUP: dict[Decimal, tuple[str, str]] = {
+    Decimal("4.5"): ("4.12", "4-1/2"),
+    Decimal("5.25"): ("5.14", "5-1/4"),
+    Decimal("6.625"): ("6.58", "6-5/8"),
+    Decimal("7.375"): ("7.38", "7-3/8"),
+    Decimal("8.25"): ("8.14", "8-1/4"),
+    Decimal("8.625"): ("8.58", "8-5/8"),
+    Decimal("9.375"): ("9.38", "9-3/8"),
+    Decimal("10.25"): ("10.14", "10-1/4"),
+    Decimal("10.75"): ("10.34", "10-3/4"),
+    Decimal("11.5"): ("11.12", "11-1/2"),
+    Decimal("12.25"): ("12.14", "12-1/4"),
+    Decimal("12.75"): ("12.34", "12-3/4"),
+    Decimal("14"): ("14", "14"),
+    Decimal("16"): ("16", "16"),
+    Decimal("18"): ("18", "18"),
+    Decimal("20"): ("20", "20"),
+    Decimal("22"): ("22", "22"),
+    Decimal("24"): ("24", "24"),
+    Decimal("26"): ("26", "26"),
+    Decimal("28"): ("28", "28"),
+    Decimal("30"): ("30", "30"),
+    Decimal("32"): ("32", "32"),
+    Decimal("36"): ("36", "36"),
+    Decimal("38"): ("38", "38"),
+    Decimal("40"): ("40", "40"),
+    Decimal("42"): ("42", "42"),
+    Decimal("44"): ("44", "44"),
+    Decimal("46"): ("46", "46"),
+    Decimal("48"): ("48", "48"),
+}
+
+DIAMETER_MATCH_TOLERANCE = Decimal("0.001")
+
 
 @dataclass
 class QuoteLineItem:
@@ -270,11 +306,18 @@ def generate_sleeve_part_number(
 
     wt_code = wt_codes.get(wall_thickness, str(wall_thickness).replace(".", ""))
 
-    # Format diameter
-    if diameter == int(diameter):
-        dia_str = str(int(diameter))
-    else:
-        dia_str = f"{diameter:.3f}".rstrip("0").rstrip(".")
+    # Part numbers use canonical shorthand IDs from the quoting spreadsheet
+    diameter_decimal = Decimal(str(diameter))
+    dia_str = ""
+    for standard_dia, (code, _) in SLEEVE_DIAMETER_LOOKUP.items():
+        if abs(diameter_decimal - standard_dia) <= DIAMETER_MATCH_TOLERANCE:
+            dia_str = code
+            break
+    if not dia_str:
+        if diameter == int(diameter):
+            dia_str = str(int(diameter))
+        else:
+            dia_str = f"{diameter:.3f}".rstrip("0").rstrip(".")
 
     # Format length
     if length_ft == int(length_ft):
@@ -312,7 +355,24 @@ def generate_sleeve_description(
     }
     wt_str = wt_fractions.get(wall_thickness, f'{wall_thickness}"')
 
-    desc = f'Sleeve, Sealing, {diameter}" ID, {wt_str} w/t, A572 GR{grade}, {length_ft}\' long'
+    diameter_decimal = Decimal(str(diameter))
+    dia_str = ""
+    for standard_dia, (_, display) in SLEEVE_DIAMETER_LOOKUP.items():
+        if abs(diameter_decimal - standard_dia) <= DIAMETER_MATCH_TOLERANCE:
+            dia_str = display
+            break
+    if not dia_str:
+        if diameter == int(diameter):
+            dia_str = str(int(diameter))
+        else:
+            dia_str = f"{diameter:.3f}".rstrip("0").rstrip(".")
+
+    if length_ft == int(length_ft):
+        len_str = str(int(length_ft))
+    else:
+        len_str = f"{length_ft:.1f}".rstrip("0").rstrip(".")
+
+    desc = f'reg half sole, {dia_str}" ID, {wt_str} w/t, A572 GR{grade}, {len_str}\' long'
 
     services = []
     if milling:
@@ -323,7 +383,7 @@ def generate_sleeve_description(
     if services:
         desc += f" ({', '.join(services)})"
 
-    return desc
+    return f"{desc}. Backing Strip Included."
 
 
 def price_item(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
