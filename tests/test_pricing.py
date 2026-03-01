@@ -83,34 +83,37 @@ def test_part_number_generation():
     """Test sleeve part number generation."""
     # Basic sleeve
     pn = generate_sleeve_part_number(6.625, 0.25, 50, 10)
-    assert pn == "S-6.625-14-50-10"
+    assert pn == "S-6.58-14-50-10"
 
     # With milling
     pn = generate_sleeve_part_number(6.625, 0.25, 50, 10, milling=True)
-    assert pn == "S-6.625-14-50-10-M"
+    assert pn == "S-6.58-14-50-10-M"
 
     # With painting
     pn = generate_sleeve_part_number(6.625, 0.25, 50, 10, painting=True)
-    assert pn == "S-6.625-14-50-10-P"
+    assert pn == "S-6.58-14-50-10-P"
 
     # With both
     pn = generate_sleeve_part_number(6.625, 0.25, 50, 10, milling=True, painting=True)
-    assert pn == "S-6.625-14-50-10-M-P"
+    assert pn == "S-6.58-14-50-10-M-P"
 
     # Different wall thickness
     pn = generate_sleeve_part_number(12.75, 0.375, 65, 12)
-    assert pn == "S-12.75-38-65-12"
+    assert pn == "S-12.34-38-65-12"
 
 
 def test_description_generation():
     """Test sleeve description generation."""
     # Basic sleeve
     desc = generate_sleeve_description(6.625, 0.25, 50, 10)
-    assert desc == 'Sleeve, Sealing, 6.625" ID, 1/4" w/t, A572 GR50, 10\' long'
+    assert desc == 'reg half sole, 6-5/8" ID, 1/4" w/t, A572 GR50, 10\' long. Backing Strip Included.'
 
     # With services
     desc = generate_sleeve_description(6.625, 0.25, 50, 10, milling=True, painting=True)
-    assert desc == 'Sleeve, Sealing, 6.625" ID, 1/4" w/t, A572 GR50, 10\' long (Milled, Painted)'
+    assert (
+        desc
+        == 'reg half sole, 6-5/8" ID, 1/4" w/t, A572 GR50, 10\' long (Milled, Painted). Backing Strip Included.'
+    )
 
 
 # Girth weld sleeve tests
