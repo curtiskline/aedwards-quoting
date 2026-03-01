@@ -1,11 +1,10 @@
-"""PDF quote generator matching Allan Edwards format."""
+"""PDF quote generator matching Allan Edwards Template A format."""
 
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from decimal import Decimal
 from pathlib import Path
 import sys
 
-from reportlab.graphics.barcode import code128
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle
@@ -21,11 +20,12 @@ from reportlab.platypus import (
 
 from .pricing import Quote
 
-# Colors matching the sample quote
+# Colors matching Template A
 YELLOW_HEADER = colors.Color(1, 1, 0)  # #FFFF00
 BLACK = colors.black
 WHITE = colors.white
 GRAY = colors.Color(0.5, 0.5, 0.5)
+LIGHT_GRAY = colors.Color(0.9, 0.9, 0.9)
 
 def _resolve_default_logo_path() -> Path:
     """Resolve bundled logo path for source and frozen runtimes."""
@@ -149,26 +149,32 @@ class QuotePDFBuilder:
         }
 
     def _build_header(self) -> list:
-        """Build the header section with logo, company info, and quote info."""
+        """Build Template A header: yellow banner, company info, quote details."""
         elements = []
 
-        # Create header table: [Logo + Company Info] | [Quote Info]
-        # Left side: Logo and company address
-        left_content = []
+        # Yellow banner with script logo
+        banner_data = [[Paragraph(
+            '<font face="Times-Italic" size="28"><i>Allan Edwards, Inc.</i></font>',
+            ParagraphStyle("Banner", alignment=1, fontName="Times-Italic", fontSize=28)
+        )]]
+        banner_table = Table(banner_data, colWidths=[self.content_width])
+        banner_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), YELLOW_HEADER),
+            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("TOPPADDING", (0, 0), (-1, -1), 12),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
+            ("BOX", (0, 0), (-1, -1), 1, BLACK),
+        ]))
+        elements.append(banner_table)
+        elements.append(Spacer(1, 12))
 
-        # Add logo if available
-        if self.logo_path.exists():
-            # Scale logo to fit (original is 815x114, we want ~2 inches wide)
-            logo = Image(str(self.logo_path), width=2 * inch, height=0.28 * inch)
-            left_content.append([logo])
-
-        # Company address
-        left_content.append([Paragraph("Allan Edwards, Inc.", self.styles["bold"])])
-        left_content.append([Paragraph("6468 N Yale Ave", self.styles["normal"])])
-        left_content.append([Paragraph("Tulsa OK 74117", self.styles["normal"])])
-        left_content.append([Paragraph("United States", self.styles["normal"])])
-        left_content.append([Paragraph("(918) 583-7184", self.styles["normal"])])
-
+        # Company info (left) and Quote details (right)
+        left_content = [
+            [Paragraph("<b>Allan Edwards, Inc.</b>", self.styles["bold"])],
+            [Paragraph("6468 N Yale Ave", self.styles["normal"])],
+            [Paragraph("Tulsa, OK 74117", self.styles["normal"])],
+            [Paragraph("(918) 583-7184", self.styles["normal"])],
+        ]
         left_table = Table(left_content, colWidths=[3.5 * inch])
         left_table.setStyle(TableStyle([
             ("TOPPADDING", (0, 0), (-1, -1), 1),
@@ -176,18 +182,31 @@ class QuotePDFBuilder:
             ("LEFTPADDING", (0, 0), (-1, -1), 0),
         ]))
 
-        # Right side: Quote title and info
+        # Right side: Quote number, date, expires (as label: value pairs)
         right_content = [
-            [Paragraph("Quote", self.styles["title"])],
-            [Paragraph(self.quote.quote_number, self.styles["quote_number"])],
+            [
+                Paragraph("<b>Quote:</b>", self.styles["bold"]),
+                Paragraph(self.quote.quote_number, self.styles["normal"]),
+            ],
+            [
+                Paragraph("<b>Date:</b>", self.styles["bold"]),
+                Paragraph(format_date(self.quote_date), self.styles["normal"]),
+            ],
+            [
+                Paragraph("<b>Expires:</b>", self.styles["bold"]),
+                Paragraph(format_date(self.expires_date), self.styles["normal"]),
+            ],
         ]
         # Add project line reference if available (for multi-quote emails)
-        if self.quote.project_line:
-            right_content.append([Paragraph(f"<i>{self.quote.project_line}</i>", self.styles["normal"])])
-        right_content.append([Paragraph(format_date(self.quote_date), self.styles["normal"])])
-        right_table = Table(right_content, colWidths=[3 * inch])
+        if hasattr(self.quote, 'project_line') and self.quote.project_line:
+            right_content.append([
+                Paragraph("<b>Project:</b>", self.styles["bold"]),
+                Paragraph(self.quote.project_line, self.styles["normal"]),
+            ])
+        right_table = Table(right_content, colWidths=[0.8 * inch, 1.5 * inch])
         right_table.setStyle(TableStyle([
-            ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
+            ("ALIGN", (0, 0), (0, -1), "RIGHT"),
+            ("ALIGN", (1, 0), (1, -1), "LEFT"),
             ("TOPPADDING", (0, 0), (-1, -1), 2),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
         ]))
@@ -195,7 +214,7 @@ class QuotePDFBuilder:
         # Combine left and right
         header_table = Table(
             [[left_table, right_table]],
-            colWidths=[4.5 * inch, 3 * inch]
+            colWidths=[5 * inch, 2.5 * inch]
         )
         header_table.setStyle(TableStyle([
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -206,31 +225,15 @@ class QuotePDFBuilder:
         return elements
 
     def _build_bill_ship_to(self) -> list:
-        """Build the Bill To / Ship To section."""
+        """Build Template A Bill To / Ship To section."""
         elements = []
 
-        # Bill To content
+        # Bill To content (customer name only in Template A)
         bill_to_lines = [
-            [Paragraph("<b>Bill To</b>", self.styles["bold"])],
+            [Paragraph("<b>Bill To:</b>", self.styles["bold"])],
         ]
-        if self.quote.contact_email:
-            bill_to_lines.append([Paragraph(self.quote.contact_email, self.styles["normal"])])
         if self.quote.customer_name:
             bill_to_lines.append([Paragraph(self.quote.customer_name, self.styles["normal"])])
-        if self.quote.ship_to:
-            if self.quote.ship_to.get("street"):
-                bill_to_lines.append([Paragraph(self.quote.ship_to["street"], self.styles["normal"])])
-            city_state_zip = []
-            if self.quote.ship_to.get("city"):
-                city_state_zip.append(self.quote.ship_to["city"])
-            if self.quote.ship_to.get("state"):
-                city_state_zip.append(self.quote.ship_to["state"])
-            if self.quote.ship_to.get("postal_code"):
-                city_state_zip.append(self.quote.ship_to["postal_code"])
-            if city_state_zip:
-                bill_to_lines.append([Paragraph(" ".join(city_state_zip), self.styles["normal"])])
-            if self.quote.ship_to.get("country"):
-                bill_to_lines.append([Paragraph(self.quote.ship_to["country"], self.styles["normal"])])
 
         bill_to_table = Table(bill_to_lines, colWidths=[3.5 * inch])
         bill_to_table.setStyle(TableStyle([
@@ -239,29 +242,37 @@ class QuotePDFBuilder:
             ("LEFTPADDING", (0, 0), (-1, -1), 0),
         ]))
 
-        # Ship To content
+        # Ship To content (company, contact with phone, street, city/state)
         ship_to_lines = [
-            [Paragraph("<b>Ship To</b>", self.styles["bold"])],
+            [Paragraph("<b>Ship to:</b>", self.styles["bold"])],
         ]
-        if self.quote.contact_name and self.quote.contact_phone:
-            ship_to_lines.append([Paragraph(
-                f"{self.quote.contact_name} {self.quote.contact_phone}",
-                self.styles["normal"]
-            )])
-        elif self.quote.contact_name:
-            ship_to_lines.append([Paragraph(self.quote.contact_name, self.styles["normal"])])
+        if self.quote.ship_to and self.quote.ship_to.get("company"):
+            ship_to_lines.append([Paragraph(self.quote.ship_to["company"], self.styles["normal"])])
+
+        # Contact name with phone
+        if self.quote.contact_name:
+            contact_line = self.quote.contact_name
+            if self.quote.contact_phone:
+                contact_line += f" {self.quote.contact_phone}"
+            ship_to_lines.append([Paragraph(contact_line, self.styles["normal"])])
 
         if self.quote.ship_to:
             if self.quote.ship_to.get("company"):
                 ship_to_lines.append([Paragraph(self.quote.ship_to["company"], self.styles["normal"])])
-            # Location (can be TBD)
-            location_parts = []
+            if self.quote.ship_to.get("attention"):
+                ship_to_lines.append([Paragraph(self.quote.ship_to["attention"], self.styles["normal"])])
+            if self.quote.ship_to.get("street"):
+                ship_to_lines.append([Paragraph(self.quote.ship_to["street"], self.styles["normal"])])
+
+            city_state_zip_parts = []
             if self.quote.ship_to.get("city"):
-                location_parts.append(self.quote.ship_to["city"])
+                city_state_zip_parts.append(self.quote.ship_to["city"])
             if self.quote.ship_to.get("state"):
-                location_parts.append(self.quote.ship_to["state"])
-            if location_parts:
-                ship_to_lines.append([Paragraph(", ".join(location_parts), self.styles["normal"])])
+                city_state_zip_parts.append(self.quote.ship_to["state"])
+            if self.quote.ship_to.get("postal_code"):
+                city_state_zip_parts.append(self.quote.ship_to["postal_code"])
+            if city_state_zip_parts:
+                ship_to_lines.append([Paragraph(", ".join(city_state_zip_parts), self.styles["normal"])])
             if self.quote.ship_to.get("country"):
                 ship_to_lines.append([Paragraph(self.quote.ship_to["country"], self.styles["normal"])])
 
@@ -281,138 +292,103 @@ class QuotePDFBuilder:
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ]))
         elements.append(address_table)
-        elements.append(Spacer(1, 12))
-
-        return elements
-
-    def _build_details_grid(self) -> list:
-        """Build the details grid (Template B style)."""
-        elements = []
-
-        # Row 1: PO#, Shipping Method, Expires
-        # Row 2: Payment Terms, Shipping Terms, Sales Rep
-        # Row 3: Requested By, Req By Email, Req By Phone
-        grid_data = [
-            # Labels row 1
-            [
-                Paragraph("<b>PO #</b>", self.styles["grid_label"]),
-                Paragraph("<b>Shipping Method</b>", self.styles["grid_label"]),
-                Paragraph("<b>Expires</b>", self.styles["grid_label"]),
-            ],
-            # Values row 1
-            [
-                Paragraph(self.quote.po_number or "", self.styles["grid_value"]),
-                Paragraph(self.quote.shipping_method or "", self.styles["grid_value"]),
-                Paragraph(format_date(self.expires_date), self.styles["grid_value"]),
-            ],
-            # Labels row 2
-            [
-                Paragraph("<b>Payment Terms</b>", self.styles["grid_label"]),
-                Paragraph("<b>Shipping Terms</b>", self.styles["grid_label"]),
-                Paragraph("<b>Sales Rep</b>", self.styles["grid_label"]),
-            ],
-            # Values row 2
-            [
-                Paragraph(self.quote.payment_terms or "", self.styles["grid_value"]),
-                Paragraph(self.quote.shipping_terms or "", self.styles["grid_value"]),
-                Paragraph(self.quote.sales_rep or "", self.styles["grid_value"]),
-            ],
-            # Labels row 3
-            [
-                Paragraph("<b>Requested By</b>", self.styles["grid_label"]),
-                Paragraph("<b>Req By Email</b>", self.styles["grid_label"]),
-                Paragraph("<b>Req By Phone</b>", self.styles["grid_label"]),
-            ],
-            # Values row 3
-            [
-                Paragraph(self._format_requested_by(), self.styles["grid_value"]),
-                Paragraph(self.quote.requested_by_email or "", self.styles["grid_value"]),
-                Paragraph(self.quote.requested_by_phone or "", self.styles["grid_value"]),
-            ],
-        ]
-
-        col_width = self.content_width / 3
-        grid_table = Table(grid_data, colWidths=[col_width, col_width, col_width])
-        grid_table.setStyle(TableStyle([
-            # Borders
-            ("BOX", (0, 0), (-1, -1), 0.5, BLACK),
-            ("LINEBELOW", (0, 1), (-1, 1), 0.5, BLACK),
-            ("LINEBELOW", (0, 3), (-1, 3), 0.5, BLACK),
-            ("LINEBEFORE", (1, 0), (1, -1), 0.5, BLACK),
-            ("LINEBEFORE", (2, 0), (2, -1), 0.5, BLACK),
-            # Padding
-            ("TOPPADDING", (0, 0), (-1, -1), 3),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-            ("LEFTPADDING", (0, 0), (-1, -1), 4),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-            # Alignment
-            ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ]))
-        elements.append(grid_table)
         elements.append(Spacer(1, 18))
 
         return elements
 
-    def _format_requested_by(self) -> str:
-        """Format the Requested By field."""
-        parts = []
-        if self.quote.customer_name:
-            parts.append(self.quote.customer_name)
-        if self.quote.requested_by_name:
-            parts.append(f": {self.quote.requested_by_name}")
-        elif self.quote.contact_name:
-            parts.append(f": {self.quote.contact_name}")
-        return "".join(parts)
-
     def _build_line_items_table(self) -> list:
-        """Build the line items table."""
+        """Build Template A line items table with quote title."""
         elements = []
 
-        # Header row
+        # Quote title row (e.g., "Quote 2: HM999A3 Line")
+        quote_title = self.quote.quote_number
+        if self.quote.notes and ":" in self.quote.notes.split("\n")[0]:
+            # Use first line of notes as quote title if it looks like a title
+            first_note = self.quote.notes.split("\n")[0].strip()
+            if first_note:
+                quote_title = first_note
+        title_para = Paragraph(f"<b>{quote_title}</b>", self.styles["bold"])
+        elements.append(title_para)
+        elements.append(Spacer(1, 6))
+
+        # Header row - Template A columns
         table_data = [
             [
-                Paragraph("<b>Item</b>", self.styles["header"]),
+                Paragraph("<b>Item Number</b>", self.styles["header"]),
                 Paragraph("<b>Description</b>", self.styles["header"]),
                 Paragraph("<b>Quantity</b>", self.styles["header"]),
-                Paragraph("<b>Rate</b>", self.styles["header"]),
-                Paragraph("<b>Amount</b>", self.styles["header"]),
+                Paragraph("<b>Unit Price</b>", self.styles["header"]),
+                Paragraph("<b>Total</b>", self.styles["header"]),
             ]
         ]
 
         # Line items
         for item in self.quote.line_items:
+            item_number = "" if item.is_note else item.part_number
+            quantity = "" if item.is_note else str(item.quantity)
             table_data.append([
-                Paragraph(item.part_number, self.styles["normal_small"]),
+                Paragraph(item_number, self.styles["normal_small"]),
                 Paragraph(item.description, self.styles["normal_small"]),
-                Paragraph(str(item.quantity), self.styles["normal_small"]),
+                Paragraph(quantity, self.styles["normal_small"]),
                 Paragraph(format_currency(item.unit_price), self.styles["normal_small"]),
                 Paragraph(format_currency(item.total), self.styles["normal_small"]),
             ])
 
-        # Add notes as description-only rows if present
-        if self.quote.notes:
-            for note in self.quote.notes.split("\n"):
-                if note.strip():
-                    table_data.append([
-                        Paragraph("Description", self.styles["normal_small"]),
-                        Paragraph(note.strip(), self.styles["normal_small"]),
-                        "",
-                        "",
-                        "",
-                    ])
+        # Add empty placeholder rows (Template A shows these with $0.00)
+        empty_rows_needed = max(0, 4 - len(self.quote.line_items))
+        for _ in range(empty_rows_needed):
+            table_data.append([
+                "",
+                "",
+                "",
+                Paragraph("$0.00", self.styles["normal_small"]),
+                Paragraph("$0.00", self.styles["normal_small"]),
+            ])
 
-        # Column widths: Item 15%, Description 45%, Quantity 10%, Rate 15%, Amount 15%
+        # Add shipping method as note row if present
+        if self.quote.shipping_method:
+            table_data.append([
+                "",
+                Paragraph(f"Ship: {self.quote.shipping_method}", self.styles["normal_small"]),
+                "",
+                Paragraph("$0.00", self.styles["normal_small"]),
+                Paragraph("$0.00", self.styles["normal_small"]),
+            ])
+
+        # Add more empty rows
+        for _ in range(3):
+            table_data.append([
+                "",
+                "",
+                "",
+                Paragraph("$0.00", self.styles["normal_small"]),
+                Paragraph("$0.00", self.styles["normal_small"]),
+            ])
+
+        # Add RFQ contact row at bottom
+        rfq_contact = self._format_rfq_contact()
+        if rfq_contact:
+            table_data.append([
+                Paragraph(rfq_contact, self.styles["normal_small"]),
+                "",
+                "",
+                Paragraph("$0.00", self.styles["normal_small"]),
+                Paragraph("$0.00", self.styles["normal_small"]),
+            ])
+
+        # Column widths: Item Number 18%, Description 42%, Quantity 12%, Unit Price 14%, Total 14%
         col_widths = [
-            self.content_width * 0.15,
-            self.content_width * 0.40,
-            self.content_width * 0.12,
-            self.content_width * 0.15,
             self.content_width * 0.18,
+            self.content_width * 0.42,
+            self.content_width * 0.12,
+            self.content_width * 0.14,
+            self.content_width * 0.14,
         ]
 
         items_table = Table(table_data, colWidths=col_widths)
-        items_table.setStyle(TableStyle([
+
+        # Build style commands
+        style_commands = [
             # Header row styling - yellow background
             ("BACKGROUND", (0, 0), (-1, 0), YELLOW_HEADER),
             ("TEXTCOLOR", (0, 0), (-1, 0), BLACK),
@@ -424,9 +400,15 @@ class QuotePDFBuilder:
             ("ALIGN", (0, 0), (-1, 0), "LEFT"),  # Header left aligned
             ("ALIGN", (2, 1), (2, -1), "CENTER"),  # Quantity centered
             ("ALIGN", (3, 1), (-1, -1), "RIGHT"),  # Prices right aligned
-            # Grid
+            # Grid - box around entire table
             ("BOX", (0, 0), (-1, -1), 0.5, BLACK),
-            ("LINEBELOW", (0, 0), (-1, 0), 0.5, BLACK),  # Header bottom border
+            # Horizontal lines between all rows
+            ("LINEBELOW", (0, 0), (-1, -2), 0.5, BLACK),
+            # Vertical lines between columns
+            ("LINEBEFORE", (1, 0), (1, -1), 0.5, BLACK),
+            ("LINEBEFORE", (2, 0), (2, -1), 0.5, BLACK),
+            ("LINEBEFORE", (3, 0), (3, -1), 0.5, BLACK),
+            ("LINEBEFORE", (4, 0), (4, -1), 0.5, BLACK),
             # Padding
             ("TOPPADDING", (0, 0), (-1, -1), 4),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
@@ -434,86 +416,98 @@ class QuotePDFBuilder:
             ("RIGHTPADDING", (0, 0), (-1, -1), 4),
             # Valign
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ]))
+        ]
+
+        items_table.setStyle(TableStyle(style_commands))
         elements.append(items_table)
 
         return elements
 
-    def _build_totals(self) -> list:
-        """Build the totals section."""
-        elements = []
-        elements.append(Spacer(1, 6))
+    def _format_rfq_contact(self) -> str:
+        """Format RFQ contact info for the line items table."""
+        parts = ["RFQ:"]
+        if self.quote.contact_name:
+            parts.append(self.quote.contact_name)
+        if self.quote.contact_phone:
+            parts.append(self.quote.contact_phone)
+        if self.quote.contact_email:
+            parts.append(self.quote.contact_email)
+        if len(parts) > 1:
+            return " ".join(parts)
+        return ""
 
-        # Totals table (right-aligned)
+    def _build_totals(self) -> list:
+        """Build Template A totals section: Subtotal, Shipping and Handling, TOTAL."""
+        elements = []
+
+        # Template A totals: right-aligned, Subtotal / Shipping and Handling / TOTAL
         totals_data = [
             [
                 "",
-                Paragraph("<b>Subtotal</b>", self.styles["bold_small"]),
+                "",
+                "",
+                Paragraph("Subtotal:", self.styles["normal_small"]),
                 Paragraph(format_currency(self.quote.subtotal), self.styles["normal_small"]),
             ],
             [
                 "",
-                Paragraph("<b>Shipping/Handling</b>", self.styles["bold_small"]),
-                Paragraph(format_currency(self.quote.shipping_amount or Decimal("0")), self.styles["normal_small"]),
+                "",
+                "",
+                Paragraph("Shipping and Handling:", self.styles["normal_small"]),
+                Paragraph(format_currency(self.quote.shipping_amount) if self.quote.shipping_amount else "", self.styles["normal_small"]),
             ],
             [
+                Paragraph("<b>TOTAL</b>", self.styles["bold"]),
                 "",
-                Paragraph("<b>Sales Tax (%)</b>", self.styles["bold_small"]),
-                Paragraph(format_currency(self.quote.tax_amount), self.styles["normal_small"]),
-            ],
-            [
                 "",
-                Paragraph("<b>Total</b>", self.styles["bold"]),
-                Paragraph(format_currency(self.quote.total), self.styles["bold"]),
+                "",
+                Paragraph(f"<b>{format_currency(self.quote.total)}</b>", self.styles["bold"]),
             ],
         ]
 
-        totals_table = Table(
-            totals_data,
-            colWidths=[self.content_width * 0.55, self.content_width * 0.25, self.content_width * 0.20]
-        )
+        # Match column widths with line items table
+        col_widths = [
+            self.content_width * 0.18,
+            self.content_width * 0.42,
+            self.content_width * 0.12,
+            self.content_width * 0.14,
+            self.content_width * 0.14,
+        ]
+
+        totals_table = Table(totals_data, colWidths=col_widths)
         totals_table.setStyle(TableStyle([
-            # Total row yellow background
-            ("BACKGROUND", (1, -1), (-1, -1), YELLOW_HEADER),
+            # TOTAL row yellow background
+            ("BACKGROUND", (0, -1), (-1, -1), YELLOW_HEADER),
             # Alignment
-            ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-            ("ALIGN", (2, 0), (2, -1), "RIGHT"),
-            # Borders
-            ("LINEABOVE", (1, -1), (-1, -1), 0.5, BLACK),
-            ("LINEBELOW", (1, -1), (-1, -1), 0.5, BLACK),
-            ("BOX", (1, -1), (-1, -1), 0.5, BLACK),
+            ("ALIGN", (3, 0), (3, -1), "RIGHT"),
+            ("ALIGN", (4, 0), (4, -1), "RIGHT"),
+            ("ALIGN", (0, -1), (0, -1), "LEFT"),
+            # Borders for subtotal/shipping rows
+            ("LINEBELOW", (3, 0), (4, 0), 0.5, BLACK),
+            ("LINEBELOW", (3, 1), (4, 1), 0.5, BLACK),
+            # Box around TOTAL row
+            ("BOX", (0, -1), (-1, -1), 0.5, BLACK),
             # Padding
             ("TOPPADDING", (0, 0), (-1, -1), 4),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
         ]))
         elements.append(totals_table)
 
         return elements
 
     def _build_footer(self, canvas, doc):
-        """Draw the footer on each page."""
+        """Draw Template A footer: website on left, page number on right."""
         canvas.saveState()
 
-        # Barcode on left
-        barcode = code128.Code128(
-            self.quote.quote_number,
-            barWidth=0.8,
-            barHeight=0.4 * inch,
-        )
-        barcode.drawOn(canvas, self.margin, 0.4 * inch)
+        canvas.setFont("Helvetica", 9)
 
-        # Quote number text below barcode
-        canvas.setFont("Helvetica", 8)
-        canvas.drawString(self.margin, 0.25 * inch, self.quote.quote_number)
+        # Website on left
+        canvas.drawString(self.margin, 0.4 * inch, "www.allanedwards.com")
 
-        # Page number in center
-        page_text = f"{doc.page} of {doc.page}"  # Will be updated by later pass
-        canvas.drawCentredString(self.page_width / 2, 0.35 * inch, page_text)
-
-        # Timestamp on right
-        timestamp = datetime.now().strftime("%m/%d/%Y %I:%M %p")
-        canvas.drawRightString(self.page_width - self.margin, 0.35 * inch, timestamp)
+        # Page number on right
+        page_text = f"Page {doc.page} of {doc.page}"  # Will be updated by later pass
+        canvas.drawRightString(self.page_width - self.margin, 0.4 * inch, page_text)
 
         canvas.restoreState()
 
@@ -531,7 +525,7 @@ class QuotePDFBuilder:
         elements = []
         elements.extend(self._build_header())
         elements.extend(self._build_bill_ship_to())
-        elements.extend(self._build_details_grid())
+        # Template A: No details grid (reserved for Template B concrete coating quotes)
         elements.extend(self._build_line_items_table())
         elements.extend(self._build_totals())
 

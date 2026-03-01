@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
+import re
 from typing import Any
 
 from .parser import ParsedItem, ParsedRFQ
@@ -73,6 +74,7 @@ class QuoteLineItem:
     quantity: int
     unit_price: Decimal
     total: Decimal
+    is_note: bool = False
 
     # Optional details
     weight_per_ft: Decimal | None = None
@@ -173,6 +175,78 @@ def calculate_sleeve_price(
         weight_per_ft,
         price_per_lb,
     )
+
+
+def get_girth_weld_price(diameter: float) -> Decimal | None:
+    """Get girth weld sleeve price based on diameter tier.
+
+    Girth weld sleeves are priced per SET, not per pound.
+
+    Returns:
+        Price per set, or None if diameter is outside supported ranges.
+    """
+    for min_dia, max_dia, price in GIRTH_WELD_PRICING:
+        if min_dia <= diameter <= max_dia:
+            return price
+    return None
+
+
+def generate_girth_weld_part_number(
+    diameter: float,
+    wall_thickness: float,
+    grade: int,
+    length_ft: float,
+) -> str:
+    """Generate a part number for a girth weld sleeve.
+
+    Format: GW-{diameter}-{wt_code}-{grade}-{length}
+    """
+    # Wall thickness codes
+    wt_codes = {
+        0.25: "14",
+        0.3125: "516",
+        0.375: "38",
+        0.5: "12",
+        0.625: "58",
+        0.75: "34",
+    }
+
+    wt_code = wt_codes.get(wall_thickness, str(wall_thickness).replace(".", ""))
+
+    # Format diameter
+    if diameter == int(diameter):
+        dia_str = str(int(diameter))
+    else:
+        dia_str = f"{diameter:.3f}".rstrip("0").rstrip(".")
+
+    # Format length
+    if length_ft == int(length_ft):
+        len_str = str(int(length_ft))
+    else:
+        len_str = f"{length_ft:.1f}".rstrip("0").rstrip(".")
+
+    return f"GW-{dia_str}-{wt_code}-{grade}-{len_str}"
+
+
+def generate_girth_weld_description(
+    diameter: float,
+    wall_thickness: float,
+    grade: int,
+    length_ft: float,
+) -> str:
+    """Generate a description for a girth weld sleeve."""
+    # Format wall thickness as fraction
+    wt_fractions = {
+        0.25: '1/4"',
+        0.3125: '5/16"',
+        0.375: '3/8"',
+        0.5: '1/2"',
+        0.625: '5/8"',
+        0.75: '3/4"',
+    }
+    wt_str = wt_fractions.get(wall_thickness, f'{wall_thickness}"')
+
+    return f'Girth Weld Sleeve, {diameter}" ID, {wt_str} w/t, A572 GR{grade}, {length_ft}\' long'
 
 
 def generate_sleeve_part_number(
@@ -301,20 +375,110 @@ def price_item(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
             price_per_lb=price_per_lb,
         )
 
+    if item.product_type == "girth_weld":
+        if not all([item.diameter, item.wall_thickness, item.grade, item.length_ft]):
+            return None
+
+        unit_price = get_girth_weld_price(item.diameter)
+        if unit_price is None:
+            return None
+
+        total = unit_price * Decimal(str(item.quantity))
+
+        return QuoteLineItem(
+            sort_order=sort_order,
+            product_type="girth_weld",
+            part_number=generate_girth_weld_part_number(
+                item.diameter,
+                item.wall_thickness,
+                item.grade,
+                item.length_ft,
+            ),
+            description=generate_girth_weld_description(
+                item.diameter,
+                item.wall_thickness,
+                item.grade,
+                item.length_ft,
+            ),
+            quantity=item.quantity,
+            unit_price=unit_price,
+            total=total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+        )
+
     # TODO: Add pricing for other product types
     return None
 
 
+def _build_shipping_note_text(rfq: ParsedRFQ) -> str:
+    """Build shipping note row text from parsed RFQ data."""
+    candidate_texts = [rfq.notes, rfq.raw_body]
+
+    # Prefer explicit "Ship: <carrier>" instructions when present.
+    ship_with_carrier = re.compile(r"(?im)^\s*ship\s*:\s*(.+?)\s*$")
+    for text in candidate_texts:
+        if not text:
+            continue
+        match = ship_with_carrier.search(text)
+        if match:
+            return f"Ship: {match.group(1).strip().rstrip('.')}"
+
+    # Fall back to the default shipping instruction used in sample quotes.
+    return "*Ship LTL Prepay & Add"
+
+
+def _build_rfq_contact_text(rfq: ParsedRFQ) -> str | None:
+    """Build RFQ contact row text."""
+    segments: list[str] = []
+    if rfq.contact_name:
+        segments.append(rfq.contact_name.strip())
+    if rfq.contact_phone:
+        segments.append(rfq.contact_phone.strip())
+    if rfq.contact_email:
+        segments.append(rfq.contact_email.strip())
+
+    if not segments:
+        return None
+
+    return f"RFQ: {' '.join(segments)}"
+
+
 def generate_quote(rfq: ParsedRFQ, quote_number: str) -> Quote:
     """Generate a complete quote from a parsed RFQ."""
-    line_items = []
+    line_items: list[QuoteLineItem] = []
 
     for i, item in enumerate(rfq.items, start=1):
         priced = price_item(item, i)
         if priced:
             line_items.append(priced)
 
-    subtotal = sum((item.total for item in line_items), Decimal("0"))
+    shipping_note = QuoteLineItem(
+        sort_order=len(line_items) + 1,
+        product_type="note",
+        part_number="",
+        description=_build_shipping_note_text(rfq),
+        quantity=0,
+        unit_price=Decimal("0.00"),
+        total=Decimal("0.00"),
+        is_note=True,
+    )
+    line_items.append(shipping_note)
+
+    rfq_contact_text = _build_rfq_contact_text(rfq)
+    if rfq_contact_text:
+        line_items.append(
+            QuoteLineItem(
+                sort_order=len(line_items) + 1,
+                product_type="note",
+                part_number="",
+                description=rfq_contact_text,
+                quantity=0,
+                unit_price=Decimal("0.00"),
+                total=Decimal("0.00"),
+                is_note=True,
+            )
+        )
+
+    subtotal = sum((item.total for item in line_items if not item.is_note), Decimal("0"))
 
     ship_to_dict = None
     if rfq.ship_to:

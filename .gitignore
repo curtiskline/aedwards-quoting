@@ -24,3 +24,4 @@ htmlcov/
 # Local test data (downloaded from Drive)
 tests/test_data/
 
+worktrees/

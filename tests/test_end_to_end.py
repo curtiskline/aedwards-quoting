@@ -4,7 +4,7 @@ import tempfile
 from decimal import Decimal
 from pathlib import Path
 
-from allenedwards.parser import parse_rfq, parse_rfq_multi
+from allenedwards.parser import ParsedItem, ParsedRFQ, parse_rfq, parse_rfq_multi
 from allenedwards.pdf_generator import generate_quote_pdf
 from allenedwards.pricing import generate_quote
 from allenedwards.providers.mock import (
@@ -47,11 +47,26 @@ def test_full_rfq_to_quote_flow():
     assert quote.quote_number == "126-TEST"
     assert quote.customer_name == "FHR Pipeline and Terminals"
     assert quote.po_number == "PO-2026-1042"
-    assert len(quote.line_items) == 1
+    assert len(quote.line_items) == 3
 
     line = quote.line_items[0]
     assert line.part_number == "S-6.625-14-50-10"
     assert line.quantity == 30
+    assert line.is_note is False
+
+    shipping_note = quote.line_items[1]
+    assert shipping_note.is_note is True
+    assert shipping_note.part_number == ""
+    assert shipping_note.description == "*Ship LTL Prepay & Add"
+    assert shipping_note.unit_price == Decimal("0.00")
+    assert shipping_note.total == Decimal("0.00")
+
+    rfq_note = quote.line_items[2]
+    assert rfq_note.is_note is True
+    assert rfq_note.part_number == ""
+    assert rfq_note.description == "RFQ: Evan Bohlman 612-615-3517 evan.bohlman@fhr.com"
+    assert rfq_note.unit_price == Decimal("0.00")
+    assert rfq_note.total == Decimal("0.00")
 
     # Calculate expected price:
     # weight_per_ft = 10.69 * ((6.625 + 0.25) * 0.25) / 2 = 9.18 (approximately)
@@ -176,3 +191,38 @@ def test_multi_quote_rfq_to_pdf_flow():
                 pdf.unlink()
         if output_dir.exists():
             output_dir.rmdir()
+
+
+def test_generate_quote_uses_carrier_shipping_note_and_rfq_row_order():
+    """Shipping note should come before RFQ contact row when both are present."""
+    rfq = ParsedRFQ(
+        customer_name="Buckeye",
+        contact_name="Daniel Cullison",
+        contact_email="dcullison@buckeye.com",
+        contact_phone="(835) 205-6974",
+        ship_to=None,
+        po_number=None,
+        items=[
+            ParsedItem(
+                product_type="sleeve",
+                quantity=1,
+                description="desc",
+                diameter=12.75,
+                wall_thickness=0.375,
+                grade=50,
+                length_ft=10,
+            )
+        ],
+        notes="Ship: Buckeye Transportation",
+        confidence=1.0,
+        raw_body="Ship: Buckeye Transportation",
+    )
+
+    quote = generate_quote(rfq, "126-TEST2")
+
+    assert len(quote.line_items) == 3
+    assert quote.line_items[0].is_note is False
+    assert quote.line_items[1].is_note is True
+    assert quote.line_items[1].description == "Ship: Buckeye Transportation"
+    assert quote.line_items[2].is_note is True
+    assert quote.line_items[2].description == "RFQ: Daniel Cullison (835) 205-6974 dcullison@buckeye.com"
