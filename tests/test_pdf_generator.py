@@ -5,7 +5,7 @@ from datetime import date
 from decimal import Decimal
 from pathlib import Path
 
-from allenedwards.pdf_generator import generate_quote_pdf
+from allenedwards.pdf_generator import QuotePDFBuilder, generate_quote_pdf
 from allenedwards.pricing import Quote, QuoteLineItem
 
 
@@ -190,3 +190,52 @@ def test_generate_quote_pdf_with_shipping_and_tax():
     finally:
         if output_path.exists():
             output_path.unlink()
+
+
+def test_bill_to_does_not_include_shipping_address():
+    """Ship-to street/ZIP should render only in Ship To, not Bill To."""
+    line_item = QuoteLineItem(
+        sort_order=1,
+        product_type="sleeve",
+        part_number="S-6.625-14-50-10",
+        description='Sleeve, 6.625" ID, 1/4" w/t, A572 GR50, 10\' long',
+        quantity=1,
+        unit_price=Decimal("259.11"),
+        total=Decimal("259.11"),
+    )
+
+    quote = Quote(
+        quote_number="126-101",
+        customer_name="FHR Pipeline and Terminals",
+        contact_name="Evan Bohlman",
+        contact_email="evan.bohlman@fhr.com",
+        contact_phone="612-615-3517",
+        ship_to={
+            "company": "Cottage Grove Terminal",
+            "attention": "Daniel Cullison",
+            "street": "6483 85th St S",
+            "city": "Cottage Grove",
+            "state": "MN",
+            "postal_code": "55016",
+            "country": "United States",
+        },
+        line_items=[line_item],
+        subtotal=Decimal("259.11"),
+        shipping_amount=None,
+        tax_amount=Decimal("0"),
+        total=Decimal("259.11"),
+        notes=None,
+    )
+
+    builder = QuotePDFBuilder(quote=quote, output_path=Path("/tmp/test-quote.pdf"))
+    address_table = builder._build_bill_ship_to()[0]
+    bill_to_table = address_table._cellvalues[0][0]
+    ship_to_table = address_table._cellvalues[0][1]
+
+    bill_to_text = [row[0].text for row in bill_to_table._cellvalues]
+    ship_to_text = [row[0].text for row in ship_to_table._cellvalues]
+
+    assert "6483 85th St S" not in bill_to_text
+    assert "Cottage Grove, MN, 55016" not in bill_to_text
+    assert "6483 85th St S" in ship_to_text
+    assert "Cottage Grove, MN, 55016" in ship_to_text
