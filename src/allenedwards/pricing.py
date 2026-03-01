@@ -172,6 +172,78 @@ def calculate_sleeve_price(
     )
 
 
+def get_girth_weld_price(diameter: float) -> Decimal | None:
+    """Get girth weld sleeve price based on diameter tier.
+
+    Girth weld sleeves are priced per SET, not per pound.
+
+    Returns:
+        Price per set, or None if diameter is outside supported ranges.
+    """
+    for min_dia, max_dia, price in GIRTH_WELD_PRICING:
+        if min_dia <= diameter <= max_dia:
+            return price
+    return None
+
+
+def generate_girth_weld_part_number(
+    diameter: float,
+    wall_thickness: float,
+    grade: int,
+    length_ft: float,
+) -> str:
+    """Generate a part number for a girth weld sleeve.
+
+    Format: GW-{diameter}-{wt_code}-{grade}-{length}
+    """
+    # Wall thickness codes
+    wt_codes = {
+        0.25: "14",
+        0.3125: "516",
+        0.375: "38",
+        0.5: "12",
+        0.625: "58",
+        0.75: "34",
+    }
+
+    wt_code = wt_codes.get(wall_thickness, str(wall_thickness).replace(".", ""))
+
+    # Format diameter
+    if diameter == int(diameter):
+        dia_str = str(int(diameter))
+    else:
+        dia_str = f"{diameter:.3f}".rstrip("0").rstrip(".")
+
+    # Format length
+    if length_ft == int(length_ft):
+        len_str = str(int(length_ft))
+    else:
+        len_str = f"{length_ft:.1f}".rstrip("0").rstrip(".")
+
+    return f"GW-{dia_str}-{wt_code}-{grade}-{len_str}"
+
+
+def generate_girth_weld_description(
+    diameter: float,
+    wall_thickness: float,
+    grade: int,
+    length_ft: float,
+) -> str:
+    """Generate a description for a girth weld sleeve."""
+    # Format wall thickness as fraction
+    wt_fractions = {
+        0.25: '1/4"',
+        0.3125: '5/16"',
+        0.375: '3/8"',
+        0.5: '1/2"',
+        0.625: '5/8"',
+        0.75: '3/4"',
+    }
+    wt_str = wt_fractions.get(wall_thickness, f'{wall_thickness}"')
+
+    return f'Girth Weld Sleeve, {diameter}" ID, {wt_str} w/t, A572 GR{grade}, {length_ft}\' long'
+
+
 def generate_sleeve_part_number(
     diameter: float,
     wall_thickness: float,
@@ -296,6 +368,36 @@ def price_item(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
             total=total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
             weight_per_ft=weight_per_ft,
             price_per_lb=price_per_lb,
+        )
+
+    if item.product_type == "girth_weld":
+        if not all([item.diameter, item.wall_thickness, item.grade, item.length_ft]):
+            return None
+
+        unit_price = get_girth_weld_price(item.diameter)
+        if unit_price is None:
+            return None
+
+        total = unit_price * Decimal(str(item.quantity))
+
+        return QuoteLineItem(
+            sort_order=sort_order,
+            product_type="girth_weld",
+            part_number=generate_girth_weld_part_number(
+                item.diameter,
+                item.wall_thickness,
+                item.grade,
+                item.length_ft,
+            ),
+            description=generate_girth_weld_description(
+                item.diameter,
+                item.wall_thickness,
+                item.grade,
+                item.length_ft,
+            ),
+            quantity=item.quantity,
+            unit_price=unit_price,
+            total=total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
         )
 
     # TODO: Add pricing for other product types
