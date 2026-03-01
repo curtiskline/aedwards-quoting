@@ -9,6 +9,8 @@ from allenedwards.pricing import (
     generate_quote,
     generate_girth_weld_description,
     generate_girth_weld_part_number,
+    generate_oversleeve_description,
+    generate_oversleeve_part_number,
     generate_sleeve_description,
     generate_sleeve_part_number,
     get_girth_weld_price,

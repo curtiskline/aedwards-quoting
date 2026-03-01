@@ -16,10 +16,12 @@ Your task is to extract structured information from RFQ emails and return it as 
 
 Key domain knowledge:
 - Sleeves are identified by inner diameter (ID), wall thickness (w/t), grade (GR50 or GR65), and length
+- Oversleeves (ovsz) fit OVER the outside of carrier pipe + standard sleeve - use product_type "oversleeve"
 - Common wall thicknesses: 1/4" (0.25), 5/16" (0.3125), 3/8" (0.375), 1/2" (0.5), 5/8" (0.625), 3/4" (0.75)
 - Grades: A572 GR50 or A572 GR65 (also written as GR.50, Gr65, etc.)
 - Pipe sizes may be written as NPS (nominal pipe size) like "6 inch" or actual ID like "6-5/8"
 - "half sole" or "reg half sole" indicates a standard sleeve type
+- "ovsz" or "oversleeve" indicates an oversleeve (fits over pipe + existing sleeve)
 - GTW = Girth Weld bands/bags
 - Milling (-M) and Painting (-P) are optional services
 
@@ -52,7 +54,7 @@ Return a JSON object with this structure:
             "po_number": "Customer purchase order number for this quote if provided",
             "items": [
                 {
-                    "product_type": "sleeve|girth_weld|compression|bag|omegawrap|accessory|service",
+                    "product_type": "sleeve|oversleeve|girth_weld|compression|bag|omegawrap|accessory|service",
                     "quantity": 30,
                     "diameter": "6.625",
                     "wall_thickness": "0.25",
