@@ -326,6 +326,87 @@ def generate_sleeve_description(
     return desc
 
 
+def generate_oversleeve_part_number(
+    diameter: float,
+    wall_thickness: float,
+    grade: int,
+    length_ft: float,
+    milling: bool = False,
+    painting: bool = False,
+) -> str:
+    """Generate a part number for an oversleeve.
+
+    Oversleeves fit over the outside of carrier pipe + standard sleeve.
+    Format: OS-{diameter}-{wt_code}-{grade}-{length}[-M][-P]
+    """
+    # Wall thickness codes
+    wt_codes = {
+        0.25: "14",
+        0.3125: "516",
+        0.375: "38",
+        0.5: "12",
+        0.625: "58",
+        0.75: "34",
+    }
+
+    wt_code = wt_codes.get(wall_thickness, str(wall_thickness).replace(".", ""))
+
+    # Format diameter
+    if diameter == int(diameter):
+        dia_str = str(int(diameter))
+    else:
+        dia_str = f"{diameter:.3f}".rstrip("0").rstrip(".")
+
+    # Format length
+    if length_ft == int(length_ft):
+        len_str = str(int(length_ft))
+    else:
+        len_str = f"{length_ft:.1f}".rstrip("0").rstrip(".")
+
+    part_num = f"OS-{dia_str}-{wt_code}-{grade}-{len_str}"
+
+    if milling:
+        part_num += "-M"
+    if painting:
+        part_num += "-P"
+
+    return part_num
+
+
+def generate_oversleeve_description(
+    diameter: float,
+    wall_thickness: float,
+    grade: int,
+    length_ft: float,
+    milling: bool = False,
+    painting: bool = False,
+) -> str:
+    """Generate a description for an oversleeve."""
+    # Format wall thickness as fraction
+    wt_fractions = {
+        0.25: '1/4"',
+        0.3125: '5/16"',
+        0.375: '3/8"',
+        0.5: '1/2"',
+        0.625: '5/8"',
+        0.75: '3/4"',
+    }
+    wt_str = wt_fractions.get(wall_thickness, f'{wall_thickness}"')
+
+    desc = f'Oversleeve, {diameter}" ID, {wt_str} w/t, A572 GR{grade}, {length_ft}\' long'
+
+    services = []
+    if milling:
+        services.append("Milled")
+    if painting:
+        services.append("Painted")
+
+    if services:
+        desc += f" ({', '.join(services)})"
+
+    return desc
+
+
 def price_item(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
     """Calculate price for a single parsed item.
 
@@ -358,6 +439,48 @@ def price_item(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
                 item.painting,
             ),
             description=generate_sleeve_description(
+                item.diameter,
+                item.wall_thickness,
+                item.grade,
+                item.length_ft,
+                item.milling,
+                item.painting,
+            ),
+            quantity=item.quantity,
+            unit_price=unit_price,
+            total=total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+            weight_per_ft=weight_per_ft,
+            price_per_lb=price_per_lb,
+        )
+
+    if item.product_type == "oversleeve":
+        if not all([item.diameter, item.wall_thickness, item.grade, item.length_ft]):
+            return None
+
+        # Oversleeves use same weight-based pricing as regular sleeves
+        unit_price, weight_per_ft, price_per_lb = calculate_sleeve_price(
+            item.diameter,
+            item.wall_thickness,
+            item.grade,
+            item.length_ft,
+            item.milling,
+            item.painting,
+        )
+
+        total = unit_price * Decimal(str(item.quantity))
+
+        return QuoteLineItem(
+            sort_order=sort_order,
+            product_type="oversleeve",
+            part_number=generate_oversleeve_part_number(
+                item.diameter,
+                item.wall_thickness,
+                item.grade,
+                item.length_ft,
+                item.milling,
+                item.painting,
+            ),
+            description=generate_oversleeve_description(
                 item.diameter,
                 item.wall_thickness,
                 item.grade,

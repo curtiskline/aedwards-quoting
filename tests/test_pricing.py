@@ -8,6 +8,8 @@ from allenedwards.pricing import (
     calculate_sleeve_weight_per_ft,
     generate_girth_weld_description,
     generate_girth_weld_part_number,
+    generate_oversleeve_description,
+    generate_oversleeve_part_number,
     generate_sleeve_description,
     generate_sleeve_part_number,
     get_girth_weld_price,
@@ -247,3 +249,89 @@ def test_price_item_girth_weld_missing_data():
         length_ft=12,
     )
     assert price_item(item_too_small, sort_order=1) is None
+
+
+# Oversleeve tests
+
+
+def test_oversleeve_part_number_generation():
+    """Test oversleeve part number generation.
+
+    Oversleeves use OS- prefix instead of S-.
+    """
+    # Basic oversleeve - example from task: 9-3/8" ID, 3/8" w/t, GR50, 10' long
+    pn = generate_oversleeve_part_number(9.375, 0.375, 50, 10)
+    assert pn == "OS-9.375-38-50-10"
+
+    # With milling
+    pn = generate_oversleeve_part_number(9.375, 0.375, 50, 10, milling=True)
+    assert pn == "OS-9.375-38-50-10-M"
+
+    # With painting
+    pn = generate_oversleeve_part_number(9.375, 0.375, 50, 10, painting=True)
+    assert pn == "OS-9.375-38-50-10-P"
+
+    # With both
+    pn = generate_oversleeve_part_number(9.375, 0.375, 50, 10, milling=True, painting=True)
+    assert pn == "OS-9.375-38-50-10-M-P"
+
+    # Different wall thickness
+    pn = generate_oversleeve_part_number(12.75, 0.25, 65, 12)
+    assert pn == "OS-12.75-14-65-12"
+
+
+def test_oversleeve_description_generation():
+    """Test oversleeve description generation."""
+    # Basic oversleeve
+    desc = generate_oversleeve_description(9.375, 0.375, 50, 10)
+    assert desc == 'Oversleeve, 9.375" ID, 3/8" w/t, A572 GR50, 10\' long'
+
+    # With services
+    desc = generate_oversleeve_description(9.375, 0.375, 50, 10, milling=True, painting=True)
+    assert desc == 'Oversleeve, 9.375" ID, 3/8" w/t, A572 GR50, 10\' long (Milled, Painted)'
+
+
+def test_price_item_oversleeve():
+    """Test price_item handles oversleeve product type.
+
+    Oversleeves use the same weight-based pricing as regular sleeves.
+    """
+    # Example from task: 9-3/8" ID, 3/8" w/t, GR50, 10' long
+    item = ParsedItem(
+        product_type="oversleeve",
+        quantity=1,
+        description="ovsz. half sole, 9-3/8\" ID, 3/8\" w/t, A572 GR50, 10' long",
+        diameter=9.375,
+        wall_thickness=0.375,
+        grade=50,
+        length_ft=10,
+    )
+
+    result = price_item(item, sort_order=1)
+
+    assert result is not None
+    assert result.product_type == "oversleeve"
+    assert result.part_number == "OS-9.375-38-50-10"
+    assert 'Oversleeve, 9.375" ID' in result.description
+    assert result.quantity == 1
+
+    # Verify pricing uses same formula as regular sleeves
+    # weight_per_ft = 10.69 * ((9.375 + 0.375) * 0.375) / 2
+    expected_weight = Decimal("10.69") * ((Decimal("9.375") + Decimal("0.375")) * Decimal("0.375")) / 2
+    assert result.weight_per_ft == expected_weight.quantize(Decimal("0.01"))
+    assert result.price_per_lb == Decimal("2.57")  # 3/8" wall, GR50
+
+
+def test_price_item_oversleeve_missing_data():
+    """Test oversleeve returns None for missing required data."""
+    # Missing diameter
+    item = ParsedItem(
+        product_type="oversleeve",
+        quantity=1,
+        description="oversleeve",
+        diameter=None,
+        wall_thickness=0.375,
+        grade=50,
+        length_ft=10,
+    )
+    assert price_item(item, sort_order=1) is None
