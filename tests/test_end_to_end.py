@@ -128,7 +128,7 @@ def test_generate_quote_uses_carrier_shipping_note_and_rfq_row_order():
         items=[
             ParsedItem(
                 product_type="sleeve",
-                quantity=1,
+                quantity=5,
                 description="desc",
                 diameter=12.75,
                 wall_thickness=0.375,

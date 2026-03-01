@@ -2,10 +2,11 @@
 
 from decimal import Decimal
 
-from allenedwards.parser import ParsedItem
+from allenedwards.parser import ParsedItem, ParsedRFQ
 from allenedwards.pricing import (
     calculate_sleeve_price,
     calculate_sleeve_weight_per_ft,
+    generate_quote,
     generate_girth_weld_description,
     generate_girth_weld_part_number,
     generate_sleeve_description,
@@ -247,3 +248,50 @@ def test_price_item_girth_weld_missing_data():
         length_ft=12,
     )
     assert price_item(item_too_small, sort_order=1) is None
+
+
+def test_price_item_converts_bundle_count_to_piece_count_for_standard_sleeves():
+    """Standard sleeves should convert explicit bundle counts to piece counts."""
+    item = ParsedItem(
+        product_type="sleeve",
+        quantity=2,
+        description="2 bundles of 10' sleeves",
+        diameter=12.75,
+        wall_thickness=0.375,
+        grade=50,
+        length_ft=10,
+    )
+
+    result = price_item(item, sort_order=1)
+
+    assert result is not None
+    assert result.quantity == 10
+
+
+def test_generate_quote_adds_warning_for_invalid_standard_bundle_multiple():
+    """Standard sleeve quantities up to 24in should warn when not a 5-piece multiple."""
+    rfq = ParsedRFQ(
+        customer_name="Test Co",
+        contact_name=None,
+        contact_email=None,
+        contact_phone=None,
+        ship_to=None,
+        po_number=None,
+        items=[
+            ParsedItem(
+                product_type="sleeve",
+                quantity=7,
+                description="7 pcs sleeves",
+                diameter=12.75,
+                wall_thickness=0.375,
+                grade=50,
+                length_ft=10,
+            )
+        ],
+        confidence=1.0,
+    )
+
+    quote = generate_quote(rfq, "126-WARN")
+
+    warning_notes = [item for item in quote.line_items if item.is_note and "multiple of 5" in item.description]
+    assert len(warning_notes) == 1
