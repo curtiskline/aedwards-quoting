@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
+import re
 from typing import Any
 
 from .parser import ParsedItem, ParsedRFQ
@@ -73,6 +74,7 @@ class QuoteLineItem:
     quantity: int
     unit_price: Decimal
     total: Decimal
+    is_note: bool = False
 
     # Optional details
     weight_per_ft: Decimal | None = None
@@ -302,16 +304,76 @@ def price_item(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
     return None
 
 
+def _build_shipping_note_text(rfq: ParsedRFQ) -> str:
+    """Build shipping note row text from parsed RFQ data."""
+    candidate_texts = [rfq.notes, rfq.raw_body]
+
+    # Prefer explicit "Ship: <carrier>" instructions when present.
+    ship_with_carrier = re.compile(r"(?im)^\s*ship\s*:\s*(.+?)\s*$")
+    for text in candidate_texts:
+        if not text:
+            continue
+        match = ship_with_carrier.search(text)
+        if match:
+            return f"Ship: {match.group(1).strip().rstrip('.')}"
+
+    # Fall back to the default shipping instruction used in sample quotes.
+    return "*Ship LTL Prepay & Add"
+
+
+def _build_rfq_contact_text(rfq: ParsedRFQ) -> str | None:
+    """Build RFQ contact row text."""
+    segments: list[str] = []
+    if rfq.contact_name:
+        segments.append(rfq.contact_name.strip())
+    if rfq.contact_phone:
+        segments.append(rfq.contact_phone.strip())
+    if rfq.contact_email:
+        segments.append(rfq.contact_email.strip())
+
+    if not segments:
+        return None
+
+    return f"RFQ: {' '.join(segments)}"
+
+
 def generate_quote(rfq: ParsedRFQ, quote_number: str) -> Quote:
     """Generate a complete quote from a parsed RFQ."""
-    line_items = []
+    line_items: list[QuoteLineItem] = []
 
     for i, item in enumerate(rfq.items, start=1):
         priced = price_item(item, i)
         if priced:
             line_items.append(priced)
 
-    subtotal = sum((item.total for item in line_items), Decimal("0"))
+    shipping_note = QuoteLineItem(
+        sort_order=len(line_items) + 1,
+        product_type="note",
+        part_number="",
+        description=_build_shipping_note_text(rfq),
+        quantity=0,
+        unit_price=Decimal("0.00"),
+        total=Decimal("0.00"),
+        is_note=True,
+    )
+    line_items.append(shipping_note)
+
+    rfq_contact_text = _build_rfq_contact_text(rfq)
+    if rfq_contact_text:
+        line_items.append(
+            QuoteLineItem(
+                sort_order=len(line_items) + 1,
+                product_type="note",
+                part_number="",
+                description=rfq_contact_text,
+                quantity=0,
+                unit_price=Decimal("0.00"),
+                total=Decimal("0.00"),
+                is_note=True,
+            )
+        )
+
+    subtotal = sum((item.total for item in line_items if not item.is_note), Decimal("0"))
 
     ship_to_dict = None
     if rfq.ship_to:
