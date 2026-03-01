@@ -318,10 +318,12 @@ class QuotePDFBuilder:
 
         # Line items
         for item in self.quote.line_items:
+            item_number = "" if item.is_note else item.part_number
+            quantity = "" if item.is_note else str(item.quantity)
             table_data.append([
-                Paragraph(item.part_number, self.styles["normal_small"]),
+                Paragraph(item_number, self.styles["normal_small"]),
                 Paragraph(item.description, self.styles["normal_small"]),
-                Paragraph(str(item.quantity), self.styles["normal_small"]),
+                Paragraph(quantity, self.styles["normal_small"]),
                 Paragraph(format_currency(item.unit_price), self.styles["normal_small"]),
                 Paragraph(format_currency(item.total), self.styles["normal_small"]),
             ])

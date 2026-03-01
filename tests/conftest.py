@@ -1,15 +1,17 @@
-"""Pytest configuration for local source resolution.
+"""Pytest configuration for local source imports.
 
-Ensures tests import code from this worktree's ``src/`` directory first,
-even when the shared virtualenv has an editable install from another path.
+Ensure tests always exercise the current worktree code instead of any globally
+or editable-installed copy from a different checkout.
 """
 
-from pathlib import Path
+from __future__ import annotations
+
 import sys
+from pathlib import Path
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-LOCAL_SRC = PROJECT_ROOT / "src"
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
 
-if str(LOCAL_SRC) not in sys.path:
-    sys.path.insert(0, str(LOCAL_SRC))
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
