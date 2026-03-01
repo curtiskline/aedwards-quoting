@@ -4,10 +4,14 @@ import tempfile
 from decimal import Decimal
 from pathlib import Path
 
-from allenedwards.parser import parse_rfq
+from allenedwards.parser import parse_rfq, parse_rfq_multi
 from allenedwards.pdf_generator import generate_quote_pdf
 from allenedwards.pricing import generate_quote
-from allenedwards.providers.mock import SAMPLE_RFQ_RESPONSE, MockProvider
+from allenedwards.providers.mock import (
+    SAMPLE_RFQ_RESPONSE,
+    SAMPLE_MULTI_QUOTE_RESPONSE,
+    MockProvider,
+)
 
 
 def test_full_rfq_to_quote_flow():
@@ -99,3 +103,76 @@ def test_price_verification():
 
     # Allow 5% tolerance for rounding differences
     assert abs(float(unit_price) - 678.48) / 678.48 < 0.05
+
+
+def test_multi_quote_rfq_to_pdf_flow():
+    """Test the full flow for a multi-quote email generating separate PDFs."""
+    # Create a temp email file
+    email_content = (
+        "From: daniel.cullison@buckeye.com\n"
+        "Subject: Multiple quote requests for 4 project lines\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "\n"
+        "Please quote for the following project lines:\n"
+        "1. XB403CL Line - ship to Huntington, IN\n"
+        "2. HM999A3 Line - ship to Elburn, IL\n"
+        "3. XF001-002XB Line - ship to Griffith, IN\n"
+        "4. ZI165LI-2 Line - ship to Lima, OH\n"
+    )
+    with tempfile.NamedTemporaryFile(suffix=".eml", mode="w", delete=False) as f:
+        f.write(email_content)
+        eml_path = Path(f.name)
+
+    output_dir = Path(tempfile.mkdtemp())
+    pdf_files = []
+
+    try:
+        # Parse with multi-quote mock provider
+        provider = MockProvider(SAMPLE_MULTI_QUOTE_RESPONSE)
+        rfqs = parse_rfq_multi(eml_path, provider)
+
+        # Should detect 4 separate quote requests
+        assert len(rfqs) == 4
+
+        # Generate quotes and PDFs for each
+        for i, rfq in enumerate(rfqs):
+            quote_number = f"126-TEST-{i + 1:02d}"
+            quote = generate_quote(rfq, quote_number)
+
+            # Verify project line is passed through
+            assert quote.project_line == rfq.project_line
+
+            # Verify ship_to is unique for each quote
+            assert quote.ship_to is not None
+            assert quote.ship_to["city"] in ["Huntington", "Elburn", "Griffith", "Lima"]
+
+            # Generate PDF
+            if rfq.project_line:
+                safe_project = rfq.project_line.replace(" ", "-")
+                pdf_path = output_dir / f"quote-{quote_number}-{safe_project}.pdf"
+            else:
+                pdf_path = output_dir / f"quote-{quote_number}.pdf"
+
+            generate_quote_pdf(quote, pdf_path)
+            pdf_files.append(pdf_path)
+
+            # Verify PDF was created
+            assert pdf_path.exists()
+            assert pdf_path.stat().st_size > 1000  # At least 1KB
+
+        # Should have 4 PDFs
+        assert len(pdf_files) == 4
+
+        # Verify totals are calculated correctly for each
+        all_quotes = [generate_quote(rfq, f"126-TEST-{i + 1:02d}") for i, rfq in enumerate(rfqs)]
+        assert all(q.total > 0 for q in all_quotes)
+
+    finally:
+        # Cleanup
+        if eml_path.exists():
+            eml_path.unlink()
+        for pdf in pdf_files:
+            if pdf.exists():
+                pdf.unlink()
+        if output_dir.exists():
+            output_dir.rmdir()

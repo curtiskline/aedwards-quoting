@@ -8,7 +8,7 @@ from pathlib import Path
 
 import click
 
-from .parser import ParsedRFQ, parse_rfq
+from .parser import ParsedRFQ, parse_rfq, parse_rfq_multi
 from .pdf_generator import generate_quote_pdf
 from .pricing import generate_quote
 from .providers.base import LLMProvider
@@ -110,12 +110,63 @@ def parse(eml_file: Path, output: Path | None, pretty: bool):
         sys.exit(1)
 
 
+def _sanitize_filename(name: str) -> str:
+    """Sanitize a string for use in filenames."""
+    # Remove or replace invalid characters
+    invalid_chars = '<>:"/\\|?*'
+    for char in invalid_chars:
+        name = name.replace(char, '')
+    # Replace spaces with hyphens
+    name = name.replace(' ', '-')
+    # Remove any trailing dots or spaces
+    name = name.strip('. ')
+    return name
+
+
+def _generate_pdf_filename(base_path: Path, quote_number: str, project_line: str | None, index: int, total: int) -> Path:
+    """Generate a PDF filename for a quote.
+
+    Args:
+        base_path: Base path for the PDF (can be directory or file)
+        quote_number: The quote number
+        project_line: Project line reference if available
+        index: Index of this quote (0-based)
+        total: Total number of quotes
+
+    Returns:
+        Path for the PDF file
+    """
+    if total == 1:
+        # Single quote - use base path as-is if it's a file, or generate name
+        if base_path.suffix.lower() == '.pdf':
+            return base_path
+        else:
+            return base_path / f"quote-{quote_number}.pdf"
+
+    # Multiple quotes - generate numbered/named files
+    if base_path.suffix.lower() == '.pdf':
+        # User specified a file path - use it as a base
+        base_dir = base_path.parent
+        base_name = base_path.stem
+    else:
+        base_dir = base_path
+        base_name = f"quote-{quote_number}"
+
+    if project_line:
+        # Use project line in filename (sanitized)
+        safe_project = _sanitize_filename(project_line)
+        return base_dir / f"{base_name}-{safe_project}.pdf"
+    else:
+        # Use numeric suffix
+        return base_dir / f"{base_name}-{index + 1}.pdf"
+
+
 @cli.command()
 @click.argument("eml_file", type=click.Path(exists=True, path_type=Path))
 @click.option(
     "--pdf",
     type=click.Path(path_type=Path),
-    help="Output PDF file path",
+    help="Output PDF file path (or directory for multi-quote emails)",
 )
 @click.option(
     "--json",
@@ -132,27 +183,54 @@ def quote(eml_file: Path, pdf: Path | None, json_output: Path | None, quote_numb
     """Generate a quote from an RFQ email.
 
     EML_FILE: Path to the .eml file to process
+
+    For emails containing multiple quote requests (different ship-to addresses),
+    separate PDFs will be generated for each quote.
     """
     try:
-        # Parse the RFQ
+        # Parse the RFQ - get all quote requests
         provider = get_provider()
-        rfq = parse_rfq(eml_file, provider)
+        rfqs = parse_rfq_multi(eml_file, provider)
 
-        # Generate quote number if not provided
-        if not quote_number:
-            quote_number = generate_quote_number()
+        if not rfqs:
+            click.echo("No quote requests found in email.", err=True)
+            sys.exit(1)
 
-        # Generate the quote
-        quote_data = generate_quote(rfq, quote_number)
+        # Notify user about multiple quotes
+        if len(rfqs) > 1:
+            click.echo(f"Detected {len(rfqs)} separate quote requests in email.")
 
-        click.echo(f"Quote {quote_number} generated:")
-        click.echo(f"  Customer: {quote_data.customer_name}")
-        if quote_data.po_number:
-            click.echo(f"  PO #: {quote_data.po_number}")
-        click.echo(f"  Items: {len(quote_data.line_items)}")
-        click.echo(f"  Total: ${quote_data.total:,.2f}")
+        # Generate base quote number if not provided
+        base_quote_number = quote_number or generate_quote_number()
 
-        # Output JSON if requested
+        all_quotes = []
+        for i, rfq in enumerate(rfqs):
+            # Generate unique quote number for each quote
+            if len(rfqs) > 1:
+                qn = f"{base_quote_number}-{i + 1:02d}"
+            else:
+                qn = base_quote_number
+
+            # Generate the quote
+            quote_data = generate_quote(rfq, qn)
+            all_quotes.append(quote_data)
+
+            # Display quote info
+            click.echo(f"\nQuote {qn}:")
+            if rfq.project_line:
+                click.echo(f"  Project: {rfq.project_line}")
+            click.echo(f"  Customer: {quote_data.customer_name}")
+            if quote_data.ship_to:
+                ship_city = quote_data.ship_to.get('city', '')
+                ship_state = quote_data.ship_to.get('state', '')
+                if ship_city or ship_state:
+                    click.echo(f"  Ship To: {ship_city}, {ship_state}")
+            if quote_data.po_number:
+                click.echo(f"  PO #: {quote_data.po_number}")
+            click.echo(f"  Items: {len(quote_data.line_items)}")
+            click.echo(f"  Total: ${quote_data.total:,.2f}")
+
+        # Output JSON if requested (includes all quotes)
         if json_output:
             from decimal import Decimal
 
@@ -161,30 +239,70 @@ def quote(eml_file: Path, pdf: Path | None, json_output: Path | None, quote_numb
                     return float(obj)
                 raise TypeError
 
-            json_data = {
-                "quote_number": quote_data.quote_number,
-                "customer_name": quote_data.customer_name,
-                "contact_name": quote_data.contact_name,
-                "contact_email": quote_data.contact_email,
-                "contact_phone": quote_data.contact_phone,
-                "ship_to": quote_data.ship_to,
-                "po_number": quote_data.po_number,
-                "line_items": [asdict(item) for item in quote_data.line_items],
-                "subtotal": float(quote_data.subtotal),
-                "shipping_amount": float(quote_data.shipping_amount)
-                if quote_data.shipping_amount
-                else None,
-                "tax_amount": float(quote_data.tax_amount),
-                "total": float(quote_data.total),
-                "notes": quote_data.notes,
-            }
+            if len(all_quotes) == 1:
+                # Single quote - output as before for compatibility
+                quote_data = all_quotes[0]
+                json_data = {
+                    "quote_number": quote_data.quote_number,
+                    "customer_name": quote_data.customer_name,
+                    "contact_name": quote_data.contact_name,
+                    "contact_email": quote_data.contact_email,
+                    "contact_phone": quote_data.contact_phone,
+                    "ship_to": quote_data.ship_to,
+                    "po_number": quote_data.po_number,
+                    "project_line": quote_data.project_line,
+                    "line_items": [asdict(item) for item in quote_data.line_items],
+                    "subtotal": float(quote_data.subtotal),
+                    "shipping_amount": float(quote_data.shipping_amount)
+                    if quote_data.shipping_amount
+                    else None,
+                    "tax_amount": float(quote_data.tax_amount),
+                    "total": float(quote_data.total),
+                    "notes": quote_data.notes,
+                }
+            else:
+                # Multiple quotes - output as array
+                json_data = {
+                    "quote_count": len(all_quotes),
+                    "quotes": [
+                        {
+                            "quote_number": q.quote_number,
+                            "customer_name": q.customer_name,
+                            "contact_name": q.contact_name,
+                            "contact_email": q.contact_email,
+                            "contact_phone": q.contact_phone,
+                            "ship_to": q.ship_to,
+                            "po_number": q.po_number,
+                            "project_line": q.project_line,
+                            "line_items": [asdict(item) for item in q.line_items],
+                            "subtotal": float(q.subtotal),
+                            "shipping_amount": float(q.shipping_amount)
+                            if q.shipping_amount
+                            else None,
+                            "tax_amount": float(q.tax_amount),
+                            "total": float(q.total),
+                            "notes": q.notes,
+                        }
+                        for q in all_quotes
+                    ],
+                }
             json_output.write_text(json.dumps(json_data, indent=2, default=decimal_default))
-            click.echo(f"Wrote quote JSON to {json_output}")
+            click.echo(f"\nWrote quote JSON to {json_output}")
 
-        # Generate PDF if requested
+        # Generate PDF(s) if requested
         if pdf:
-            generate_quote_pdf(quote_data, pdf)
-            click.echo(f"Wrote quote PDF to {pdf}")
+            # Ensure parent directory exists
+            if pdf.suffix.lower() == '.pdf':
+                pdf.parent.mkdir(parents=True, exist_ok=True)
+            else:
+                pdf.mkdir(parents=True, exist_ok=True)
+
+            for i, quote_data in enumerate(all_quotes):
+                pdf_path = _generate_pdf_filename(
+                    pdf, base_quote_number, quote_data.project_line, i, len(all_quotes)
+                )
+                generate_quote_pdf(quote_data, pdf_path)
+                click.echo(f"Wrote quote PDF to {pdf_path}")
 
     except Exception as e:
         click.echo(f"Error generating quote: {e}", err=True)
@@ -198,6 +316,9 @@ def batch(directory: Path, output_dir: Path | None):
     """Process all .eml files in a directory.
 
     DIRECTORY: Path to directory containing .eml files
+
+    For emails containing multiple quote requests, separate PDFs will be
+    generated for each quote.
     """
     if output_dir is None:
         output_dir = directory / "output"
@@ -208,16 +329,22 @@ def batch(directory: Path, output_dir: Path | None):
     click.echo(f"Found {len(eml_files)} .eml files")
 
     provider = get_provider()
+    total_quotes = 0
 
     for eml_file in eml_files:
         click.echo(f"\nProcessing: {eml_file.name}")
         try:
-            rfq = parse_rfq(eml_file, provider)
-            quote_number = generate_quote_number()
-            quote_data = generate_quote(rfq, quote_number)
+            rfqs = parse_rfq_multi(eml_file, provider)
 
-            # Save JSON
-            json_path = output_dir / f"{eml_file.stem}.json"
+            if not rfqs:
+                click.echo("  No quote requests found")
+                continue
+
+            if len(rfqs) > 1:
+                click.echo(f"  Found {len(rfqs)} quote requests")
+
+            base_quote_number = generate_quote_number()
+
             from decimal import Decimal
 
             def decimal_default(obj):
@@ -225,23 +352,50 @@ def batch(directory: Path, output_dir: Path | None):
                     return float(obj)
                 raise TypeError
 
-            json_data = {
-                "quote_number": quote_data.quote_number,
-                "customer_name": quote_data.customer_name,
-                "po_number": quote_data.po_number,
-                "line_items": [asdict(item) for item in quote_data.line_items],
-                "total": float(quote_data.total),
-            }
-            json_path.write_text(json.dumps(json_data, indent=2, default=decimal_default))
+            for i, rfq in enumerate(rfqs):
+                # Generate unique quote number
+                if len(rfqs) > 1:
+                    quote_number = f"{base_quote_number}-{i + 1:02d}"
+                else:
+                    quote_number = base_quote_number
 
-            # Save PDF
-            pdf_path = output_dir / f"{eml_file.stem}.pdf"
-            generate_quote_pdf(quote_data, pdf_path)
+                quote_data = generate_quote(rfq, quote_number)
 
-            click.echo(f"  -> {quote_number}: ${quote_data.total:,.2f}")
+                # Generate filename based on project line or index
+                if rfq.project_line:
+                    safe_project = _sanitize_filename(rfq.project_line)
+                    base_name = f"{eml_file.stem}-{safe_project}"
+                elif len(rfqs) > 1:
+                    base_name = f"{eml_file.stem}-{i + 1}"
+                else:
+                    base_name = eml_file.stem
+
+                # Save JSON
+                json_path = output_dir / f"{base_name}.json"
+                json_data = {
+                    "quote_number": quote_data.quote_number,
+                    "customer_name": quote_data.customer_name,
+                    "po_number": quote_data.po_number,
+                    "project_line": quote_data.project_line,
+                    "ship_to": quote_data.ship_to,
+                    "line_items": [asdict(item) for item in quote_data.line_items],
+                    "total": float(quote_data.total),
+                }
+                json_path.write_text(json.dumps(json_data, indent=2, default=decimal_default))
+
+                # Save PDF
+                pdf_path = output_dir / f"{base_name}.pdf"
+                generate_quote_pdf(quote_data, pdf_path)
+
+                # Show quote info
+                project_info = f" ({rfq.project_line})" if rfq.project_line else ""
+                click.echo(f"  -> {quote_number}{project_info}: ${quote_data.total:,.2f}")
+                total_quotes += 1
 
         except Exception as e:
             click.echo(f"  Error: {e}", err=True)
+
+    click.echo(f"\nGenerated {total_quotes} quotes from {len(eml_files)} emails")
 
 
 def main():

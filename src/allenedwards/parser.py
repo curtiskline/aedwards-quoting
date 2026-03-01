@@ -37,28 +37,34 @@ Return a JSON object with this structure:
     "contact_name": "Person name from signature",
     "contact_email": "Email address of requester",
     "contact_phone": "Phone if available",
-    "ship_to": {
-        "company": "Shipping destination company if different",
-        "attention": "Person name if specified",
-        "street": "Street address",
-        "city": "City",
-        "state": "State",
-        "postal_code": "ZIP",
-        "country": "Country if specified"
-    },
-    "po_number": "Customer purchase order number if provided",
-    "items": [
+    "quotes": [
         {
-            "product_type": "sleeve|girth_weld|compression|bag|omegawrap|accessory|service",
-            "quantity": 30,
-            "diameter": "6.625",
-            "wall_thickness": "0.25",
-            "grade": "50",
-            "length_ft": 10,
-            "milling": false,
-            "painting": false,
-            "description": "Raw description from email",
-            "notes": "Any special notes"
+            "project_line": "Project reference like 'XB403CL Line' if mentioned, null otherwise",
+            "ship_to": {
+                "company": "Shipping destination company if different",
+                "attention": "Person name if specified",
+                "street": "Street address",
+                "city": "City",
+                "state": "State",
+                "postal_code": "ZIP",
+                "country": "Country if specified"
+            },
+            "po_number": "Customer purchase order number for this quote if provided",
+            "items": [
+                {
+                    "product_type": "sleeve|girth_weld|compression|bag|omegawrap|accessory|service",
+                    "quantity": 30,
+                    "diameter": "6.625",
+                    "wall_thickness": "0.25",
+                    "grade": "50",
+                    "length_ft": 10,
+                    "milling": false,
+                    "painting": false,
+                    "description": "Raw description from email",
+                    "notes": "Any special notes"
+                }
+            ],
+            "notes": "Notes specific to this quote request"
         }
     ],
     "urgency": "normal|rush",
@@ -76,7 +82,15 @@ For diameter, convert common sizes:
 For grade, extract just the number: "A572 GR50" -> "50", "Gr.65" -> "65"
 
 The confidence score (0-1) should reflect how certain you are about the parsing.
-Lower confidence if specifications are ambiguous or missing critical details."""
+Lower confidence if specifications are ambiguous or missing critical details.
+
+IMPORTANT: Some emails contain MULTIPLE separate quote requests, each with:
+- A different project line reference (e.g., "XB403CL Line", "HM999A3 Line")
+- A different ship-to address
+- Different items
+
+If you detect multiple quote requests, return them as an array of quote objects in the "quotes" field.
+If there's only one quote request, still return it in the "quotes" array (with one element)."""
 
 
 @dataclass
@@ -122,6 +136,9 @@ class ParsedRFQ:
     urgency: str = "normal"
     notes: str | None = None
     confidence: float = 0.0
+
+    # Project line reference (e.g., "XB403CL Line") for multi-quote emails
+    project_line: str | None = None
 
     # Original email metadata
     message_id: str | None = None
@@ -189,6 +206,41 @@ def _strip_html(html: str) -> str:
     return html.strip()
 
 
+def _parse_items(items_data: list) -> list[ParsedItem]:
+    """Parse item data from LLM response into ParsedItem objects."""
+    items = []
+    for item_data in items_data:
+        item = ParsedItem(
+            product_type=item_data.get("product_type", "sleeve"),
+            quantity=int(item_data.get("quantity", 1)),
+            description=item_data.get("description", ""),
+            diameter=_parse_float(item_data.get("diameter")),
+            wall_thickness=_parse_float(item_data.get("wall_thickness")),
+            grade=_parse_int(item_data.get("grade")),
+            length_ft=_parse_float(item_data.get("length_ft")),
+            milling=bool(item_data.get("milling", False)),
+            painting=bool(item_data.get("painting", False)),
+            notes=item_data.get("notes"),
+        )
+        items.append(item)
+    return items
+
+
+def _parse_ship_to(ship_to_data: dict | None) -> ShipTo | None:
+    """Parse ship_to data from LLM response into ShipTo object."""
+    if not ship_to_data:
+        return None
+    return ShipTo(
+        company=ship_to_data.get("company"),
+        attention=ship_to_data.get("attention"),
+        street=ship_to_data.get("street"),
+        city=ship_to_data.get("city"),
+        state=ship_to_data.get("state"),
+        postal_code=ship_to_data.get("postal_code"),
+        country=ship_to_data.get("country", "United States"),
+    )
+
+
 def parse_rfq(eml_path: Path, provider: LLMProvider) -> ParsedRFQ:
     """Parse an RFQ email using an LLM provider.
 
@@ -197,7 +249,33 @@ def parse_rfq(eml_path: Path, provider: LLMProvider) -> ParsedRFQ:
         provider: LLM provider to use for parsing
 
     Returns:
-        ParsedRFQ with extracted data
+        ParsedRFQ with extracted data (first quote if multiple detected)
+
+    Note:
+        For emails with multiple quote requests, use parse_rfq_multi() instead.
+    """
+    rfqs = parse_rfq_multi(eml_path, provider)
+    return rfqs[0] if rfqs else ParsedRFQ(
+        customer_name=None,
+        contact_name=None,
+        contact_email=None,
+        contact_phone=None,
+        ship_to=None,
+        po_number=None,
+        items=[],
+    )
+
+
+def parse_rfq_multi(eml_path: Path, provider: LLMProvider) -> list[ParsedRFQ]:
+    """Parse an RFQ email that may contain multiple quote requests.
+
+    Args:
+        eml_path: Path to the .eml file
+        provider: LLM provider to use for parsing
+
+    Returns:
+        List of ParsedRFQ objects, one for each quote request in the email.
+        For single-quote emails, returns a list with one element.
     """
     msg, body = extract_email_text(eml_path)
 
@@ -213,57 +291,82 @@ Subject: {subject}
 Email Body:
 {body}
 
-Return the parsed data as JSON."""
+Return the parsed data as JSON. If the email contains multiple separate quote requests
+(with different ship-to addresses or project lines), include each as a separate object
+in the "quotes" array."""
 
     # Call LLM
     result = provider.complete_json(prompt, system=PARSE_SYSTEM_PROMPT)
-    po_number = result.get("po_number") or _extract_po_number(body)
 
-    # Convert to dataclasses
-    ship_to = None
-    if result.get("ship_to"):
-        st = result["ship_to"]
-        ship_to = ShipTo(
-            company=st.get("company"),
-            attention=st.get("attention"),
-            street=st.get("street"),
-            city=st.get("city"),
-            state=st.get("state"),
-            postal_code=st.get("postal_code"),
-            country=st.get("country", "United States"),
+    # Extract common fields
+    customer_name = result.get("customer_name")
+    contact_name = result.get("contact_name")
+    contact_email = result.get("contact_email")
+    contact_phone = result.get("contact_phone")
+    urgency = result.get("urgency", "normal")
+    general_notes = result.get("notes")
+    confidence = float(result.get("confidence", 0.0))
+    message_id = msg.get("Message-ID")
+
+    rfqs = []
+
+    # Check for new multi-quote format (quotes array)
+    if "quotes" in result and result["quotes"]:
+        for quote_data in result["quotes"]:
+            ship_to = _parse_ship_to(quote_data.get("ship_to"))
+            items = _parse_items(quote_data.get("items", []))
+            po_number = quote_data.get("po_number") or _extract_po_number(body)
+            quote_notes = quote_data.get("notes")
+            project_line = quote_data.get("project_line")
+
+            # Combine general notes with quote-specific notes
+            combined_notes = None
+            if general_notes and quote_notes:
+                combined_notes = f"{general_notes}\n{quote_notes}"
+            else:
+                combined_notes = general_notes or quote_notes
+
+            rfq = ParsedRFQ(
+                customer_name=customer_name,
+                contact_name=contact_name,
+                contact_email=contact_email,
+                contact_phone=contact_phone,
+                ship_to=ship_to,
+                po_number=po_number,
+                items=items,
+                urgency=urgency,
+                notes=combined_notes,
+                confidence=confidence,
+                project_line=project_line,
+                message_id=message_id,
+                subject=subject,
+                raw_body=body,
+            )
+            rfqs.append(rfq)
+    else:
+        # Legacy format (single ship_to and items at top level)
+        ship_to = _parse_ship_to(result.get("ship_to"))
+        items = _parse_items(result.get("items", []))
+        po_number = result.get("po_number") or _extract_po_number(body)
+
+        rfq = ParsedRFQ(
+            customer_name=customer_name,
+            contact_name=contact_name,
+            contact_email=contact_email,
+            contact_phone=contact_phone,
+            ship_to=ship_to,
+            po_number=po_number,
+            items=items,
+            urgency=urgency,
+            notes=general_notes,
+            confidence=confidence,
+            message_id=message_id,
+            subject=subject,
+            raw_body=body,
         )
+        rfqs.append(rfq)
 
-    items = []
-    for item_data in result.get("items", []):
-        item = ParsedItem(
-            product_type=item_data.get("product_type", "sleeve"),
-            quantity=int(item_data.get("quantity", 1)),
-            description=item_data.get("description", ""),
-            diameter=_parse_float(item_data.get("diameter")),
-            wall_thickness=_parse_float(item_data.get("wall_thickness")),
-            grade=_parse_int(item_data.get("grade")),
-            length_ft=_parse_float(item_data.get("length_ft")),
-            milling=bool(item_data.get("milling", False)),
-            painting=bool(item_data.get("painting", False)),
-            notes=item_data.get("notes"),
-        )
-        items.append(item)
-
-    return ParsedRFQ(
-        customer_name=result.get("customer_name"),
-        contact_name=result.get("contact_name"),
-        contact_email=result.get("contact_email"),
-        contact_phone=result.get("contact_phone"),
-        ship_to=ship_to,
-        po_number=po_number,
-        items=items,
-        urgency=result.get("urgency", "normal"),
-        notes=result.get("notes"),
-        confidence=float(result.get("confidence", 0.0)),
-        message_id=msg.get("Message-ID"),
-        subject=subject,
-        raw_body=body,
-    )
+    return rfqs
 
 
 def _extract_po_number(body: str) -> str | None:

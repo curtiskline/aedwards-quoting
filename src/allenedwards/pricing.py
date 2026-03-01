@@ -97,6 +97,9 @@ class Quote:
     notes: str | None
     po_number: str | None = None
 
+    # Project line reference (e.g., "XB403CL Line") for multi-quote emails
+    project_line: str | None = None
+
     # Metadata
     sales_rep: str = "Jamee Hamilton"
     payment_terms: str = "Net 30"
@@ -333,6 +336,7 @@ def generate_quote(rfq: ParsedRFQ, quote_number: str) -> Quote:
         contact_phone=rfq.contact_phone,
         ship_to=ship_to_dict,
         po_number=rfq.po_number,
+        project_line=rfq.project_line,
         line_items=line_items,
         subtotal=subtotal,
         shipping_amount=None,

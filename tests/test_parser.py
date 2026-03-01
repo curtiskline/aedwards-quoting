@@ -3,8 +3,8 @@
 import tempfile
 from pathlib import Path
 
-from allenedwards.parser import extract_email_text, parse_rfq
-from allenedwards.providers.mock import MockProvider
+from allenedwards.parser import extract_email_text, parse_rfq, parse_rfq_multi
+from allenedwards.providers.mock import MockProvider, SAMPLE_MULTI_QUOTE_RESPONSE
 
 
 def test_extract_email_text():
@@ -91,6 +91,135 @@ def test_parse_rfq_extracts_po_number_from_body():
         )
         rfq = parse_rfq(eml_path, provider)
         assert rfq.po_number == "ABC-12345"
+    finally:
+        if eml_path.exists():
+            eml_path.unlink()
+
+
+def test_parse_rfq_multi_returns_multiple_quotes():
+    """Test that parse_rfq_multi returns multiple ParsedRFQ objects for multi-quote emails."""
+    email_content = (
+        "From: buyer@buckeye.com\n"
+        "Subject: Multiple quote requests\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "\n"
+        "Please quote for 4 separate project lines."
+    )
+    with tempfile.NamedTemporaryFile(suffix=".eml", mode="w", delete=False) as f:
+        f.write(email_content)
+        eml_path = Path(f.name)
+
+    try:
+        provider = MockProvider(SAMPLE_MULTI_QUOTE_RESPONSE)
+        rfqs = parse_rfq_multi(eml_path, provider)
+
+        # Should return 4 separate quote requests
+        assert len(rfqs) == 4
+
+        # Check first quote
+        assert rfqs[0].customer_name == "Buckeye Partners"
+        assert rfqs[0].project_line == "XB403CL Line"
+        assert rfqs[0].ship_to is not None
+        assert rfqs[0].ship_to.city == "Huntington"
+        assert rfqs[0].ship_to.state == "IN"
+        assert len(rfqs[0].items) == 1
+        assert rfqs[0].items[0].diameter == 8.625
+
+        # Check second quote
+        assert rfqs[1].project_line == "HM999A3 Line"
+        assert rfqs[1].ship_to.city == "Elburn"
+        assert rfqs[1].ship_to.state == "IL"
+        assert rfqs[1].items[0].milling is True
+
+        # Check third quote
+        assert rfqs[2].project_line == "XF001-002XB Line"
+        assert rfqs[2].ship_to.city == "Griffith"
+        assert rfqs[2].items[0].painting is True
+
+        # Check fourth quote
+        assert rfqs[3].project_line == "ZI165LI-2 Line"
+        assert rfqs[3].ship_to.city == "Lima"
+        assert rfqs[3].ship_to.state == "OH"
+
+    finally:
+        if eml_path.exists():
+            eml_path.unlink()
+
+
+def test_parse_rfq_multi_handles_single_quote():
+    """Test that parse_rfq_multi returns a list with one element for single-quote emails."""
+    email_content = (
+        "From: buyer@example.com\n"
+        "Subject: Single quote request\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "\n"
+        "Please quote 10 sleeves."
+    )
+    with tempfile.NamedTemporaryFile(suffix=".eml", mode="w", delete=False) as f:
+        f.write(email_content)
+        eml_path = Path(f.name)
+
+    try:
+        # Use legacy format (no quotes array)
+        provider = MockProvider(
+            {
+                "customer_name": "ACME Corp",
+                "contact_name": "Buyer",
+                "contact_email": "buyer@example.com",
+                "ship_to": {
+                    "company": "ACME Warehouse",
+                    "city": "Dallas",
+                    "state": "TX",
+                },
+                "items": [
+                    {
+                        "product_type": "sleeve",
+                        "quantity": 10,
+                        "diameter": "6.625",
+                        "wall_thickness": "0.25",
+                        "grade": "50",
+                        "length_ft": 10,
+                    }
+                ],
+                "urgency": "normal",
+                "confidence": 0.95,
+            }
+        )
+        rfqs = parse_rfq_multi(eml_path, provider)
+
+        # Should return a list with one element
+        assert len(rfqs) == 1
+        assert rfqs[0].customer_name == "ACME Corp"
+        assert rfqs[0].ship_to.city == "Dallas"
+        assert rfqs[0].project_line is None  # No project line for single quotes
+
+    finally:
+        if eml_path.exists():
+            eml_path.unlink()
+
+
+def test_parse_rfq_returns_first_quote_from_multi():
+    """Test that parse_rfq (single) returns the first quote when given a multi-quote email."""
+    email_content = (
+        "From: buyer@buckeye.com\n"
+        "Subject: Multiple quote requests\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "\n"
+        "Please quote for 4 separate project lines."
+    )
+    with tempfile.NamedTemporaryFile(suffix=".eml", mode="w", delete=False) as f:
+        f.write(email_content)
+        eml_path = Path(f.name)
+
+    try:
+        provider = MockProvider(SAMPLE_MULTI_QUOTE_RESPONSE)
+        rfq = parse_rfq(eml_path, provider)  # Use single-quote function
+
+        # Should return the first quote
+        assert rfq.customer_name == "Buckeye Partners"
+        assert rfq.project_line == "XB403CL Line"
+        assert rfq.ship_to.city == "Huntington"
+
     finally:
         if eml_path.exists():
             eml_path.unlink()

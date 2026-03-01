@@ -180,8 +180,11 @@ class QuotePDFBuilder:
         right_content = [
             [Paragraph("Quote", self.styles["title"])],
             [Paragraph(self.quote.quote_number, self.styles["quote_number"])],
-            [Paragraph(format_date(self.quote_date), self.styles["normal"])],
         ]
+        # Add project line reference if available (for multi-quote emails)
+        if self.quote.project_line:
+            right_content.append([Paragraph(f"<i>{self.quote.project_line}</i>", self.styles["normal"])])
+        right_content.append([Paragraph(format_date(self.quote_date), self.styles["normal"])])
         right_table = Table(right_content, colWidths=[3 * inch])
         right_table.setStyle(TableStyle([
             ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
