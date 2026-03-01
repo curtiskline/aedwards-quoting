@@ -223,3 +223,44 @@ def test_parse_rfq_returns_first_quote_from_multi():
     finally:
         if eml_path.exists():
             eml_path.unlink()
+
+def test_parse_rfq_filters_type_leak_po_number():
+    """LLM returning 'int' or other type names should be filtered out."""
+    email_content = (
+        "From: buyer@example.com\n"
+        "Subject: Quote request\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "\n"
+        "Please quote 2 sleeves."
+    )
+    with tempfile.NamedTemporaryFile(suffix=".eml", mode="w", delete=False) as f:
+        f.write(email_content)
+        eml_path = Path(f.name)
+
+    try:
+        # Mock response where LLM returns "int" as the po_number (type leak)
+        provider = MockProvider(
+            {
+                "customer_name": "Test Co",
+                "po_number": "int",  # Type name leak
+                "items": [
+                    {
+                        "product_type": "sleeve",
+                        "quantity": 2,
+                        "diameter": "12.75",
+                        "wall_thickness": "0.375",
+                        "grade": "50",
+                        "length_ft": 10,
+                    }
+                ],
+                "confidence": 1.0,
+            }
+        )
+        rfq = parse_rfq(eml_path, provider)
+
+        # po_number should be None, not "int"
+        assert rfq.po_number is None
+
+    finally:
+        if eml_path.exists():
+            eml_path.unlink()

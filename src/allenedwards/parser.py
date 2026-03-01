@@ -317,7 +317,9 @@ in the "quotes" array."""
         for quote_data in result["quotes"]:
             ship_to = _parse_ship_to(quote_data.get("ship_to"))
             items = _parse_items(quote_data.get("items", []))
-            po_number = quote_data.get("po_number") or _extract_po_number(body)
+            raw_po = quote_data.get("po_number")
+            po_number = None if _is_type_leak(raw_po) else raw_po
+            po_number = po_number or _extract_po_number(body)
             quote_notes = quote_data.get("notes")
             project_line = quote_data.get("project_line")
 
@@ -349,7 +351,9 @@ in the "quotes" array."""
         # Legacy format (single ship_to and items at top level)
         ship_to = _parse_ship_to(result.get("ship_to"))
         items = _parse_items(result.get("items", []))
-        po_number = result.get("po_number") or _extract_po_number(body)
+        raw_po = result.get("po_number")
+        po_number = None if _is_type_leak(raw_po) else raw_po
+        po_number = po_number or _extract_po_number(body)
 
         rfq = ParsedRFQ(
             customer_name=customer_name,
@@ -369,6 +373,15 @@ in the "quotes" array."""
         rfqs.append(rfq)
 
     return rfqs
+
+
+def _is_type_leak(value: str | None) -> bool:
+    """Check if a value looks like a type name leak from LLM schema confusion."""
+    if value is None:
+        return False
+    # Common type names that LLMs might return instead of actual values
+    type_leaks = {"int", "str", "string", "float", "bool", "boolean", "null", "none"}
+    return value.lower().strip() in type_leaks
 
 
 def _extract_po_number(body: str) -> str | None:
