@@ -225,7 +225,7 @@ def _parse_items(items_data: list) -> list[ParsedItem]:
     for item_data in items_data:
         item = ParsedItem(
             product_type=item_data.get("product_type", "sleeve"),
-            quantity=int(item_data.get("quantity", 1)),
+            quantity=int(item_data.get("quantity") or 1),
             description=item_data.get("description", ""),
             diameter=_parse_float(item_data.get("diameter")),
             wall_thickness=_parse_float(item_data.get("wall_thickness")),

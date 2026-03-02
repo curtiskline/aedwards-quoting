@@ -31,17 +31,17 @@ def _resolve_default_logo_path() -> Path:
     """Resolve bundled logo path for source and frozen runtimes."""
     if getattr(sys, "frozen", False):
         bundle_root = Path(getattr(sys, "_MEIPASS", Path.cwd()))
-        bundled_logo = bundle_root / "allenedwards" / "assets" / "logo.jpg"
+        bundled_logo = bundle_root / "allenedwards" / "assets" / "logo.png"
         if bundled_logo.exists():
             return bundled_logo
-        return bundle_root / "assets" / "logo.jpg"
+        return bundle_root / "assets" / "logo.png"
 
-    package_logo = Path(__file__).parent / "assets" / "logo.jpg"
+    package_logo = Path(__file__).parent / "assets" / "logo.png"
     if package_logo.exists():
         return package_logo
 
     # Backward-compatible fallback for old source layouts.
-    return Path(__file__).parent.parent.parent.parent.parent / "assets" / "logo.jpg"
+    return Path(__file__).parent.parent.parent.parent.parent / "assets" / "logo.png"
 
 
 DEFAULT_LOGO_PATH = _resolve_default_logo_path()
