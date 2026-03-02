@@ -43,12 +43,12 @@ Return a JSON object with this structure:
         {
             "project_line": "Project reference like 'XB403CL Line' if mentioned, null otherwise",
             "ship_to": {
-                "company": "Shipping destination company if different",
+                "company": "Shipping destination company (use contact's company if not explicitly different)",
                 "attention": "Person name if specified",
-                "street": "Street address",
-                "city": "City",
-                "state": "State",
-                "postal_code": "ZIP",
+                "street": "Street address if available",
+                "city": "City (use contact's city from signature if no explicit ship-to)",
+                "state": "State (use contact's state from signature if no explicit ship-to)",
+                "postal_code": "ZIP if available",
                 "country": "Country if specified"
             },
             "po_number": "Customer purchase order number for this quote if explicitly provided, otherwise null",
@@ -93,6 +93,12 @@ IMPORTANT: Some emails contain MULTIPLE separate quote requests, each with:
 
 If you detect multiple quote requests, return them as an array of quote objects in the "quotes" field.
 If there's only one quote request, still return it in the "quotes" array (with one element).
+
+SHIP-TO ADDRESS RULES:
+- If an explicit ship-to address is provided (e.g., "Ship to:", "Deliver to:"), use that address.
+- If no explicit ship-to is provided, use the contact's company name and location from their signature.
+- Always try to populate at least company, city, and state for ship_to from available information.
+- Only return ship_to as null if absolutely no location information can be determined.
 
 PO number extraction rules:
 - Only return po_number when the email explicitly provides a PO number value.

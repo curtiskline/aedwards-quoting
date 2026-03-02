@@ -297,3 +297,60 @@ def test_parse_rfq_rejects_name_fragment_po_number():
     finally:
         if eml_path.exists():
             eml_path.unlink()
+
+
+def test_parse_rfq_uses_contact_info_for_ship_to_fallback():
+    """When no explicit ship-to is provided, LLM should use contact's company/location."""
+    email_content = (
+        "From: Veronica Pisani <veronica.pisani@bp.com>\n"
+        "Subject: BP Pipeline 20\" Sleeve Order\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "\n"
+        "Please quote sleeves.\n"
+        "\n"
+        "Veronica Pisani\n"
+        "BP Terminals & Pipelines\n"
+        "Chicago, IL\n"
+    )
+    with tempfile.NamedTemporaryFile(suffix=".eml", mode="w", delete=False) as f:
+        f.write(email_content)
+        eml_path = Path(f.name)
+
+    try:
+        # Simulate LLM using contact info as ship-to fallback
+        provider = MockProvider(
+            {
+                "customer_name": "BP",
+                "contact_name": "Veronica Pisani",
+                "contact_email": "veronica.pisani@bp.com",
+                "quotes": [
+                    {
+                        "ship_to": {
+                            "company": "BP Terminals & Pipelines",
+                            "city": "Chicago",
+                            "state": "IL",
+                        },
+                        "items": [
+                            {
+                                "product_type": "sleeve",
+                                "quantity": 10,
+                                "diameter": "20",
+                                "wall_thickness": "0.375",
+                                "grade": "50",
+                                "length_ft": 10,
+                            }
+                        ],
+                    }
+                ],
+                "confidence": 0.9,
+            }
+        )
+        rfq = parse_rfq(eml_path, provider)
+        # Verify ship_to was populated from contact info
+        assert rfq.ship_to is not None
+        assert rfq.ship_to.company == "BP Terminals & Pipelines"
+        assert rfq.ship_to.city == "Chicago"
+        assert rfq.ship_to.state == "IL"
+    finally:
+        if eml_path.exists():
+            eml_path.unlink()
