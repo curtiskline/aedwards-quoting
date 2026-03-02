@@ -51,7 +51,7 @@ Return a JSON object with this structure:
                 "postal_code": "ZIP",
                 "country": "Country if specified"
             },
-            "po_number": "Customer purchase order number for this quote if provided",
+            "po_number": "Customer purchase order number for this quote if explicitly provided, otherwise null",
             "items": [
                 {
                     "product_type": "sleeve|oversleeve|girth_weld|compression|bag|omegawrap|accessory|service",
@@ -92,7 +92,12 @@ IMPORTANT: Some emails contain MULTIPLE separate quote requests, each with:
 - Different items
 
 If you detect multiple quote requests, return them as an array of quote objects in the "quotes" field.
-If there's only one quote request, still return it in the "quotes" array (with one element)."""
+If there's only one quote request, still return it in the "quotes" array (with one element).
+
+PO number extraction rules:
+- Only return po_number when the email explicitly provides a PO number value.
+- If no explicit PO number is present, return null for po_number.
+- Never infer po_number from contact names, company names, signatures, or random text fragments."""
 
 
 @dataclass
@@ -318,8 +323,7 @@ in the "quotes" array."""
             ship_to = _parse_ship_to(quote_data.get("ship_to"))
             items = _parse_items(quote_data.get("items", []))
             raw_po = quote_data.get("po_number")
-            po_number = None if _is_type_leak(raw_po) else raw_po
-            po_number = po_number or _extract_po_number(body)
+            po_number = _resolve_po_number(raw_po, body)
             quote_notes = quote_data.get("notes")
             project_line = quote_data.get("project_line")
 
@@ -352,8 +356,7 @@ in the "quotes" array."""
         ship_to = _parse_ship_to(result.get("ship_to"))
         items = _parse_items(result.get("items", []))
         raw_po = result.get("po_number")
-        po_number = None if _is_type_leak(raw_po) else raw_po
-        po_number = po_number or _extract_po_number(body)
+        po_number = _resolve_po_number(raw_po, body)
 
         rfq = ParsedRFQ(
             customer_name=customer_name,
@@ -395,6 +398,34 @@ def _extract_po_number(body: str) -> str | None:
         if match:
             return match.group(1).rstrip(".,;")
     return None
+
+
+def _normalize_po_candidate(value: Any) -> str | None:
+    """Normalize and validate a PO candidate value."""
+    if value is None:
+        return None
+
+    po_number = str(value).strip().rstrip(".,;")
+    if not po_number or _is_type_leak(po_number):
+        return None
+
+    # Reject values that look like signature/name fragments.
+    if not re.search(r"\d", po_number):
+        return None
+
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9\-/_.]*", po_number):
+        return None
+
+    return po_number
+
+
+def _resolve_po_number(raw_po: Any, body: str) -> str | None:
+    """Resolve PO number from LLM output with safe fallback extraction."""
+    po_from_llm = _normalize_po_candidate(raw_po)
+    if po_from_llm:
+        return po_from_llm
+
+    return _normalize_po_candidate(_extract_po_number(body))
 
 
 def _parse_float(value: Any) -> float | None:

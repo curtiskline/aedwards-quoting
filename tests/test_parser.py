@@ -264,3 +264,36 @@ def test_parse_rfq_filters_type_leak_po_number():
     finally:
         if eml_path.exists():
             eml_path.unlink()
+
+
+def test_parse_rfq_rejects_name_fragment_po_number():
+    """LLM-provided PO values that look like name fragments should be dropped."""
+    email_content = (
+        "From: Bonnie Portner <bonniep@mkspvf.com>\n"
+        "Subject: Re: RFQ\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "\n"
+        "Happy Monday Jamee.\n"
+        "Please quote 1 - 6 5/8 ID 250 wall half sole.\n"
+        "--\n"
+        "Bonnie Portner\n"
+    )
+    with tempfile.NamedTemporaryFile(suffix=".eml", mode="w", delete=False) as f:
+        f.write(email_content)
+        eml_path = Path(f.name)
+
+    try:
+        provider = MockProvider(
+            {
+                "customer_name": "MKS Pipe & Valve",
+                "contact_name": "Bonnie Portner",
+                "po_number": "rtner",
+                "items": [{"product_type": "sleeve", "quantity": 1, "description": "6 5/8 ID"}],
+                "confidence": 0.9,
+            }
+        )
+        rfq = parse_rfq(eml_path, provider)
+        assert rfq.po_number is None
+    finally:
+        if eml_path.exists():
+            eml_path.unlink()
