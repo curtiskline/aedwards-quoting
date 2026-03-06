@@ -31,6 +31,46 @@ def test_extract_email_text():
     assert "10'" in body or "10 feet" in body.lower() or "10' long" in body
 
 
+def test_extract_email_text_includes_embedded_rfc822():
+    """Text from message/rfc822 attachments should be included in body extraction."""
+    embedded_message = (
+        "From: buyer@example.com\n"
+        "Subject: RFQ details\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "\n"
+        "Need 12 pieces of 6-5/8 x 1/4 GR50 sleeves, 10 ft long."
+    )
+    email_content = (
+        "From: forwarder@example.com\n"
+        "Subject: Fwd: RFQ\n"
+        "MIME-Version: 1.0\n"
+        'Content-Type: multipart/mixed; boundary="outer"\n'
+        "\n"
+        "--outer\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "\n"
+        "Forwarding RFQ attached.\n"
+        "--outer\n"
+        "Content-Type: message/rfc822\n"
+        "Content-Disposition: attachment; filename=\"rfq.eml\"\n"
+        "\n"
+        f"{embedded_message}\n"
+        "--outer--\n"
+    )
+
+    with tempfile.NamedTemporaryFile(suffix=".eml", mode="w", delete=False) as f:
+        f.write(email_content)
+        eml_path = Path(f.name)
+
+    try:
+        _, body = extract_email_text(eml_path)
+        assert "Forwarding RFQ attached." in body
+        assert "Need 12 pieces of 6-5/8 x 1/4 GR50 sleeves" in body
+    finally:
+        if eml_path.exists():
+            eml_path.unlink()
+
+
 def test_parse_rfq_uses_llm_po_number():
     """PO number from model response should be preserved."""
     email_content = (

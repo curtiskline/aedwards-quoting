@@ -168,37 +168,76 @@ def extract_email_text(eml_path: Path) -> tuple[Message, str]:
     with open(eml_path, "rb") as f:
         msg = email.message_from_binary_file(f)
 
-    body = ""
-
-    if msg.is_multipart():
-        for part in msg.walk():
-            content_type = part.get_content_type()
-            if content_type == "text/plain":
-                charset = part.get_content_charset() or "utf-8"
-                payload = part.get_payload(decode=True)
-                if payload:
-                    body = payload.decode(charset, errors="replace")
-                    break
-        # Fall back to HTML if no plain text
-        if not body:
-            for part in msg.walk():
-                content_type = part.get_content_type()
-                if content_type == "text/html":
-                    charset = part.get_content_charset() or "utf-8"
-                    payload = part.get_payload(decode=True)
-                    if payload:
-                        html = payload.decode(charset, errors="replace")
-                        body = _strip_html(html)
-                        break
-    else:
-        payload = msg.get_payload(decode=True)
-        if payload:
-            charset = msg.get_content_charset() or "utf-8"
-            body = payload.decode(charset, errors="replace")
-            if msg.get_content_type() == "text/html":
-                body = _strip_html(body)
+    body = _extract_message_text(msg)
 
     return msg, body
+
+
+def _extract_message_text(msg: Message) -> str:
+    """Recursively extract readable text from an email message tree."""
+    content_type = msg.get_content_type()
+
+    if content_type in {"text/plain", "text/html"}:
+        payload = msg.get_payload(decode=True)
+        if payload is None:
+            raw = msg.get_payload()
+            return _strip_html(raw) if content_type == "text/html" and isinstance(raw, str) else str(raw or "")
+
+        charset = msg.get_content_charset() or "utf-8"
+        text = payload.decode(charset, errors="replace")
+        return _strip_html(text) if content_type == "text/html" else text
+
+    if content_type == "message/rfc822":
+        payload = msg.get_payload()
+        extracted: list[str] = []
+
+        if isinstance(payload, list):
+            for embedded in payload:
+                if isinstance(embedded, Message):
+                    embedded_text = _extract_message_text(embedded).strip()
+                    if embedded_text:
+                        extracted.append(embedded_text)
+        else:
+            raw_bytes = msg.get_payload(decode=True)
+            if raw_bytes:
+                embedded = email.message_from_bytes(raw_bytes)
+                embedded_text = _extract_message_text(embedded).strip()
+                if embedded_text:
+                    extracted.append(embedded_text)
+
+        return "\n\n".join(extracted)
+
+    if msg.is_multipart():
+        parts = msg.get_payload()
+        if not isinstance(parts, list):
+            return ""
+
+        subtype = msg.get_content_subtype()
+        if subtype == "alternative":
+            plain_parts: list[str] = []
+            html_parts: list[str] = []
+            for part in parts:
+                part_text = _extract_message_text(part).strip()
+                if not part_text:
+                    continue
+                if part.get_content_type() == "text/plain":
+                    plain_parts.append(part_text)
+                elif part.get_content_type() == "text/html":
+                    html_parts.append(part_text)
+                else:
+                    plain_parts.append(part_text)
+
+            preferred = plain_parts if plain_parts else html_parts
+            return "\n\n".join(preferred)
+
+        extracted = []
+        for part in parts:
+            part_text = _extract_message_text(part).strip()
+            if part_text:
+                extracted.append(part_text)
+        return "\n\n".join(extracted)
+
+    return ""
 
 
 def _strip_html(html: str) -> str:
