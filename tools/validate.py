@@ -94,14 +94,33 @@ def normalize_company_name(s: str | None) -> str:
     return n.strip()
 
 
+def normalize_phone(s: str | None) -> str:
+    """Normalize a phone number to digits only for comparison.
+
+    Strips all non-digit characters, removes leading country code '1' if
+    the result is 11 digits, and also strips trailing descriptive text
+    like 'Direct#'.
+    """
+    if not s:
+        return ""
+    digits = re.sub(r"\D", "", s)
+    # Remove leading country code '1' for US numbers (11 digits → 10)
+    if len(digits) == 11 and digits.startswith("1"):
+        digits = digits[1:]
+    return digits
+
+
 def fuzzy_match(a: str | None, b: str | None, threshold: float = 0.8,
-                company: bool = False) -> str:
+                company: bool = False, phone: bool = False) -> str:
     """Compare two strings. Returns 'exact_match', 'close_match', 'mismatch', or 'missing'.
 
     If company=True, applies company-name normalization (strips legal suffixes,
     normalizes punctuation) before comparing.
+    If phone=True, normalizes to digits only for phone number comparison.
     """
-    if company:
+    if phone:
+        na, nb = normalize_phone(a), normalize_phone(b)
+    elif company:
         na, nb = normalize_company_name(a), normalize_company_name(b)
     else:
         na, nb = normalize_str(a), normalize_str(b)
@@ -464,8 +483,11 @@ def compare_pair(gt_data: dict, our_data: dict) -> dict:
     field_results["customer_name"] = fuzzy_match(
         gt_data.get("customer_name"), our_data.get("customer_name"), company=True
     )
-    for field in ("contact_name", "contact_email", "contact_phone", "po_number"):
+    for field in ("contact_name", "contact_email", "po_number"):
         field_results[field] = fuzzy_match(gt_data.get(field), our_data.get(field))
+    field_results["contact_phone"] = fuzzy_match(
+        gt_data.get("contact_phone"), our_data.get("contact_phone"), phone=True
+    )
 
     # Quote number
     field_results["quote_number"] = fuzzy_match(
