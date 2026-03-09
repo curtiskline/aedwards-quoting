@@ -99,8 +99,10 @@ If there's only one quote request, still return it in the "quotes" array (with o
 
 SHIP-TO ADDRESS RULES:
 - If an explicit ship-to address is provided (e.g., "Ship to:", "Deliver to:"), use that address.
-- If no explicit ship-to is provided, use the contact's company name and location from their signature.
+- If no explicit ship-to is provided, use the contact's/customer's company name and location from their signature or email domain.
+- ship_to.company should be the CUSTOMER'S company (the entity receiving the goods), NOT "Allan Edwards" or "AE". Allan Edwards is the seller/manufacturer — never use it as ship_to.company unless the email explicitly says to ship to an Allan Edwards facility.
 - Always try to populate at least company, city, and state for ship_to from available information.
+- Extract postal_code/ZIP when available in the ship-to address or in the contact's signature.
 - Only return ship_to as null if absolutely no location information can be determined.
 
 PO number extraction rules:
