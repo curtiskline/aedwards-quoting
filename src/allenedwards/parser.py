@@ -9,6 +9,8 @@ from typing import Any
 
 from .providers.base import LLMProvider
 
+QUOTE_NUMBER_PATTERN = re.compile(r"\b(?:QUO|SO|INV)-\d+-\d+\b", re.IGNORECASE)
+
 PARSE_SYSTEM_PROMPT = """You are an expert at parsing Request for Quote (RFQ) emails for Allan Edwards Inc.,
 a pipeline products manufacturer specializing in sleeves, girth weld bands, and related products.
 
@@ -39,7 +41,7 @@ Return a JSON object with this structure:
     "contact_name": "Person name from signature",
     "contact_email": "Email address of requester",
     "contact_phone": "Phone if available",
-    "quote_number": "Allan Edwards quote number if present in subject or body (e.g. QUO-126-048), null otherwise",
+    "quote_number": "Allan Edwards quote/document number if present in subject or body (e.g. QUO-126-048, SO-125-0348, INV-125-0428), null otherwise",
     "quotes": [
         {
             "project_line": "Project reference like 'XB403CL Line' if mentioned, null otherwise",
@@ -108,8 +110,8 @@ PO number extraction rules:
 
 Quote number extraction rules:
 - Look for Allan Edwards quote numbers in the email subject line and body.
-- Quote numbers follow the pattern QUO-NNN-NNN (e.g. QUO-126-048, QUO-125-383).
-- Return the quote_number exactly as it appears (e.g. "QUO-126-048").
+- Quote/document numbers may follow patterns like QUO-NNN-NNN, SO-NNN-NNNN, or INV-NNN-NNNN.
+- Return the quote_number exactly as it appears (e.g. "QUO-126-048", "SO-125-0348", "INV-125-0428").
 - If no quote number is found, return null for quote_number."""
 
 
@@ -444,18 +446,46 @@ def _is_type_leak(value: str | None) -> bool:
     return value.lower().strip() in type_leaks
 
 
+def _extract_quote_numbers(text: str) -> list[str]:
+    """Extract candidate Allan Edwards quote/document numbers from text in order."""
+    if not text:
+        return []
+    return [m.group(0).upper() for m in QUOTE_NUMBER_PATTERN.finditer(text)]
+
+
 def _extract_quote_number(text: str) -> str | None:
-    """Extract Allan Edwards quote number (QUO-NNN-NNN) from text."""
-    match = re.search(r"\bQUO-\d+-\d+\b", text)
-    return match.group(0) if match else None
+    """Extract the best quote/document number from text."""
+    matches = _extract_quote_numbers(text)
+    return matches[-1] if matches else None
+
+
+def _select_best_quote_number(candidates: list[str]) -> str | None:
+    """Pick the most likely quote/document number from candidates."""
+    if not candidates:
+        return None
+
+    prefix_priority = {"INV": 3, "SO": 2, "QUO": 1}
+    best = max(
+        enumerate(candidates),
+        key=lambda item: (
+            prefix_priority.get(item[1].split("-", 1)[0], 0),
+            item[0],
+        ),
+    )
+    return best[1]
 
 
 def _resolve_quote_number(raw_qn: Any, subject: str, body: str) -> str | None:
     """Resolve quote number from LLM output with regex fallback."""
-    if raw_qn and isinstance(raw_qn, str) and re.fullmatch(r"QUO-\d+-\d+", raw_qn.strip()):
-        return raw_qn.strip()
-    # Fallback: extract from subject first, then body
-    return _extract_quote_number(subject) or _extract_quote_number(body)
+    if raw_qn and isinstance(raw_qn, str):
+        raw_matches = _extract_quote_numbers(raw_qn.strip())
+        best = _select_best_quote_number(raw_matches)
+        if best:
+            return best
+
+    # Fallback: extract from subject/body and choose best candidate.
+    candidates = _extract_quote_numbers(subject) + _extract_quote_numbers(body)
+    return _select_best_quote_number(candidates)
 
 
 def _extract_po_number(body: str) -> str | None:

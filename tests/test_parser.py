@@ -346,9 +346,11 @@ def test_parse_rfq_rejects_name_fragment_po_number():
 
 
 def test_extract_quote_number_from_subject():
-    """Quote number regex should find QUO-NNN-NNN in text."""
+    """Quote number regex should find supported identifiers in text."""
     assert _extract_quote_number("Re: QUO-126-048 HALF SOLE") == "QUO-126-048"
     assert _extract_quote_number("QUO-125-383 Sleeve Order") == "QUO-125-383"
+    assert _extract_quote_number("FW: QUO-125-567 SO-125-0348") == "SO-125-0348"
+    assert _extract_quote_number("Invoice INV-125-0428 attached") == "INV-125-0428"
     assert _extract_quote_number("No quote here") is None
     assert _extract_quote_number("") is None
 
@@ -356,11 +358,14 @@ def test_extract_quote_number_from_subject():
 def test_resolve_quote_number_prefers_llm():
     """LLM-provided quote number should be used when valid."""
     assert _resolve_quote_number("QUO-126-048", "Some subject", "body") == "QUO-126-048"
+    assert _resolve_quote_number("SO-125-0348", "Some subject", "body") == "SO-125-0348"
+    assert _resolve_quote_number("INV-125-0428", "Some subject", "body") == "INV-125-0428"
 
 
 def test_resolve_quote_number_falls_back_to_subject():
     """When LLM returns null, regex should extract from subject."""
     assert _resolve_quote_number(None, "Re: QUO-126-048 stuff", "body") == "QUO-126-048"
+    assert _resolve_quote_number(None, "FW: QUO-125-567 SO-125-0348", "body") == "SO-125-0348"
 
 
 def test_resolve_quote_number_falls_back_to_body():
@@ -372,6 +377,11 @@ def test_resolve_quote_number_rejects_invalid():
     """Invalid LLM value should trigger fallback."""
     assert _resolve_quote_number("not-a-quote", "Re: QUO-126-048", "body") == "QUO-126-048"
     assert _resolve_quote_number("123", "no match", "no match") is None
+
+
+def test_resolve_quote_number_extracts_from_llm_free_text():
+    """LLM free-text values should still allow quote extraction."""
+    assert _resolve_quote_number("quote: QUO-125-513", "subject", "body") == "QUO-125-513"
 
 
 def test_parse_rfq_extracts_quote_number_from_subject():
