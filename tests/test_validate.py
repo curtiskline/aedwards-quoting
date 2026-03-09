@@ -153,6 +153,42 @@ class TestItemSimilarity:
         score = _item_similarity(gt, our)
         assert score < 0.3, f"Expected no match, got score {score}"
 
+    def test_close_match_with_quantity_variance(self):
+        gt = _normalize_gt_item({
+            "part_number": "S-8.58-14-50-10",
+            "description": 'reg half sole, 8-5/8" ID, 1/4" w/t, A572 GR50, 10\' long.',
+            "quantity": 20,
+        })
+        our = {
+            "product_type": "sleeve",
+            "diameter": 8.625,
+            "wall_thickness": 0.25,
+            "grade": 50,
+            "length_ft": 10,
+            "quantity": 22,  # 10% variance
+            "description": '8-5/8" sleeve 1/4 wt gr50',
+        }
+        score = _item_similarity(gt, our)
+        assert score > 0.3, f"Expected resilient match, got score {score}"
+
+    def test_close_match_with_dimension_tolerance(self):
+        gt = _normalize_gt_item({
+            "part_number": "S-12.75-38-50-10",
+            "description": 'reg half sole, 12-3/4" ID, 3/8" w/t, A572 GR50, 10\' long.',
+            "quantity": 6,
+        })
+        our = {
+            "product_type": "sleeve",
+            "diameter": 12.70,  # minor numeric drift
+            "wall_thickness": 0.37,
+            "grade": 50,
+            "length_ft": 10.2,
+            "quantity": 6,
+            "description": "steel sleeve",
+        }
+        score = _item_similarity(gt, our)
+        assert score > 0.3, f"Expected tolerance-based match, got score {score}"
+
 
 # ---------------------------------------------------------------------------
 # Company name normalization tests
