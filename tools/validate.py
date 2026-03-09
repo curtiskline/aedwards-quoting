@@ -439,10 +439,24 @@ def _item_similarity(gt: dict, our: dict) -> float:
     if fuzzy_match(gt.get("product_type"), our.get("product_type")) in ("exact_match", "close_match"):
         score += 3.0
 
-    # Quantity match
+    # Quantity match (allow modest variance for OCR/parse drift)
     total += 2.0
-    if gt.get("quantity") == our.get("quantity"):
+    gt_q = gt.get("quantity")
+    our_q = our.get("quantity")
+    if gt_q == our_q:
         score += 2.0
+    elif gt_q is not None and our_q is not None:
+        try:
+            gt_qf = float(gt_q)
+            our_qf = float(our_q)
+            if gt_qf > 0:
+                qty_diff = abs(gt_qf - our_qf) / gt_qf
+                if qty_diff <= 0.10:
+                    score += 1.2
+                elif qty_diff <= 0.25:
+                    score += 0.6
+        except (TypeError, ValueError):
+            pass
 
     # Diameter match (with tolerance for fractional inch rounding)
     total += 2.0
@@ -450,12 +464,58 @@ def _item_similarity(gt: dict, our: dict) -> float:
     our_d = our.get("diameter")
     if gt_d is not None and our_d is not None:
         try:
-            if abs(float(gt_d) - float(our_d)) < 0.5:
+            d_diff = abs(float(gt_d) - float(our_d))
+            if d_diff <= 0.20:
                 score += 2.0
+            elif d_diff <= 0.50:
+                score += 1.0
         except (TypeError, ValueError):
             pass
     elif gt_d is None and our_d is None:
         score += 1.0
+
+    # Wall thickness can disambiguate same-diameter products
+    total += 1.5
+    gt_wt = gt.get("wall_thickness")
+    our_wt = our.get("wall_thickness")
+    if gt_wt is not None and our_wt is not None:
+        try:
+            wt_diff = abs(float(gt_wt) - float(our_wt))
+            if wt_diff <= 0.02:
+                score += 1.5
+            elif wt_diff <= 0.06:
+                score += 0.75
+        except (TypeError, ValueError):
+            pass
+    elif gt_wt is None and our_wt is None:
+        score += 0.75
+
+    # Grade matching helps avoid mismatching GR50 vs GR65
+    total += 1.0
+    gt_gr = gt.get("grade")
+    our_gr = our.get("grade")
+    if gt_gr == our_gr and gt_gr is not None:
+        score += 1.0
+    elif gt_gr is None and our_gr is None:
+        score += 0.5
+
+    # Length tolerance: many GT rows use rounded feet/inches
+    total += 1.5
+    gt_len = gt.get("length_ft")
+    our_len = our.get("length_ft")
+    if gt_len is not None and our_len is not None:
+        try:
+            len_diff = abs(float(gt_len) - float(our_len))
+            if len_diff <= 0.10:
+                score += 1.5
+            elif len_diff <= 0.50:
+                score += 0.75
+            elif len_diff <= 1.0:
+                score += 0.4
+        except (TypeError, ValueError):
+            pass
+    elif gt_len is None and our_len is None:
+        score += 0.75
 
     # Description similarity (helps match items with different naming conventions)
     total += 1.0
