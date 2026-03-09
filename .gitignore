@@ -31,3 +31,17 @@ data/
 data/test-corpus/
 
 worktrees/
+
+# Environment / secrets
+.env
+
+# Axon runtime state
+.agent-registry.json
+.agent-tasks.db
+canon/
+
+# Agent logs
+logs/
+
+# Scratch / working files
+work/

@@ -149,21 +149,26 @@ class QuotePDFBuilder:
         }
 
     def _build_header(self) -> list:
-        """Build Template A header: yellow banner, company info, quote details."""
+        """Build Template A header: logo banner, company info, quote details."""
         elements = []
 
-        # Yellow banner with script logo
-        banner_data = [[Paragraph(
-            '<font face="Times-Italic" size="28"><i>Allan Edwards, Inc.</i></font>',
-            ParagraphStyle("Banner", alignment=1, fontName="Times-Italic", fontSize=28)
-        )]]
+        # Logo banner - use actual logo image if available
+        if self.logo_path and self.logo_path.exists():
+            # Use the logo image, scaled to fit nicely
+            logo_img = Image(str(self.logo_path), width=4 * inch, height=0.75 * inch)
+            logo_img.hAlign = "CENTER"
+            banner_data = [[logo_img]]
+        else:
+            # Fallback to text if logo not found
+            banner_data = [[Paragraph(
+                '<font face="Times-Italic" size="28"><i>Allan Edwards, Inc.</i></font>',
+                ParagraphStyle("Banner", alignment=1, fontName="Times-Italic", fontSize=28)
+            )]]
         banner_table = Table(banner_data, colWidths=[self.content_width])
         banner_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), YELLOW_HEADER),
             ("ALIGN", (0, 0), (-1, -1), "CENTER"),
-            ("TOPPADDING", (0, 0), (-1, -1), 12),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 12),
-            ("BOX", (0, 0), (-1, -1), 1, BLACK),
+            ("TOPPADDING", (0, 0), (-1, -1), 8),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
         ]))
         elements.append(banner_table)
         elements.append(Spacer(1, 12))
