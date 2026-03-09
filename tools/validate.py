@@ -42,9 +42,69 @@ def normalize_str(s: str | None) -> str:
     return re.sub(r"\s+", " ", s.strip().lower())
 
 
-def fuzzy_match(a: str | None, b: str | None, threshold: float = 0.8) -> str:
-    """Compare two strings. Returns 'exact_match', 'close_match', 'mismatch', or 'missing'."""
-    na, nb = normalize_str(a), normalize_str(b)
+# Legal suffixes to strip when comparing company names (order: longest first)
+_LEGAL_SUFFIXES = [
+    "mobile services",
+    "international",
+    "operating",
+    "pipeline",
+    "services",
+    "company",
+    "l.p.",
+    "l p",
+    "corp.",
+    "corp",
+    "inc.",
+    "inc",
+    "llc",
+    "ltd.",
+    "ltd",
+    "lp",
+    "co.",
+    "co",
+]
+
+
+def normalize_company_name(s: str | None) -> str:
+    """Normalize a company name for comparison.
+
+    Strips legal suffixes (Inc, LLC, L.P., etc.), normalizes punctuation
+    (& → and), and collapses whitespace.  Designed so cosmetic differences
+    like "Buckeye Partners L.P." vs "Buckeye Partners, L.P." compare equal.
+    """
+    if not s:
+        return ""
+    n = s.strip().lower()
+    # Normalize & → and
+    n = n.replace("&", "and")
+    # Remove commas, periods, parentheses, slashes
+    n = re.sub(r"[,./()]+", " ", n)
+    # Collapse whitespace
+    n = re.sub(r"\s+", " ", n).strip()
+    # Strip known legal suffixes (may appear at end, possibly repeated)
+    changed = True
+    while changed:
+        changed = False
+        for suffix in _LEGAL_SUFFIXES:
+            if n.endswith(" " + suffix):
+                n = n[: -(len(suffix) + 1)].rstrip()
+                changed = True
+            elif n == suffix:
+                break
+    return n.strip()
+
+
+def fuzzy_match(a: str | None, b: str | None, threshold: float = 0.8,
+                company: bool = False) -> str:
+    """Compare two strings. Returns 'exact_match', 'close_match', 'mismatch', or 'missing'.
+
+    If company=True, applies company-name normalization (strips legal suffixes,
+    normalizes punctuation) before comparing.
+    """
+    if company:
+        na, nb = normalize_company_name(a), normalize_company_name(b)
+    else:
+        na, nb = normalize_str(a), normalize_str(b)
     if not na and not nb:
         return "exact_match"  # both empty
     if not na or not nb:
@@ -160,7 +220,8 @@ def compare_ship_to(gt_ship: dict | None, our_ship: dict | None) -> dict[str, st
     gt = gt_ship or {}
     ou = our_ship or {}
     results = {}
-    for field in ("company", "city", "state", "postal_code"):
+    results["ship_to.company"] = fuzzy_match(gt.get("company"), ou.get("company"), company=True)
+    for field in ("city", "state", "postal_code"):
         results[f"ship_to.{field}"] = fuzzy_match(gt.get(field), ou.get(field))
     return results
 
@@ -292,7 +353,11 @@ def compare_pair(gt_data: dict, our_data: dict) -> dict:
     field_results = {}
 
     # Top-level string fields
-    for field in ("customer_name", "contact_name", "contact_email", "contact_phone", "po_number"):
+    # Use company-name normalization for customer_name
+    field_results["customer_name"] = fuzzy_match(
+        gt_data.get("customer_name"), our_data.get("customer_name"), company=True
+    )
+    for field in ("contact_name", "contact_email", "contact_phone", "po_number"):
         field_results[field] = fuzzy_match(gt_data.get(field), our_data.get(field))
 
     # Quote number
@@ -332,7 +397,7 @@ def pick_best_rfq(gt_data: dict, our_rfqs: list[dict]) -> dict | None:
     best_score = -1
     for rfq in our_rfqs:
         score = 0
-        if fuzzy_match(gt_data.get("customer_name"), rfq.get("customer_name")) in ("exact_match", "close_match"):
+        if fuzzy_match(gt_data.get("customer_name"), rfq.get("customer_name"), company=True) in ("exact_match", "close_match"):
             score += 2
         gt_n = len(gt_data.get("line_items", []))
         our_n = len(rfq.get("items", rfq.get("line_items", [])))
