@@ -124,7 +124,9 @@ def process_email(eml_path: Path, provider, provider_name: str, output_dir: Path
                 generate_quote_pdf(quote, pdf_path)
 
                 # Enrich parsed JSON with pricing fields for validation
-                rfq_data[i]["quote_number"] = quote.quote_number
+                # Preserve extracted quote_number; only use generated if none extracted
+                if not rfq_data[i].get("quote_number"):
+                    rfq_data[i]["quote_number"] = quote.quote_number
                 rfq_data[i]["subtotal"] = float(quote.subtotal)
                 rfq_data[i]["total"] = float(quote.total)
 
