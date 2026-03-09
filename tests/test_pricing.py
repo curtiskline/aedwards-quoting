@@ -282,6 +282,7 @@ def test_generate_quote_adds_warning_for_invalid_standard_bundle_multiple():
         contact_phone=None,
         ship_to=None,
         po_number=None,
+        quote_number=None,
         items=[
             ParsedItem(
                 product_type="sleeve",

@@ -202,6 +202,7 @@ def test_generate_quote_uses_carrier_shipping_note_and_rfq_row_order():
         contact_phone="(835) 205-6974",
         ship_to=None,
         po_number=None,
+        quote_number=None,
         items=[
             ParsedItem(
                 product_type="sleeve",
