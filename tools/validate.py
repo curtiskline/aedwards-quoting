@@ -64,23 +64,52 @@ _LEGAL_SUFFIXES = [
     "co",
 ]
 
+# Common abbreviation expansions for company name normalization
+_ABBREVIATIONS = {
+    "intl": "international",
+    "int'l": "international",
+    "natl": "national",
+    "nat'l": "national",
+    "mfg": "manufacturing",
+    "svcs": "services",
+    "svc": "service",
+    "dept": "department",
+    "assoc": "associates",
+    "dist": "distribution",
+    "pl": "pipeline",
+    "trans": "transmission",
+    "ctr": "center",
+    "cntr": "center",
+    "cty": "city",
+    "nw": "northwest",
+    "ne": "northeast",
+    "sw": "southwest",
+    "se": "southeast",
+}
+
 
 def normalize_company_name(s: str | None) -> str:
     """Normalize a company name for comparison.
 
     Strips legal suffixes (Inc, LLC, L.P., etc.), normalizes punctuation
-    (& → and), and collapses whitespace.  Designed so cosmetic differences
-    like "Buckeye Partners L.P." vs "Buckeye Partners, L.P." compare equal.
+    (& → and), expands common abbreviations, and collapses whitespace.
+    Designed so cosmetic differences like "Buckeye Partners L.P." vs
+    "Buckeye Partners, L.P." compare equal.
     """
     if not s:
         return ""
     n = s.strip().lower()
     # Normalize & → and
     n = n.replace("&", "and")
-    # Remove commas, periods, parentheses, slashes
-    n = re.sub(r"[,./()]+", " ", n)
+    # Remove commas, periods, parentheses, slashes, @ signs
+    n = re.sub(r"[,./()@]+", " ", n)
     # Collapse whitespace
     n = re.sub(r"\s+", " ", n).strip()
+    # Expand common abbreviations (before suffix stripping so expanded
+    # forms like "pipeline" get stripped consistently)
+    words = n.split()
+    words = [_ABBREVIATIONS.get(w, w) for w in words]
+    n = " ".join(words)
     # Strip known legal suffixes (may appear at end, possibly repeated)
     changed = True
     while changed:

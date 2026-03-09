@@ -246,6 +246,7 @@ def main():
     parser.add_argument("--delay", type=float, default=API_DELAY, help="Seconds between API calls")
     parser.add_argument("--emails-dir", type=Path, default=EMAILS_DIR, help="Directory with .eml files")
     parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR, help="Output directory")
+    parser.add_argument("--filter", type=str, default=None, help="Glob pattern to filter email filenames (e.g. '*RFQ*')")
     args = parser.parse_args()
 
     # Load env vars
@@ -259,7 +260,10 @@ def main():
         print(f"Error: emails directory not found: {args.emails_dir}")
         sys.exit(1)
 
-    eml_files = sorted(args.emails_dir.glob("*.eml"))
+    if args.filter:
+        eml_files = sorted(args.emails_dir.glob(args.filter))
+    else:
+        eml_files = sorted(args.emails_dir.glob("*.eml"))
     print(f"Found {len(eml_files)} .eml files in {args.emails_dir}")
 
     # Filter already-processed if resuming

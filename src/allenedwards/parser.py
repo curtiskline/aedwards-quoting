@@ -46,7 +46,7 @@ Return a JSON object with this structure:
         {
             "project_line": "Project reference like 'XB403CL Line' if mentioned, null otherwise",
             "ship_to": {
-                "company": "Shipping destination company (use contact's company if not explicitly different)",
+                "company": "End customer/pipeline company receiving the goods (NEVER 'Allan Edwards' — use the pipeline, utility, or requesting company instead)",
                 "attention": "Person name if specified",
                 "street": "Street address if available",
                 "city": "City (use contact's city from signature if no explicit ship-to)",
@@ -100,7 +100,8 @@ If there's only one quote request, still return it in the "quotes" array (with o
 SHIP-TO ADDRESS RULES:
 - If an explicit ship-to address is provided (e.g., "Ship to:", "Deliver to:"), use that address.
 - If no explicit ship-to is provided, use the contact's/customer's company name and location from their signature or email domain.
-- ship_to.company should be the CUSTOMER'S company (the entity receiving the goods), NOT "Allan Edwards" or "AE". Allan Edwards is the seller/manufacturer — never use it as ship_to.company unless the email explicitly says to ship to an Allan Edwards facility.
+- CRITICAL: ship_to.company must NEVER be "Allan Edwards", "Allan Edwards Inc.", "AE", or any Allan Edwards variant. Allan Edwards is the seller/manufacturer of these products. The ship_to.company should be the end customer — typically the pipeline company, utility, or energy company that will receive the goods. Examples of correct ship_to.company values: "DTE Gas Company", "Kinder Morgan", "Energy Transfer", "Boardwalk Pipeline Partners", "Centerpoint Energy". If you cannot determine the end customer, use the requesting contact's company (the distributor or contractor sending the RFQ).
+- When the email mentions a pipeline company, utility, or project owner (e.g., in project references, PO descriptions, or job site details), that entity is likely the ship_to.company — not Allan Edwards or the sales intermediary.
 - Always try to populate at least company, city, and state for ship_to from available information.
 - Extract postal_code/ZIP when available in the ship-to address or in the contact's signature.
 - Only return ship_to as null if absolutely no location information can be determined.
