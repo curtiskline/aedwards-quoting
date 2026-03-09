@@ -484,10 +484,21 @@ def compare_pair(gt_data: dict, our_data: dict) -> dict:
         gt_data.get("customer_name"), our_data.get("customer_name"), company=True
     )
     for field in ("contact_name", "contact_email", "po_number"):
-        field_results[field] = fuzzy_match(gt_data.get(field), our_data.get(field))
-    field_results["contact_phone"] = fuzzy_match(
-        gt_data.get("contact_phone"), our_data.get("contact_phone"), phone=True
-    )
+        gt_val = gt_data.get(field)
+        our_val = our_data.get(field)
+        # If ground truth is null/empty, don't penalize for extracting a value
+        if not gt_val and our_val:
+            field_results[field] = "not_tested"
+        else:
+            field_results[field] = fuzzy_match(gt_val, our_val)
+    gt_phone = gt_data.get("contact_phone")
+    our_phone = our_data.get("contact_phone")
+    if not gt_phone and our_phone:
+        field_results["contact_phone"] = "not_tested"
+    else:
+        field_results["contact_phone"] = fuzzy_match(
+            gt_phone, our_phone, phone=True
+        )
 
     # Quote number
     field_results["quote_number"] = fuzzy_match(
@@ -612,13 +623,15 @@ def compute_field_accuracy(cases: list[dict]) -> dict[str, dict[str, int]]:
 
     accuracy = {}
     for field, counts in sorted(field_counts.items()):
-        total = sum(counts.values())
+        not_tested = counts.get("not_tested", 0)
+        total = sum(counts.values()) - not_tested  # exclude not_tested from total
         accuracy[field] = {
             "total": total,
             "exact_match": counts.get("exact_match", 0),
             "close_match": counts.get("close_match", 0),
             "mismatch": counts.get("mismatch", 0),
             "missing": counts.get("missing", 0),
+            "not_tested": not_tested,
         }
         # Add percentage
         correct = counts.get("exact_match", 0) + counts.get("close_match", 0)
