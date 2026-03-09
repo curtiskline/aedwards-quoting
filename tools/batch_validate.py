@@ -99,7 +99,7 @@ def process_email(eml_path: Path, provider, provider_name: str, output_dir: Path
         rfqs = parse_rfq_multi(eml_path, provider)
         result["num_quotes"] = len(rfqs)
 
-        # Save parsed JSON (list of all RFQs from this email)
+        # Build parsed JSON (list of all RFQs from this email)
         rfq_data = []
         for rfq in rfqs:
             d = asdict(rfq)
@@ -107,10 +107,7 @@ def process_email(eml_path: Path, provider, provider_name: str, output_dir: Path
             d.pop("raw_body", None)
             rfq_data.append(d)
 
-        json_path = output_dir / f"{email_id}.json"
-        json_path.write_text(json.dumps(rfq_data, indent=2, default=decimal_default))
-
-        # Generate quote PDFs
+        # Generate quote PDFs and enrich parsed JSON with pricing data
         for i, rfq in enumerate(rfqs):
             if not rfq.items:
                 continue
@@ -126,6 +123,18 @@ def process_email(eml_path: Path, provider, provider_name: str, output_dir: Path
                 pdf_path = output_dir / f"{email_id}{suffix}.pdf"
                 generate_quote_pdf(quote, pdf_path)
 
+                # Enrich parsed JSON with pricing fields for validation
+                rfq_data[i]["quote_number"] = quote.quote_number
+                rfq_data[i]["subtotal"] = float(quote.subtotal)
+                rfq_data[i]["total"] = float(quote.total)
+
+                # Add per-item pricing from quote line items
+                priced_items = [li for li in quote.line_items if not li.is_note]
+                if len(priced_items) == len(rfq_data[i].get("items", [])):
+                    for j, li in enumerate(priced_items):
+                        rfq_data[i]["items"][j]["unit_price"] = float(li.unit_price)
+                        rfq_data[i]["items"][j]["total"] = float(li.total)
+
                 result["quotes"].append({
                     "quote_number": quote.quote_number,
                     "total": float(quote.total),
@@ -139,6 +148,10 @@ def process_email(eml_path: Path, provider, provider_name: str, output_dir: Path
                     "error": str(e),
                     "project_line": rfq.project_line,
                 })
+
+        # Save enriched JSON (parsed data + pricing)
+        json_path = output_dir / f"{email_id}.json"
+        json_path.write_text(json.dumps(rfq_data, indent=2, default=decimal_default))
 
     except Exception as e:
         result["status"] = "error"
