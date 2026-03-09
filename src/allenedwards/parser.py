@@ -39,6 +39,7 @@ Return a JSON object with this structure:
     "contact_name": "Person name from signature",
     "contact_email": "Email address of requester",
     "contact_phone": "Phone if available",
+    "quote_number": "Allan Edwards quote number if present in subject or body (e.g. QUO-126-048), null otherwise",
     "quotes": [
         {
             "project_line": "Project reference like 'XB403CL Line' if mentioned, null otherwise",
@@ -103,7 +104,13 @@ SHIP-TO ADDRESS RULES:
 PO number extraction rules:
 - Only return po_number when the email explicitly provides a PO number value.
 - If no explicit PO number is present, return null for po_number.
-- Never infer po_number from contact names, company names, signatures, or random text fragments."""
+- Never infer po_number from contact names, company names, signatures, or random text fragments.
+
+Quote number extraction rules:
+- Look for Allan Edwards quote numbers in the email subject line and body.
+- Quote numbers follow the pattern QUO-NNN-NNN (e.g. QUO-126-048, QUO-125-383).
+- Return the quote_number exactly as it appears (e.g. "QUO-126-048").
+- If no quote number is found, return null for quote_number."""
 
 
 @dataclass
@@ -145,6 +152,7 @@ class ParsedRFQ:
     contact_phone: str | None
     ship_to: ShipTo | None
     po_number: str | None
+    quote_number: str | None
     items: list[ParsedItem]
     urgency: str = "normal"
     notes: str | None = None
@@ -314,6 +322,7 @@ def parse_rfq(eml_path: Path, provider: LLMProvider) -> ParsedRFQ:
         contact_phone=None,
         ship_to=None,
         po_number=None,
+        quote_number=None,
         items=[],
     )
 
@@ -359,6 +368,7 @@ in the "quotes" array."""
     general_notes = result.get("notes")
     confidence = float(result.get("confidence", 0.0))
     message_id = msg.get("Message-ID")
+    quote_number = _resolve_quote_number(result.get("quote_number"), subject, body)
 
     rfqs = []
 
@@ -386,6 +396,7 @@ in the "quotes" array."""
                 contact_phone=contact_phone,
                 ship_to=ship_to,
                 po_number=po_number,
+                quote_number=quote_number,
                 items=items,
                 urgency=urgency,
                 notes=combined_notes,
@@ -410,6 +421,7 @@ in the "quotes" array."""
             contact_phone=contact_phone,
             ship_to=ship_to,
             po_number=po_number,
+            quote_number=quote_number,
             items=items,
             urgency=urgency,
             notes=general_notes,
@@ -430,6 +442,20 @@ def _is_type_leak(value: str | None) -> bool:
     # Common type names that LLMs might return instead of actual values
     type_leaks = {"int", "str", "string", "float", "bool", "boolean", "null", "none"}
     return value.lower().strip() in type_leaks
+
+
+def _extract_quote_number(text: str) -> str | None:
+    """Extract Allan Edwards quote number (QUO-NNN-NNN) from text."""
+    match = re.search(r"\bQUO-\d+-\d+\b", text)
+    return match.group(0) if match else None
+
+
+def _resolve_quote_number(raw_qn: Any, subject: str, body: str) -> str | None:
+    """Resolve quote number from LLM output with regex fallback."""
+    if raw_qn and isinstance(raw_qn, str) and re.fullmatch(r"QUO-\d+-\d+", raw_qn.strip()):
+        return raw_qn.strip()
+    # Fallback: extract from subject first, then body
+    return _extract_quote_number(subject) or _extract_quote_number(body)
 
 
 def _extract_po_number(body: str) -> str | None:

@@ -3,7 +3,13 @@
 import tempfile
 from pathlib import Path
 
-from allenedwards.parser import extract_email_text, parse_rfq, parse_rfq_multi
+from allenedwards.parser import (
+    extract_email_text,
+    parse_rfq,
+    parse_rfq_multi,
+    _extract_quote_number,
+    _resolve_quote_number,
+)
 from allenedwards.providers.mock import MockProvider, SAMPLE_MULTI_QUOTE_RESPONSE
 
 
@@ -334,6 +340,122 @@ def test_parse_rfq_rejects_name_fragment_po_number():
         )
         rfq = parse_rfq(eml_path, provider)
         assert rfq.po_number is None
+    finally:
+        if eml_path.exists():
+            eml_path.unlink()
+
+
+def test_extract_quote_number_from_subject():
+    """Quote number regex should find QUO-NNN-NNN in text."""
+    assert _extract_quote_number("Re: QUO-126-048 HALF SOLE") == "QUO-126-048"
+    assert _extract_quote_number("QUO-125-383 Sleeve Order") == "QUO-125-383"
+    assert _extract_quote_number("No quote here") is None
+    assert _extract_quote_number("") is None
+
+
+def test_resolve_quote_number_prefers_llm():
+    """LLM-provided quote number should be used when valid."""
+    assert _resolve_quote_number("QUO-126-048", "Some subject", "body") == "QUO-126-048"
+
+
+def test_resolve_quote_number_falls_back_to_subject():
+    """When LLM returns null, regex should extract from subject."""
+    assert _resolve_quote_number(None, "Re: QUO-126-048 stuff", "body") == "QUO-126-048"
+
+
+def test_resolve_quote_number_falls_back_to_body():
+    """When subject has no match, regex should extract from body."""
+    assert _resolve_quote_number(None, "No match", "See QUO-125-383 for details") == "QUO-125-383"
+
+
+def test_resolve_quote_number_rejects_invalid():
+    """Invalid LLM value should trigger fallback."""
+    assert _resolve_quote_number("not-a-quote", "Re: QUO-126-048", "body") == "QUO-126-048"
+    assert _resolve_quote_number("123", "no match", "no match") is None
+
+
+def test_parse_rfq_extracts_quote_number_from_subject():
+    """Parser should extract quote_number from email subject via regex fallback."""
+    email_content = (
+        "From: buyer@example.com\n"
+        "Subject: Re: QUO-126-048 HALF SOLE 16IDX5FT\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "\n"
+        "Please quote 2 sleeves."
+    )
+    with tempfile.NamedTemporaryFile(suffix=".eml", mode="w", delete=False) as f:
+        f.write(email_content)
+        eml_path = Path(f.name)
+
+    try:
+        provider = MockProvider(
+            {
+                "customer_name": "ACME",
+                "contact_name": "Buyer",
+                "contact_email": "buyer@example.com",
+                "items": [],
+                "confidence": 0.9,
+            }
+        )
+        rfq = parse_rfq(eml_path, provider)
+        assert rfq.quote_number == "QUO-126-048"
+    finally:
+        if eml_path.exists():
+            eml_path.unlink()
+
+
+def test_parse_rfq_uses_llm_quote_number():
+    """Parser should use LLM-provided quote_number when valid."""
+    email_content = (
+        "From: buyer@example.com\n"
+        "Subject: Quote request\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "\n"
+        "Please quote 2 sleeves."
+    )
+    with tempfile.NamedTemporaryFile(suffix=".eml", mode="w", delete=False) as f:
+        f.write(email_content)
+        eml_path = Path(f.name)
+
+    try:
+        provider = MockProvider(
+            {
+                "customer_name": "ACME",
+                "quote_number": "QUO-126-052",
+                "items": [],
+                "confidence": 0.9,
+            }
+        )
+        rfq = parse_rfq(eml_path, provider)
+        assert rfq.quote_number == "QUO-126-052"
+    finally:
+        if eml_path.exists():
+            eml_path.unlink()
+
+
+def test_parse_rfq_no_quote_number():
+    """When no quote number exists, field should be None."""
+    email_content = (
+        "From: buyer@example.com\n"
+        "Subject: Quote request\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "\n"
+        "Please quote 2 sleeves."
+    )
+    with tempfile.NamedTemporaryFile(suffix=".eml", mode="w", delete=False) as f:
+        f.write(email_content)
+        eml_path = Path(f.name)
+
+    try:
+        provider = MockProvider(
+            {
+                "customer_name": "ACME",
+                "items": [],
+                "confidence": 0.9,
+            }
+        )
+        rfq = parse_rfq(eml_path, provider)
+        assert rfq.quote_number is None
     finally:
         if eml_path.exists():
             eml_path.unlink()
