@@ -24,4 +24,10 @@ htmlcov/
 # Local test data (downloaded from Drive)
 tests/test_data/
 
+# Raw PST dumps and generated test corpus
+data/
+
+# Generated test corpus (from PST dump processing)
+data/test-corpus/
+
 worktrees/
