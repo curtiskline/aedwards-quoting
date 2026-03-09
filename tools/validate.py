@@ -130,6 +130,9 @@ def fuzzy_match(a: str | None, b: str | None, threshold: float = 0.8,
         return "missing"
     if na == nb:
         return "exact_match"
+    # Space-stripped comparison (catches "Blackeagle" vs "Black Eagle")
+    if company and na.replace(" ", "") == nb.replace(" ", ""):
+        return "close_match"
     # Simple token overlap ratio
     ta, tb = set(na.split()), set(nb.split())
     if not ta or not tb:
@@ -235,14 +238,39 @@ def build_match_pairs(manifest: list[dict]) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 def compare_ship_to(gt_ship: dict | None, our_ship: dict | None) -> dict[str, str]:
-    """Compare ship_to sub-fields."""
+    """Compare ship_to sub-fields.
+
+    When ground truth has no value for a sub-field, our parser extracting a
+    value is not an error — the GT simply doesn't have this info to compare
+    against.  We return "not_tested" so the accuracy computation can skip it.
+    """
     gt = gt_ship or {}
     ou = our_ship or {}
     results = {}
-    results["ship_to.company"] = fuzzy_match(gt.get("company"), ou.get("company"), company=True)
+    results["ship_to.company"] = _compare_ship_to_field(
+        gt.get("company"), ou.get("company"), company=True
+    )
     for field in ("city", "state", "postal_code"):
-        results[f"ship_to.{field}"] = fuzzy_match(gt.get(field), ou.get(field))
+        results[f"ship_to.{field}"] = _compare_ship_to_field(
+            gt.get(field), ou.get(field)
+        )
     return results
+
+
+def _compare_ship_to_field(
+    gt_val: str | None, our_val: str | None, company: bool = False
+) -> str:
+    """Compare a single ship_to sub-field, handling GT-null gracefully.
+
+    If the ground truth is empty/null and we extracted a value, return
+    "not_tested" instead of "missing" — our parser found extra info that GT
+    doesn't cover, which is not an error.
+    """
+    gt_norm = (normalize_company_name(gt_val) if company else normalize_str(gt_val))
+    our_norm = (normalize_company_name(our_val) if company else normalize_str(our_val))
+    if not gt_norm and our_norm:
+        return "not_tested"
+    return fuzzy_match(gt_val, our_val, company=company)
 
 
 def match_line_items(gt_items: list[dict], our_items: list[dict]) -> dict:
@@ -555,8 +583,8 @@ def categorize_case(comparison: dict | None, gt_data: dict | None, our_data: dic
     fr = comparison["field_results"]
     li = comparison["line_items"]
 
-    # Check if all fields match
-    all_exact = all(v in ("exact_match", "close_match") for v in fr.values())
+    # Check if all fields match (not_tested fields are not errors)
+    all_exact = all(v in ("exact_match", "close_match", "not_tested") for v in fr.values())
     no_missing = not li["missing_items"]
     no_extra = not li["extra_items"]
 
@@ -613,16 +641,21 @@ def compute_field_accuracy(cases: list[dict]) -> dict[str, dict[str, int]]:
     accuracy = {}
     for field, counts in sorted(field_counts.items()):
         total = sum(counts.values())
+        # Exclude "not_tested" from total (GT had no value to compare against)
+        not_tested = counts.pop("not_tested", 0)
+        testable = total - not_tested
         accuracy[field] = {
-            "total": total,
+            "total": testable,
             "exact_match": counts.get("exact_match", 0),
             "close_match": counts.get("close_match", 0),
             "mismatch": counts.get("mismatch", 0),
             "missing": counts.get("missing", 0),
         }
+        if not_tested:
+            accuracy[field]["not_tested"] = not_tested
         # Add percentage
         correct = counts.get("exact_match", 0) + counts.get("close_match", 0)
-        accuracy[field]["accuracy_pct"] = round(100 * correct / total, 1) if total > 0 else 0.0
+        accuracy[field]["accuracy_pct"] = round(100 * correct / testable, 1) if testable > 0 else 0.0
 
         # Pricing tiers
         for tier in ("within_1pct", "within_5pct", "within_10pct"):
@@ -723,6 +756,7 @@ def _badge(result: str) -> str:
         "within_10pct": "#f97316",
         "mismatch": "#ef4444",
         "missing": "#94a3b8",
+        "not_tested": "#d1d5db",
     }
     color = colors.get(result, "#6b7280")
     label = result.replace("_", " ")
