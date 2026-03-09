@@ -114,7 +114,15 @@ Quote number extraction rules:
 - Look for Allan Edwards quote numbers in the email subject line and body.
 - Quote/document numbers may follow patterns like QUO-NNN-NNN, SO-NNN-NNNN, or INV-NNN-NNNN.
 - Return the quote_number exactly as it appears (e.g. "QUO-126-048", "SO-125-0348", "INV-125-0428").
-- If no quote number is found, return null for quote_number."""
+- If no quote number is found, return null for quote_number.
+
+Contact extraction rules:
+- The contact is the CUSTOMER requesting the quote, not an Allan Edwards employee.
+- In forwarded email chains (FW:/RE:), look for the ORIGINAL external requester, not the forwarder.
+- If the email contains structured order details with "Ordered by" or "Requested by", use that person's contact info.
+- For phone numbers: if a person lists both an office (O:) and cell/mobile (C:/M:) number, prefer the cell/mobile number.
+- Ignore phone numbers and emails from @allanedwards.com addresses — those are internal.
+- If multiple external contacts appear, prefer the one who initiated the request or is listed as the ordering contact."""
 
 
 @dataclass
