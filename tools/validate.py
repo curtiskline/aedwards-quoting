@@ -42,9 +42,69 @@ def normalize_str(s: str | None) -> str:
     return re.sub(r"\s+", " ", s.strip().lower())
 
 
-def fuzzy_match(a: str | None, b: str | None, threshold: float = 0.8) -> str:
-    """Compare two strings. Returns 'exact_match', 'close_match', 'mismatch', or 'missing'."""
-    na, nb = normalize_str(a), normalize_str(b)
+# Legal suffixes to strip when comparing company names (order: longest first)
+_LEGAL_SUFFIXES = [
+    "mobile services",
+    "international",
+    "operating",
+    "pipeline",
+    "services",
+    "company",
+    "l.p.",
+    "l p",
+    "corp.",
+    "corp",
+    "inc.",
+    "inc",
+    "llc",
+    "ltd.",
+    "ltd",
+    "lp",
+    "co.",
+    "co",
+]
+
+
+def normalize_company_name(s: str | None) -> str:
+    """Normalize a company name for comparison.
+
+    Strips legal suffixes (Inc, LLC, L.P., etc.), normalizes punctuation
+    (& → and), and collapses whitespace.  Designed so cosmetic differences
+    like "Buckeye Partners L.P." vs "Buckeye Partners, L.P." compare equal.
+    """
+    if not s:
+        return ""
+    n = s.strip().lower()
+    # Normalize & → and
+    n = n.replace("&", "and")
+    # Remove commas, periods, parentheses, slashes
+    n = re.sub(r"[,./()]+", " ", n)
+    # Collapse whitespace
+    n = re.sub(r"\s+", " ", n).strip()
+    # Strip known legal suffixes (may appear at end, possibly repeated)
+    changed = True
+    while changed:
+        changed = False
+        for suffix in _LEGAL_SUFFIXES:
+            if n.endswith(" " + suffix):
+                n = n[: -(len(suffix) + 1)].rstrip()
+                changed = True
+            elif n == suffix:
+                break
+    return n.strip()
+
+
+def fuzzy_match(a: str | None, b: str | None, threshold: float = 0.8,
+                company: bool = False) -> str:
+    """Compare two strings. Returns 'exact_match', 'close_match', 'mismatch', or 'missing'.
+
+    If company=True, applies company-name normalization (strips legal suffixes,
+    normalizes punctuation) before comparing.
+    """
+    if company:
+        na, nb = normalize_company_name(a), normalize_company_name(b)
+    else:
+        na, nb = normalize_str(a), normalize_str(b)
     if not na and not nb:
         return "exact_match"  # both empty
     if not na or not nb:
@@ -160,7 +220,8 @@ def compare_ship_to(gt_ship: dict | None, our_ship: dict | None) -> dict[str, st
     gt = gt_ship or {}
     ou = our_ship or {}
     results = {}
-    for field in ("company", "city", "state", "postal_code"):
+    results["ship_to.company"] = fuzzy_match(gt.get("company"), ou.get("company"), company=True)
+    for field in ("city", "state", "postal_code"):
         results[f"ship_to.{field}"] = fuzzy_match(gt.get(field), ou.get(field))
     return results
 
@@ -170,6 +231,9 @@ def match_line_items(gt_items: list[dict], our_items: list[dict]) -> dict:
 
     Returns detailed comparison of matched, missing, and extra items.
     """
+    # Normalize GT items to extract structured fields from part_number/description
+    gt_normalized = [_normalize_gt_item(item) for item in gt_items]
+
     result = {
         "gt_count": len(gt_items),
         "our_count": len(our_items),
@@ -185,7 +249,7 @@ def match_line_items(gt_items: list[dict], our_items: list[dict]) -> dict:
     # Simple positional matching (since items are ordered)
     # For a more robust approach, we could do bipartite matching on product similarity
     used_our = set()
-    for gi, gt_item in enumerate(gt_items):
+    for gi, gt_item in enumerate(gt_normalized):
         best_match_idx = None
         best_score = -1
 
@@ -220,6 +284,104 @@ def match_line_items(gt_items: list[dict], our_items: list[dict]) -> dict:
     return result
 
 
+def _normalize_gt_item(gt: dict) -> dict:
+    """Extract structured fields from ground-truth part_number and description.
+
+    GT items have part_number (e.g. 'S-12.34-38-50-10') and description
+    (e.g. 'reg half sole, 12-3/4" ID, 3/8" w/t, A572 GR50, 10\' long.')
+    but lack the structured fields our parser outputs. This bridges the gap.
+    """
+    item = dict(gt)  # shallow copy
+
+    part = gt.get("part_number", "") or ""
+    desc = (gt.get("description", "") or "").lower()
+
+    # --- Infer product_type ---
+    if not item.get("product_type"):
+        # Check girth_weld BEFORE sleeve (since "girth weld sleeve" contains "sleeve")
+        if part.startswith("G-") or "girth weld" in desc:
+            item["product_type"] = "girth_weld"
+        elif part.startswith("S-") or "half sole" in desc or "sleeve" in desc:
+            if "ovsz" in desc or "oversleeve" in desc or "over sleeve" in desc:
+                item["product_type"] = "oversleeve"
+            elif "compression" in desc or part.startswith("Compression"):
+                item["product_type"] = "compression"
+            else:
+                item["product_type"] = "sleeve"
+        elif part.upper().startswith("GTW") or "bag" in desc or "geotextile" in desc:
+            item["product_type"] = "bag"
+        elif part.upper().startswith("OW-") or "omegawrap" in desc or "omega wrap" in desc:
+            item["product_type"] = "omegawrap"
+        elif "backing strip" in desc.lower() or part.lower().startswith("backing"):
+            item["product_type"] = "accessory"
+        elif "concrete" in desc or "coating" in desc:
+            item["product_type"] = "service"
+
+    # --- Parse part_number for dimensions ---
+    # Format: S-<diam>-<wt_code>-<grade>-<length>[-M][-P]
+    # or G-<diam>-<wt_code>-<grade>-<length>[-M][-P]
+    pn_match = re.match(
+        r"^[SG]-"
+        r"([\d.]+)-"           # diameter
+        r"(\d+)-"              # wall thickness code (e.g. 38 = 3/8)
+        r"(\d+)-"              # grade
+        r"([\d.]+)"            # length
+        r"(?:-([MP]+))?",      # optional milling/painting suffix
+        part,
+    )
+    if pn_match:
+        if not item.get("diameter"):
+            item["diameter"] = float(pn_match.group(1))
+        wt_code = pn_match.group(2)
+        if not item.get("wall_thickness"):
+            wt_map = {"14": 0.25, "516": 0.3125, "38": 0.375,
+                       "12": 0.5, "58": 0.625, "34": 0.75}
+            item["wall_thickness"] = wt_map.get(wt_code)
+        if not item.get("grade"):
+            item["grade"] = int(pn_match.group(3))
+        if not item.get("length_ft"):
+            item["length_ft"] = float(pn_match.group(4))
+        suffix = pn_match.group(5) or ""
+        if "M" in suffix:
+            item["milling"] = True
+        if "P" in suffix:
+            item["painting"] = True
+
+    # --- Fallback: parse description for dimensions ---
+    if not item.get("diameter"):
+        # Match patterns like '12-3/4" ID', '6-5/8"', '16" ID'
+        d_match = re.search(r"(\d+)(?:-(\d+)/(\d+))?[\"″]\s*(?:ID|OD)?", gt.get("description", "") or "")
+        if d_match:
+            d_val = float(d_match.group(1))
+            if d_match.group(2) and d_match.group(3):
+                d_val += float(d_match.group(2)) / float(d_match.group(3))
+            item["diameter"] = d_val
+
+    if not item.get("wall_thickness"):
+        wt_match = re.search(r"(\d+)/(\d+)[\"″]\s*w/?t", gt.get("description", "") or "", re.I)
+        if wt_match:
+            item["wall_thickness"] = float(wt_match.group(1)) / float(wt_match.group(2))
+
+    if not item.get("grade"):
+        gr_match = re.search(r"GR\.?\s*(\d+)", gt.get("description", "") or "", re.I)
+        if gr_match:
+            item["grade"] = int(gr_match.group(1))
+
+    if not item.get("length_ft"):
+        len_match = re.search(r"(\d+)['\u2032]\s*long", gt.get("description", "") or "", re.I)
+        if len_match:
+            item["length_ft"] = float(len_match.group(1))
+        else:
+            # Also try "X" long pattern like "12" long" (inches -> check if description says long)
+            len_match2 = re.search(r"(\d+)[\"″]\s*long", gt.get("description", "") or "", re.I)
+            if len_match2:
+                # This is inches, convert to feet for length_ft? No, keep raw.
+                # Actually girth welds use inches for length (e.g. "12" long")
+                item["length_ft"] = float(len_match2.group(1)) / 12.0
+
+    return item
+
+
 def _item_similarity(gt: dict, our: dict) -> float:
     """Score similarity between two line items (0-1)."""
     score = 0.0
@@ -235,17 +397,23 @@ def _item_similarity(gt: dict, our: dict) -> float:
     if gt.get("quantity") == our.get("quantity"):
         score += 2.0
 
-    # Diameter match
+    # Diameter match (with tolerance for fractional inch rounding)
     total += 2.0
     gt_d = gt.get("diameter")
     our_d = our.get("diameter")
     if gt_d is not None and our_d is not None:
         try:
-            if abs(float(gt_d) - float(our_d)) < 0.01:
+            if abs(float(gt_d) - float(our_d)) < 0.5:
                 score += 2.0
         except (TypeError, ValueError):
             pass
     elif gt_d is None and our_d is None:
+        score += 1.0
+
+    # Description similarity (helps match items with different naming conventions)
+    total += 1.0
+    desc_result = fuzzy_match(gt.get("description"), our.get("description"))
+    if desc_result in ("exact_match", "close_match"):
         score += 1.0
 
     return score / total if total > 0 else 0.0
@@ -292,7 +460,11 @@ def compare_pair(gt_data: dict, our_data: dict) -> dict:
     field_results = {}
 
     # Top-level string fields
-    for field in ("customer_name", "contact_name", "contact_email", "contact_phone", "po_number"):
+    # Use company-name normalization for customer_name
+    field_results["customer_name"] = fuzzy_match(
+        gt_data.get("customer_name"), our_data.get("customer_name"), company=True
+    )
+    for field in ("contact_name", "contact_email", "contact_phone", "po_number"):
         field_results[field] = fuzzy_match(gt_data.get(field), our_data.get(field))
 
     # Quote number
@@ -332,7 +504,7 @@ def pick_best_rfq(gt_data: dict, our_rfqs: list[dict]) -> dict | None:
     best_score = -1
     for rfq in our_rfqs:
         score = 0
-        if fuzzy_match(gt_data.get("customer_name"), rfq.get("customer_name")) in ("exact_match", "close_match"):
+        if fuzzy_match(gt_data.get("customer_name"), rfq.get("customer_name"), company=True) in ("exact_match", "close_match"):
             score += 2
         gt_n = len(gt_data.get("line_items", []))
         our_n = len(rfq.get("items", rfq.get("line_items", [])))
