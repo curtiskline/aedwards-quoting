@@ -1,11 +1,19 @@
 """Price calculation engine based on Allan Edwards pricing rules."""
 
+import logging
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 import re
 from typing import Any
 
 from .parser import ParsedItem, ParsedRFQ
+
+logger = logging.getLogger(__name__)
+
+# Default values for missing item fields
+DEFAULT_GRADE = 50
+DEFAULT_LENGTH_SLEEVE = 40.0
+DEFAULT_LENGTH_GIRTH_WELD = 6.0
 
 # Price per pound lookup table
 # wall_thickness -> (GR50 price, GR65 price)
@@ -121,6 +129,7 @@ class QuoteLineItem:
     # Optional details
     weight_per_ft: Decimal | None = None
     price_per_lb: Decimal | None = None
+    notes: str | None = None
 
 
 @dataclass
@@ -522,15 +531,59 @@ def generate_oversleeve_description(
     return desc
 
 
+def _apply_item_defaults(item: ParsedItem) -> tuple[ParsedItem, list[str]]:
+    """Apply sensible defaults for missing grade/length_ft.
+
+    Returns a (possibly modified) item and a list of notes about defaults applied.
+    """
+    notes: list[str] = []
+    grade = item.grade
+    length_ft = item.length_ft
+
+    if grade is None:
+        grade = DEFAULT_GRADE
+        notes.append(f"grade defaulted to GR{DEFAULT_GRADE}")
+        logger.warning(
+            "Item '%s' missing grade — defaulting to GR%d",
+            item.description or item.product_type,
+            DEFAULT_GRADE,
+        )
+
+    if length_ft is None:
+        if item.product_type == "girth_weld":
+            length_ft = DEFAULT_LENGTH_GIRTH_WELD
+        else:
+            length_ft = DEFAULT_LENGTH_SLEEVE
+        notes.append(f"length defaulted to {length_ft}ft")
+        logger.warning(
+            "Item '%s' missing length_ft — defaulting to %.0fft",
+            item.description or item.product_type,
+            length_ft,
+        )
+
+    if notes:
+        # Return a copy with defaults applied
+        from dataclasses import replace
+        item = replace(item, grade=grade, length_ft=length_ft)
+
+    return item, notes
+
+
 def price_item(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
     """Calculate price for a single parsed item.
 
-    Returns None if item cannot be priced (missing required data).
+    Returns None if item cannot be priced (missing required dimensions).
+    Applies sensible defaults for missing grade/length before rejecting.
     """
     if item.product_type == "sleeve":
-        if not all([item.diameter, item.wall_thickness, item.grade, item.length_ft]):
+        if not all([item.diameter, item.wall_thickness]):
+            logger.warning(
+                "Dropping sleeve item — missing diameter or wall_thickness: %s",
+                item.description,
+            )
             return None
 
+        item, default_notes = _apply_item_defaults(item)
         quote_quantity, _ = _quote_quantity_and_warning(item)
 
         unit_price, weight_per_ft, price_per_lb = calculate_sleeve_price(
@@ -544,6 +597,7 @@ def price_item(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
 
         total = unit_price * Decimal(str(quote_quantity))
 
+        notes = "; ".join(default_notes) if default_notes else None
         return QuoteLineItem(
             sort_order=sort_order,
             product_type="sleeve",
@@ -568,11 +622,18 @@ def price_item(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
             total=total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
             weight_per_ft=weight_per_ft,
             price_per_lb=price_per_lb,
+            notes=notes,
         )
 
     if item.product_type == "oversleeve":
-        if not all([item.diameter, item.wall_thickness, item.grade, item.length_ft]):
+        if not all([item.diameter, item.wall_thickness]):
+            logger.warning(
+                "Dropping oversleeve item — missing diameter or wall_thickness: %s",
+                item.description,
+            )
             return None
+
+        item, default_notes = _apply_item_defaults(item)
 
         # Oversleeves use same weight-based pricing as regular sleeves
         unit_price, weight_per_ft, price_per_lb = calculate_sleeve_price(
@@ -586,6 +647,7 @@ def price_item(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
 
         total = unit_price * Decimal(str(item.quantity))
 
+        notes = "; ".join(default_notes) if default_notes else None
         return QuoteLineItem(
             sort_order=sort_order,
             product_type="oversleeve",
@@ -610,11 +672,18 @@ def price_item(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
             total=total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
             weight_per_ft=weight_per_ft,
             price_per_lb=price_per_lb,
+            notes=notes,
         )
 
     if item.product_type == "girth_weld":
-        if not all([item.diameter, item.wall_thickness, item.grade, item.length_ft]):
+        if not all([item.diameter, item.wall_thickness]):
+            logger.warning(
+                "Dropping girth_weld item — missing diameter or wall_thickness: %s",
+                item.description,
+            )
             return None
+
+        item, default_notes = _apply_item_defaults(item)
 
         unit_price = get_girth_weld_price(item.diameter)
         if unit_price is None:
@@ -622,6 +691,7 @@ def price_item(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
 
         total = unit_price * Decimal(str(item.quantity))
 
+        notes = "; ".join(default_notes) if default_notes else None
         return QuoteLineItem(
             sort_order=sort_order,
             product_type="girth_weld",
@@ -640,6 +710,7 @@ def price_item(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
             quantity=item.quantity,
             unit_price=unit_price,
             total=total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+            notes=notes,
         )
 
     # TODO: Add pricing for other product types
@@ -684,6 +755,7 @@ def generate_quote(rfq: ParsedRFQ, quote_number: str) -> Quote:
     line_items: list[QuoteLineItem] = []
     quantity_warnings: list[str] = []
 
+    default_notes: list[str] = []
     for i, item in enumerate(rfq.items, start=1):
         _, warning = _quote_quantity_and_warning(item)
         if warning:
@@ -691,6 +763,14 @@ def generate_quote(rfq: ParsedRFQ, quote_number: str) -> Quote:
         priced = price_item(item, i)
         if priced:
             line_items.append(priced)
+            if priced.notes:
+                default_notes.append(f"Item {i}: {priced.notes}")
+        else:
+            desc = item.description or item.product_type
+            logger.warning(
+                "Dropped unpriceable item %d: %s (dia=%s, wt=%s, grade=%s, len=%s)",
+                i, desc, item.diameter, item.wall_thickness, item.grade, item.length_ft,
+            )
 
     shipping_note = QuoteLineItem(
         sort_order=len(line_items) + 1,
@@ -726,6 +806,20 @@ def generate_quote(rfq: ParsedRFQ, quote_number: str) -> Quote:
                 product_type="note",
                 part_number="",
                 description=warning,
+                quantity=0,
+                unit_price=Decimal("0.00"),
+                total=Decimal("0.00"),
+                is_note=True,
+            )
+        )
+
+    if default_notes:
+        line_items.append(
+            QuoteLineItem(
+                sort_order=len(line_items) + 1,
+                product_type="note",
+                part_number="",
+                description="*Defaults applied: " + "; ".join(default_notes),
                 quantity=0,
                 unit_price=Decimal("0.00"),
                 total=Decimal("0.00"),
