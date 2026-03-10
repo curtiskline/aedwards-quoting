@@ -216,6 +216,7 @@ def main():
     parser.add_argument("--emails-dir", type=Path, default=EMAILS_DIR, help="Directory with .eml files")
     parser.add_argument("--output-dir", type=Path, default=OUTPUT_DIR, help="Output directory")
     parser.add_argument("--filter", type=str, default=None, help="Glob pattern to filter email filenames (e.g. '*RFQ*')")
+    parser.add_argument("--filter-file", type=Path, default=None, help="File containing email filenames to process (one per line)")
     args = parser.parse_args()
 
     if args.provider:
@@ -226,8 +227,26 @@ def main():
         print(f"Error: emails directory not found: {args.emails_dir}")
         sys.exit(1)
 
-    if args.filter:
-        eml_files = sorted(args.emails_dir.glob(args.filter))
+    if args.filter_file:
+        # Read exact filenames from file (one per line)
+        filter_names = [
+            line.strip() for line in args.filter_file.read_text().splitlines()
+            if line.strip()
+        ]
+        eml_files = []
+        for name in filter_names:
+            path = args.emails_dir / name
+            if path.exists():
+                eml_files.append(path)
+            else:
+                print(f"  Warning: not found: {name}")
+        eml_files.sort()
+    elif args.filter:
+        import fnmatch
+        # Use fnmatch instead of glob to avoid misinterpreting special
+        # characters (e.g. [] in filenames) as glob syntax.
+        all_eml = sorted(args.emails_dir.iterdir())
+        eml_files = [f for f in all_eml if fnmatch.fnmatch(f.name, args.filter)]
     else:
         eml_files = sorted(args.emails_dir.glob("*.eml"))
     print(f"Found {len(eml_files)} .eml files in {args.emails_dir}")
