@@ -12,7 +12,7 @@ import httpx
 import msal
 
 GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
-DEFAULT_CLIENT_ID = "04b07795-8ddb-461a-bbee-02f9e1bf7b46"  # Microsoft public client
+DEFAULT_CLIENT_ID = "d3590ed6-52b3-4102-aeff-aad2292ab01c"  # MS Office public client
 DEFAULT_TIMEOUT_SECONDS = 60.0
 
 
