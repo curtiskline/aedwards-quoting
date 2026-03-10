@@ -27,7 +27,7 @@ sys.path.insert(0, str(PROJECT_ROOT / "src"))
 from allenedwards.parser import parse_rfq_multi  # noqa: E402
 from allenedwards.pricing import generate_quote  # noqa: E402
 from allenedwards.pdf_generator import generate_quote_pdf  # noqa: E402
-from allenedwards.cli import generate_quote_number  # noqa: E402
+from allenedwards.cli import generate_quote_number, get_provider, resolve_provider_name  # noqa: E402
 
 
 EMAILS_DIR = PROJECT_ROOT / "data" / "test-corpus" / "emails"
@@ -41,37 +41,6 @@ def decimal_default(obj):
     if isinstance(obj, Decimal):
         return float(obj)
     raise TypeError(f"Object of type {type(obj)} is not JSON serializable")
-
-
-def get_provider():
-    """Get LLM provider (mirrors cli.py logic)."""
-    from allenedwards.providers.claude import ClaudeProvider
-
-    provider_name = os.environ.get("LLM_PROVIDER", "claude")
-
-    if provider_name == "mock":
-        from allenedwards.providers.mock import MockProvider
-        return MockProvider(), "mock"
-
-    if provider_name == "claude" or os.environ.get("ANTHROPIC_API_KEY"):
-        return ClaudeProvider(), "claude"
-
-    from allenedwards.providers.minimax import MiniMaxProvider
-    return MiniMaxProvider(), "minimax"
-
-
-def load_env():
-    """Load environment from ~/.env if it exists."""
-    env_path = Path.home() / ".env"
-    if env_path.exists():
-        for line in env_path.read_text().splitlines():
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                key, _, value = line.partition("=")
-                key = key.strip()
-                value = value.strip().strip("'\"")
-                if key and key not in os.environ:
-                    os.environ[key] = value
 
 
 def email_id_from_path(eml_path: Path) -> str:
@@ -249,9 +218,6 @@ def main():
     parser.add_argument("--filter", type=str, default=None, help="Glob pattern to filter email filenames (e.g. '*RFQ*')")
     args = parser.parse_args()
 
-    # Load env vars
-    load_env()
-
     if args.provider:
         os.environ["LLM_PROVIDER"] = args.provider
 
@@ -285,7 +251,8 @@ def main():
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
     # Initialize provider
-    provider, provider_name = get_provider()
+    provider = get_provider()
+    provider_name = resolve_provider_name()
     print(f"Using provider: {provider_name}")
     print(f"Output: {args.output_dir}")
     print()

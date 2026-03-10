@@ -7,35 +7,77 @@ from dataclasses import asdict
 from pathlib import Path
 
 import click
+from dotenv import load_dotenv
 
 from .parser import ParsedRFQ, parse_rfq, parse_rfq_multi
 from .pdf_generator import generate_quote_pdf
 from .pricing import generate_quote
 from .providers.base import LLMProvider
 
+_ENV_LOADED = False
+
+
+def load_environment() -> None:
+    """Load environment variables from ~/.env and project .env.
+
+    The project .env takes precedence over ~/.env.
+    """
+    global _ENV_LOADED
+    if _ENV_LOADED:
+        return
+
+    home_env = Path.home() / ".env"
+    project_env = Path(__file__).resolve().parents[2] / ".env"
+
+    if home_env.exists():
+        load_dotenv(home_env, override=False)
+    if project_env.exists():
+        load_dotenv(project_env, override=True)
+
+    _ENV_LOADED = True
+
+
+def resolve_provider_name() -> str:
+    """Resolve provider name with explicit LLM_PROVIDER taking precedence."""
+    load_environment()
+
+    provider_name = os.environ.get("LLM_PROVIDER", "").strip().lower()
+    if provider_name:
+        if provider_name in {"mock", "claude", "minimax"}:
+            return provider_name
+        raise ValueError(f"Unsupported LLM_PROVIDER: {provider_name}")
+
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return "claude"
+
+    return "minimax"
+
 
 def get_provider() -> LLMProvider:
     """Get the configured LLM provider based on environment variables.
 
     Provider selection:
-    - LLM_PROVIDER=mock -> MockProvider (for testing)
-    - LLM_PROVIDER=claude or ANTHROPIC_API_KEY set -> ClaudeProvider
-    - Otherwise -> MiniMaxProvider (requires MINIMAX_API_KEY)
+    - LLM_PROVIDER explicitly set -> selected provider
+    - Otherwise, ANTHROPIC_API_KEY present -> ClaudeProvider
+    - Otherwise -> MiniMaxProvider
     """
-    provider_name = os.environ.get("LLM_PROVIDER", "").lower()
+    provider_name = resolve_provider_name()
 
     if provider_name == "mock":
         from .providers.mock import SAMPLE_RFQ_RESPONSE, MockProvider
 
         return MockProvider(SAMPLE_RFQ_RESPONSE)
-    elif provider_name == "claude" or os.environ.get("ANTHROPIC_API_KEY"):
+    if provider_name == "claude":
         from .providers.claude import ClaudeProvider
 
         return ClaudeProvider()
-    else:
+    if provider_name == "minimax":
         from .providers.minimax import MiniMaxProvider
 
         return MiniMaxProvider()
+
+    # Defensive guard for static analyzers; resolve_provider_name() validates names.
+    raise ValueError(f"Unsupported provider: {provider_name}")
 
 
 def serialize_parsed_rfq(rfq: ParsedRFQ) -> dict:
