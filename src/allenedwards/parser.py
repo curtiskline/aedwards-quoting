@@ -10,6 +10,24 @@ from typing import Any
 from .providers.base import LLMProvider
 
 QUOTE_NUMBER_PATTERN = re.compile(r"\b(?:QUO|SO|INV)-\d+-\d+\b", re.IGNORECASE)
+DEFAULT_RFQ_CLASSIFY_BODY_CHARS = 500
+
+CLASSIFY_SYSTEM_PROMPT = """You are a strict binary classifier for Allan Edwards sales operations.
+Classify whether an incoming message is likely an RFQ for pipe/sleeve/girth-weld products.
+
+Return JSON:
+{
+  "is_rfq": true|false,
+  "confidence": 0.0-1.0,
+  "reason": "short explanation"
+}
+
+Classification guidance:
+- Prefer false positives over false negatives.
+- Messages asking for quote/pricing/lead time on steel pipe products are RFQs.
+- Internal status updates, invoices, shipping updates, signatures-only, or unrelated topics are not RFQs.
+- If uncertain, lean true.
+"""
 
 PARSE_SYSTEM_PROMPT = """You are an expert at parsing Request for Quote (RFQ) emails for Allan Edwards Inc.,
 a pipeline products manufacturer specializing in sleeves, girth weld bands, and related products.
@@ -446,6 +464,41 @@ in the "quotes" array."""
         rfqs.append(rfq)
 
     return rfqs
+
+
+def classify_rfq(subject: str, body: str, provider: LLMProvider) -> bool:
+    """Classify if an email is likely an RFQ.
+
+    False negatives are costlier than false positives, so uncertain outcomes
+    intentionally bias to True.
+    """
+    snippet = (body or "")[:DEFAULT_RFQ_CLASSIFY_BODY_CHARS]
+    prompt = (
+        "Classify this email:\n\n"
+        f"Subject: {subject or ''}\n"
+        f"Body Snippet:\n{snippet}\n"
+    )
+
+    try:
+        result = provider.complete_json(prompt, system=CLASSIFY_SYSTEM_PROMPT)
+    except Exception:
+        # Prefer false positives for MVP.
+        return True
+
+    is_rfq = bool(result.get("is_rfq", False))
+    confidence = _parse_float(result.get("confidence")) or 0.0
+    reason = str(result.get("reason", "")).lower()
+
+    if is_rfq:
+        return True
+
+    # Uncertain "not RFQ" classifications get flipped to RFQ.
+    if confidence < 0.75:
+        return True
+    if any(token in reason for token in ("uncertain", "maybe", "possibly", "unclear")):
+        return True
+
+    return False
 
 
 def _is_type_leak(value: str | None) -> bool:

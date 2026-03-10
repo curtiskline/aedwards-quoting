@@ -1,6 +1,7 @@
 """CLI entry point for Allan Edwards RFQ-to-Quote tool."""
 
 import json
+import logging
 import os
 import sys
 from dataclasses import asdict
@@ -443,6 +444,93 @@ def batch(directory: Path, output_dir: Path | None):
 def main():
     """Main entry point."""
     cli()
+
+
+@cli.command()
+@click.option("--poll-minutes", default=5, show_default=True, type=int, help="Inbox poll interval")
+@click.option(
+    "--state-file",
+    type=click.Path(path_type=Path),
+    default=Path(".monitor_state.json"),
+    show_default=True,
+    help="State file for processed message IDs",
+)
+@click.option(
+    "--output-dir",
+    type=click.Path(path_type=Path),
+    default=Path("monitor_output"),
+    show_default=True,
+    help="Directory for generated quote PDFs",
+)
+@click.option("--once", is_flag=True, help="Run a single poll cycle and exit")
+@click.option(
+    "--processed-folder",
+    type=str,
+    default=None,
+    help="Optional Inbox child folder name to move processed emails into",
+)
+@click.option(
+    "--cc",
+    "cc_email",
+    type=str,
+    default=None,
+    help="Optional CC email added to created drafts",
+)
+@click.option("--log-level", default="INFO", show_default=True, type=str)
+def monitor(
+    poll_minutes: int,
+    state_file: Path,
+    output_dir: Path,
+    once: bool,
+    processed_folder: str | None,
+    cc_email: str | None,
+    log_level: str,
+):
+    """Monitor Outlook inbox for RFQs and create draft quote emails."""
+    try:
+        load_environment()
+        logging.basicConfig(
+            level=getattr(logging, log_level.upper(), logging.INFO),
+            format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        )
+
+        email_addr = os.environ.get("O365_EMAIL")
+        password = os.environ.get("O365_PASSWORD")
+        if not email_addr or not password:
+            raise ValueError("Missing O365 credentials. Set O365_EMAIL and O365_PASSWORD.")
+
+        client_id = os.environ.get("O365_CLIENT_ID", "04b07795-8ddb-461a-bbee-02f9e1bf7b46")
+        scopes = os.environ.get("O365_SCOPES")
+        parsed_scopes = [s.strip() for s in scopes.split(",")] if scopes else None
+
+        from .monitor import InboxMonitor
+        from .outlook import OutlookClient
+
+        outlook = OutlookClient(
+            email_address=email_addr,
+            password=password,
+            client_id=client_id,
+            scopes=parsed_scopes,
+        )
+        service = InboxMonitor(
+            outlook=outlook,
+            provider=get_provider(),
+            poll_interval_seconds=max(1, poll_minutes * 60),
+            state_path=state_file,
+            output_dir=output_dir,
+            quote_email_cc=cc_email,
+            processed_folder_name=processed_folder,
+        )
+
+        if once:
+            count = service.run_once()
+            click.echo(f"Processed {count} RFQ message(s).")
+        else:
+            service.run_forever()
+
+    except Exception as e:
+        click.echo(f"Error running monitor: {e}", err=True)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

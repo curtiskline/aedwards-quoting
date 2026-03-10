@@ -4,12 +4,14 @@ import tempfile
 from pathlib import Path
 
 from allenedwards.parser import (
+    classify_rfq,
     extract_email_text,
     parse_rfq,
     parse_rfq_multi,
     _extract_quote_number,
     _resolve_quote_number,
 )
+from allenedwards.providers.base import LLMProvider
 from allenedwards.providers.mock import MockProvider, SAMPLE_MULTI_QUOTE_RESPONSE
 
 
@@ -526,3 +528,31 @@ def test_parse_rfq_uses_contact_info_for_ship_to_fallback():
     finally:
         if eml_path.exists():
             eml_path.unlink()
+
+
+class _ClassifierProvider(LLMProvider):
+    def __init__(self, response):
+        self.response = response
+
+    def complete(self, prompt: str, system: str | None = None) -> str:
+        return "{}"
+
+    def complete_json(self, prompt: str, system: str | None = None) -> dict:
+        if isinstance(self.response, Exception):
+            raise self.response
+        return self.response
+
+
+def test_classify_rfq_returns_true_when_model_flags_rfq():
+    provider = _ClassifierProvider({"is_rfq": True, "confidence": 0.9, "reason": "quote request"})
+    assert classify_rfq("Need quote", "Please quote 20 sleeves", provider) is True
+
+
+def test_classify_rfq_biases_true_when_provider_fails():
+    provider = _ClassifierProvider(RuntimeError("temporary provider failure"))
+    assert classify_rfq("status update", "this is probably not rfq", provider) is True
+
+
+def test_classify_rfq_flips_low_confidence_false_to_true():
+    provider = _ClassifierProvider({"is_rfq": False, "confidence": 0.4, "reason": "maybe not rfq"})
+    assert classify_rfq("check pricing", "unclear request", provider) is True

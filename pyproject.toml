@@ -15,6 +15,7 @@ dependencies = [
     "python-dotenv>=1.0",
     "httpx>=0.25",
     "anthropic>=0.21",
+    "msal>=1.30",
     "reportlab>=4.0",
 ]
 
