@@ -35,8 +35,8 @@ The scope must be `https://graph.microsoft.com/.default` (not individual scopes 
 ## Required .env Variables
 
 ```
-O365_EMAIL=CBarker@allanedwards.com
-O365_PASSWORD=Masters*25!!
+O365_EMAIL=<your-mailbox@yourdomain.com>
+O365_PASSWORD=<your-password>
 O365_CLIENT_ID=d3590ed6-52b3-4102-aeff-aad2292ab01c
 O365_SCOPES=https://graph.microsoft.com/.default
 ```
