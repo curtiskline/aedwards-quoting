@@ -139,6 +139,12 @@ tar \
   --exclude='venv' \
   --exclude='__pycache__' \
   --exclude='*.pyc' \
+  --exclude='data' \
+  --exclude='worktrees' \
+  --exclude='logs' \
+  --exclude='monitor_output' \
+  --exclude='.agent-*' \
+  --exclude='*.db' \
   -czf "${SRC_TARBALL}" \
   -C "${ROOT_DIR}" .
 
