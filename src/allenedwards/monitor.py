@@ -10,7 +10,7 @@ import tempfile
 import time
 from typing import Any
 
-from .outlook import OutlookClient, OutlookMessage
+from .outlook import OutlookAttachment, OutlookClient, OutlookMessage
 from .parser import classify_rfq, parse_rfq_multi
 from .pdf_generator import generate_quote_pdf
 from .pricing import Quote, generate_quote
@@ -121,7 +121,15 @@ class InboxMonitor:
             self._finalize_message(msg.id)
             return False
 
-        rfqs = _parse_message_to_rfqs(msg, body_text, self.provider)
+        attachments: list[OutlookAttachment] = []
+        if msg.has_attachments:
+            try:
+                attachments = self.outlook.get_attachments(msg.id)
+                logger.info("Fetched %d attachments for message %s", len(attachments), msg.id)
+            except Exception:
+                logger.exception("Failed fetching attachments for message %s", msg.id)
+
+        rfqs = _parse_message_to_rfqs(msg, body_text, self.provider, attachments)
         if not rfqs:
             logger.warning("Message %s produced no parsed RFQs", msg.id)
             self._finalize_message(msg.id)
@@ -208,8 +216,14 @@ def _build_draft_body(quote: Quote) -> str:
     return "\n".join(lines)
 
 
-def _parse_message_to_rfqs(msg: OutlookMessage, body_text: str, provider: LLMProvider):
+def _parse_message_to_rfqs(
+    msg: OutlookMessage,
+    body_text: str,
+    provider: LLMProvider,
+    attachments: list[OutlookAttachment] | None = None,
+):
     """Bridge Graph message fields into the existing .eml parser pipeline."""
+    import email as email_mod
     from email.message import EmailMessage
 
     eml = EmailMessage()
@@ -222,6 +236,31 @@ def _parse_message_to_rfqs(msg: OutlookMessage, body_text: str, provider: LLMPro
     if msg.internet_message_id:
         eml["Message-ID"] = msg.internet_message_id
     eml.set_content(body_text)
+
+    # Attach fetched Outlook attachments as MIME parts so the parser sees them.
+    for att in attachments or []:
+        if att.content_type == "message/rfc822":
+            # Embedded email: parse into a Message and attach as message/rfc822
+            try:
+                embedded = email_mod.message_from_bytes(att.content_bytes)
+                eml.add_attachment(
+                    embedded,
+                    maintype="message",
+                    subtype="rfc822",
+                    filename=att.filename,
+                )
+            except Exception:
+                logger.warning("Could not parse message/rfc822 attachment %s", att.filename)
+        else:
+            maintype, _, subtype = att.content_type.partition("/")
+            if not subtype:
+                maintype, subtype = "application", "octet-stream"
+            eml.add_attachment(
+                att.content_bytes,
+                maintype=maintype,
+                subtype=subtype,
+                filename=att.filename,
+            )
 
     with tempfile.NamedTemporaryFile(suffix=".eml", delete=False) as f:
         temp_path = Path(f.name)

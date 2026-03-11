@@ -17,6 +17,15 @@ DEFAULT_TIMEOUT_SECONDS = 60.0
 
 
 @dataclass
+class OutlookAttachment:
+    """A single attachment from an Outlook message."""
+
+    filename: str
+    content_bytes: bytes
+    content_type: str
+
+
+@dataclass
 class OutlookMessage:
     """Simplified inbox message payload."""
 
@@ -28,6 +37,7 @@ class OutlookMessage:
     body_content: str
     body_content_type: str
     internet_message_id: str | None
+    has_attachments: bool = False
 
 
 class OutlookAuthError(RuntimeError):
@@ -123,7 +133,7 @@ class OutlookClient:
             "$filter": "isRead eq false",
             "$orderby": "receivedDateTime asc",
             "$top": str(limit),
-            "$select": "id,subject,from,bodyPreview,body,internetMessageId",
+            "$select": "id,subject,from,bodyPreview,body,internetMessageId,hasAttachments",
         }
         data = self._request("GET", "/me/mailFolders/inbox/messages", params=params)
         messages: list[OutlookMessage] = []
@@ -141,10 +151,63 @@ class OutlookClient:
                     body_content=body.get("content") or "",
                     body_content_type=body.get("contentType") or "text",
                     internet_message_id=item.get("internetMessageId"),
+                    has_attachments=bool(item.get("hasAttachments", False)),
                 )
             )
 
         return messages
+
+    def get_attachments(self, message_id: str) -> list[OutlookAttachment]:
+        """Fetch attachments for a message via GET /me/messages/{id}/attachments."""
+        data = self._request("GET", f"/me/messages/{message_id}/attachments")
+        attachments: list[OutlookAttachment] = []
+
+        for item in data.get("value", []):
+            odata_type = item.get("@odata.type", "")
+            name = item.get("name") or "attachment"
+            content_type = item.get("contentType") or "application/octet-stream"
+
+            if odata_type == "#microsoft.graph.fileAttachment":
+                raw = item.get("contentBytes", "")
+                content = base64.b64decode(raw) if raw else b""
+                attachments.append(OutlookAttachment(
+                    filename=name,
+                    content_bytes=content,
+                    content_type=content_type,
+                ))
+            elif odata_type == "#microsoft.graph.itemAttachment":
+                # itemAttachment: fetch the nested item as MIME via $value
+                try:
+                    att_id = item["id"]
+                    mime_data = self._request_raw(
+                        "GET",
+                        f"/me/messages/{message_id}/attachments/{att_id}/$value",
+                    )
+                    attachments.append(OutlookAttachment(
+                        filename=name,
+                        content_bytes=mime_data,
+                        content_type="message/rfc822",
+                    ))
+                except Exception:
+                    pass
+
+        return attachments
+
+    def _request_raw(self, method: str, path: str) -> bytes:
+        """Like _request but returns raw bytes instead of JSON."""
+        url = f"{GRAPH_BASE_URL}{path}"
+        headers = self._auth_headers()
+
+        with httpx.Client(timeout=self.timeout_seconds) as client:
+            response = client.request(method, url, headers=headers)
+
+            if response.status_code == 401:
+                self._token = self._acquire_token()
+                headers = self._auth_headers()
+                response = client.request(method, url, headers=headers)
+
+        response.raise_for_status()
+        return response.content
 
     def mark_as_read(self, message_id: str) -> None:
         self._request("PATCH", f"/me/messages/{message_id}", json={"isRead": True})
