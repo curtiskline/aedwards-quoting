@@ -1,0 +1,25 @@
+[Unit]
+Description=Allan Edwards Outlook Inbox Monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aedwards
+Group=aedwards
+WorkingDirectory=/opt/aedwards/src
+EnvironmentFile=/opt/aedwards/.env
+ExecStart=/usr/local/bin/aedwards monitor --poll-minutes 5 --state-file /opt/aedwards/.monitor_state.json --output-dir /opt/aedwards/monitor_output
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/aedwards
+
+[Install]
+WantedBy=multi-user.target
