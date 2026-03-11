@@ -327,8 +327,11 @@ class QuotePDFBuilder:
             ]
         ]
 
-        # Line items
+        # Line items — skip rows with no real content
         for item in self.quote.line_items:
+            # Skip items with zero/missing price and empty description
+            if not item.is_note and not item.unit_price and not item.description.strip():
+                continue
             item_number = "" if item.is_note else item.part_number
             quantity = "" if item.is_note else str(item.quantity)
             table_data.append([
@@ -337,48 +340,6 @@ class QuotePDFBuilder:
                 Paragraph(quantity, self.styles["normal_small"]),
                 Paragraph(format_currency(item.unit_price), self.styles["normal_small"]),
                 Paragraph(format_currency(item.total), self.styles["normal_small"]),
-            ])
-
-        # Add empty placeholder rows (Template A shows these with $0.00)
-        empty_rows_needed = max(0, 4 - len(self.quote.line_items))
-        for _ in range(empty_rows_needed):
-            table_data.append([
-                "",
-                "",
-                "",
-                Paragraph("$0.00", self.styles["normal_small"]),
-                Paragraph("$0.00", self.styles["normal_small"]),
-            ])
-
-        # Add shipping method as note row if present
-        if self.quote.shipping_method:
-            table_data.append([
-                "",
-                Paragraph(f"Ship: {self.quote.shipping_method}", self.styles["normal_small"]),
-                "",
-                Paragraph("$0.00", self.styles["normal_small"]),
-                Paragraph("$0.00", self.styles["normal_small"]),
-            ])
-
-        # Add more empty rows
-        for _ in range(3):
-            table_data.append([
-                "",
-                "",
-                "",
-                Paragraph("$0.00", self.styles["normal_small"]),
-                Paragraph("$0.00", self.styles["normal_small"]),
-            ])
-
-        # Add RFQ contact row at bottom
-        rfq_contact = self._format_rfq_contact()
-        if rfq_contact:
-            table_data.append([
-                Paragraph(rfq_contact, self.styles["normal_small"]),
-                "",
-                "",
-                Paragraph("$0.00", self.styles["normal_small"]),
-                Paragraph("$0.00", self.styles["normal_small"]),
             ])
 
         # Column widths: Item Number 18%, Description 42%, Quantity 12%, Unit Price 14%, Total 14%
@@ -427,19 +388,6 @@ class QuotePDFBuilder:
         elements.append(items_table)
 
         return elements
-
-    def _format_rfq_contact(self) -> str:
-        """Format RFQ contact info for the line items table."""
-        parts = ["RFQ:"]
-        if self.quote.contact_name:
-            parts.append(self.quote.contact_name)
-        if self.quote.contact_phone:
-            parts.append(self.quote.contact_phone)
-        if self.quote.contact_email:
-            parts.append(self.quote.contact_email)
-        if len(parts) > 1:
-            return " ".join(parts)
-        return ""
 
     def _build_totals(self) -> list:
         """Build Template A totals section: Subtotal, Shipping and Handling, TOTAL."""

@@ -308,10 +308,32 @@ def _strip_html(html: str) -> str:
     return html.strip()
 
 
+def _is_metadata_item(item_data: dict) -> bool:
+    """Return True if this 'item' is really shipping/contact metadata, not a product."""
+    desc = str(item_data.get("description", "")).strip().lower()
+    if not desc:
+        return False
+    # Shipping instructions leaked as line items
+    if re.match(r"^ship\b", desc, re.IGNORECASE):
+        return True
+    # RFQ contact info leaked as line items
+    if re.match(r"^rfq\s*:", desc, re.IGNORECASE):
+        return True
+    # Generic shipping method strings
+    shipping_keywords = {"ltl", "prepay", "flatbed", "freight", "ups", "fedex", "common carrier"}
+    desc_words = set(desc.replace(",", " ").replace("&", " ").split())
+    if desc_words and desc_words.issubset(shipping_keywords | {"ship", "and", "add", "prepay"}):
+        return True
+    return False
+
+
 def _parse_items(items_data: list) -> list[ParsedItem]:
     """Parse item data from LLM response into ParsedItem objects."""
     items = []
     for item_data in items_data:
+        # Filter out non-product metadata that the LLM incorrectly included
+        if _is_metadata_item(item_data):
+            continue
         item = ParsedItem(
             product_type=item_data.get("product_type", "sleeve"),
             quantity=int(item_data.get("quantity") or 1),
