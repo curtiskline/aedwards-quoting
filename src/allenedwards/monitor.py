@@ -11,7 +11,7 @@ import time
 from typing import Any
 
 from .outlook import OutlookAttachment, OutlookClient, OutlookMessage
-from .parser import classify_rfq, parse_rfq_multi
+from .parser import ParsedRFQ, classify_rfq, parse_rfq_multi
 from .pdf_generator import generate_quote_pdf
 from .pricing import Quote, generate_quote
 from .providers.base import LLMProvider
@@ -158,25 +158,32 @@ class InboxMonitor:
         for idx, rfq in enumerate(rfqs):
             quote_number = base_quote_number if len(rfqs) == 1 else f"{base_quote_number}-{idx + 1:02d}"
             quote = generate_quote(rfq, quote_number)
-            pdf_name, pdf_bytes = self._build_quote_pdf(quote)
 
             to_email = rfq.contact_email or msg.sender_email
             if not to_email:
                 raise RuntimeError(f"No recipient email available for message {msg.id}")
 
-            subject = f"Quote {quote.quote_number}"
-            if quote.project_line:
-                subject = f"{subject} - {quote.project_line}"
+            if quote.subtotal == 0:
+                draft_id = self._create_review_draft(msg, rfq, quote, to_email)
+                logger.warning(
+                    "Created REVIEW draft %s for message %s ($0 quote — needs manual pricing)",
+                    draft_id or "<unknown>", msg.id,
+                )
+            else:
+                pdf_name, pdf_bytes = self._build_quote_pdf(quote)
+                subject = f"Quote {quote.quote_number}"
+                if quote.project_line:
+                    subject = f"{subject} - {quote.project_line}"
 
-            body = _build_draft_body(quote)
-            draft_id = self.outlook.create_draft(
-                to_email=to_email,
-                subject=subject,
-                body_text=body,
-                attachments=[(pdf_name, pdf_bytes)],
-                cc_email=self.quote_email_cc,
-            )
-            logger.info("Created draft %s for message %s", draft_id or "<unknown>", msg.id)
+                body = _build_draft_body(quote)
+                draft_id = self.outlook.create_draft(
+                    to_email=to_email,
+                    subject=subject,
+                    body_text=body,
+                    attachments=[(pdf_name, pdf_bytes)],
+                    cc_email=self.quote_email_cc,
+                )
+                logger.info("Created draft %s for message %s", draft_id or "<unknown>", msg.id)
 
         self._finalize_message(msg.id)
         return True
@@ -188,6 +195,27 @@ class InboxMonitor:
         generate_quote_pdf(quote, path)
         content = path.read_bytes()
         return filename, content
+
+    def _create_review_draft(
+        self,
+        msg: OutlookMessage,
+        rfq: ParsedRFQ,
+        quote: Quote,
+        to_email: str,
+    ) -> str:
+        """Create an informational draft when auto-pricing fails ($0 quote)."""
+        subject = f"[NEEDS PRICING] RFQ from {msg.sender_name or msg.sender_email or 'unknown'}"
+        if quote.project_line:
+            subject += f" - {quote.project_line}"
+
+        body = _build_review_body(msg, rfq, quote)
+        return self.outlook.create_draft(
+            to_email=to_email,
+            subject=subject,
+            body_text=body,
+            attachments=[],
+            cc_email=self.quote_email_cc,
+        )
 
     def _finalize_message(self, message_id: str) -> None:
         if self.processed_folder_name:
@@ -231,6 +259,75 @@ def _build_draft_body(quote: Quote) -> str:
     lines.append("")
     lines.append("Thank you,")
     lines.append("Allan Edwards, Inc.")
+    return "\n".join(lines)
+
+
+def _build_review_body(msg: OutlookMessage, rfq: ParsedRFQ, quote: Quote) -> str:
+    """Build the body for a review draft when auto-pricing produces $0."""
+    lines = [
+        "*** AUTO-PRICING COULD NOT COMPLETE THIS QUOTE — MANUAL PRICING NEEDED ***",
+        "",
+        "An RFQ was received but the system could not price one or more items.",
+        "Please review the details below and prepare the quote manually.",
+        "",
+        "--- Original Email ---",
+        f"From: {msg.sender_name or ''} <{msg.sender_email or 'unknown'}>",
+        f"Subject: {msg.subject}",
+        "",
+    ]
+
+    if rfq.customer_name:
+        lines.append(f"Customer: {rfq.customer_name}")
+    if rfq.contact_name:
+        lines.append(f"Contact: {rfq.contact_name}")
+    if rfq.contact_email:
+        lines.append(f"Email: {rfq.contact_email}")
+    if rfq.contact_phone:
+        lines.append(f"Phone: {rfq.contact_phone}")
+
+    if rfq.ship_to:
+        ship_parts = []
+        for attr in ("company", "city", "state"):
+            val = getattr(rfq.ship_to, attr, None)
+            if val:
+                ship_parts.append(val)
+        if ship_parts:
+            lines.append(f"Ship To: {', '.join(ship_parts)}")
+
+    lines.append("")
+    lines.append("--- Requested Items ---")
+    for i, item in enumerate(rfq.items, start=1):
+        desc = item.description or item.product_type
+        qty = item.quantity
+        dia = f', {item.diameter}" OD' if item.diameter else ""
+        wt = f", {item.wall_thickness} w/t" if item.wall_thickness else ""
+        lines.append(f"  {i}. {desc} (qty {qty}{dia}{wt})")
+
+    # Show which items we could vs couldn't price
+    priced = [li for li in quote.line_items if not li.is_note and li.unit_price > 0]
+    unpriced = [li for li in quote.line_items if not li.is_note and li.unit_price == 0]
+    if unpriced:
+        lines.append("")
+        lines.append("--- Items Needing Manual Pricing ---")
+        for li in unpriced:
+            lines.append(f"  - {li.description}")
+    if priced:
+        lines.append("")
+        lines.append("--- Items Successfully Priced ---")
+        for li in priced:
+            lines.append(f"  - {li.description}: ${li.unit_price} x {li.quantity} = ${li.total}")
+
+    if rfq.notes:
+        lines.append("")
+        lines.append(f"Notes: {rfq.notes}")
+
+    lines.append("")
+    lines.append("--- Original Email Body ---")
+    body_preview = msg.body_preview or msg.body_content or ""
+    if len(body_preview) > 1000:
+        body_preview = body_preview[:1000] + "..."
+    lines.append(body_preview)
+
     return "\n".join(lines)
 
 
