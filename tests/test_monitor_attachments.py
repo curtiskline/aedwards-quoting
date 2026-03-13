@@ -28,6 +28,7 @@ def _make_msg(
         body_content=body,
         body_content_type="text",
         internet_message_id="<abc@example.com>",
+        received_datetime="2026-03-13T12:00:00Z",
         has_attachments=has_attachments,
     )
 
@@ -144,7 +145,7 @@ class TestMonitorAttachmentWiring:
     def test_has_attachments_triggers_fetch(self, tmp_path):
         """Message with has_attachments=True triggers get_attachments call."""
         outlook = MagicMock(spec=OutlookClient)
-        outlook.list_unread_messages.return_value = [_make_msg(has_attachments=True)]
+        outlook.list_inbox_messages.return_value = [_make_msg(has_attachments=True)]
         outlook.get_attachments.return_value = []
         outlook.create_draft.return_value = "draft-1"
 
@@ -165,7 +166,7 @@ class TestMonitorAttachmentWiring:
     def test_no_attachments_skips_fetch(self, tmp_path):
         """Message with has_attachments=False does not call get_attachments."""
         outlook = MagicMock(spec=OutlookClient)
-        outlook.list_unread_messages.return_value = [_make_msg(has_attachments=False)]
+        outlook.list_inbox_messages.return_value = [_make_msg(has_attachments=False)]
         outlook.create_draft.return_value = "draft-1"
 
         monitor = InboxMonitor(

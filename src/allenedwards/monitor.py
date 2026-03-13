@@ -20,11 +20,12 @@ logger = logging.getLogger(__name__)
 
 
 class ProcessedState:
-    """Tracks processed Outlook message IDs on disk."""
+    """Tracks processed Outlook message IDs and a high-water mark on disk."""
 
     def __init__(self, path: Path):
         self.path = path
         self._ids: set[str] = set()
+        self.last_seen_datetime: str | None = None
         self._load()
 
     def _load(self) -> None:
@@ -37,8 +38,10 @@ class ProcessedState:
             logger.warning("Could not parse state file %s; starting fresh", self.path)
             return
 
-        if isinstance(data, dict) and isinstance(data.get("processed_ids"), list):
-            self._ids = {str(x) for x in data["processed_ids"]}
+        if isinstance(data, dict):
+            if isinstance(data.get("processed_ids"), list):
+                self._ids = {str(x) for x in data["processed_ids"]}
+            self.last_seen_datetime = data.get("last_seen_datetime")
 
     def contains(self, message_id: str) -> bool:
         return message_id in self._ids
@@ -47,9 +50,16 @@ class ProcessedState:
         self._ids.add(message_id)
         self.save()
 
+    def advance_watermark(self, received_datetime: str) -> None:
+        """Move the high-water mark forward if *received_datetime* is newer."""
+        if not self.last_seen_datetime or received_datetime > self.last_seen_datetime:
+            self.last_seen_datetime = received_datetime
+
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        payload = {"processed_ids": sorted(self._ids)}
+        payload: dict[str, Any] = {"processed_ids": sorted(self._ids)}
+        if self.last_seen_datetime:
+            payload["last_seen_datetime"] = self.last_seen_datetime
         self.path.write_text(json.dumps(payload, indent=2))
 
 
@@ -96,12 +106,17 @@ class InboxMonitor:
             time.sleep(self.poll_interval_seconds)
 
     def run_once(self) -> int:
-        messages = self.outlook.list_unread_messages()
-        logger.info("Fetched %s unread messages", len(messages))
+        messages = self.outlook.list_inbox_messages(
+            since=self.state.last_seen_datetime
+        )
+        logger.info("Fetched %s inbox messages (since=%s)", len(messages), self.state.last_seen_datetime)
         processed_count = 0
 
         for msg in messages:
             try:
+                if msg.received_datetime:
+                    self.state.advance_watermark(msg.received_datetime)
+
                 if self.state.contains(msg.id):
                     logger.debug("Skipping already processed message %s", msg.id)
                     continue
@@ -111,6 +126,9 @@ class InboxMonitor:
                     processed_count += 1
             except Exception:
                 logger.exception("Failed processing message %s", msg.id)
+
+        if messages:
+            self.state.save()
 
         return processed_count
 

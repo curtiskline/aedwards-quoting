@@ -37,6 +37,7 @@ class OutlookMessage:
     body_content: str
     body_content_type: str
     internet_message_id: str | None
+    received_datetime: str | None = None
     has_attachments: bool = False
 
 
@@ -58,7 +59,7 @@ class OutlookClient:
         self.email_address = email_address
         self.password = password
         self.client_id = client_id
-        self.scopes = scopes or ["User.Read", "Mail.Read", "Mail.ReadWrite", "Mail.Send"]
+        self.scopes = scopes or ["https://graph.microsoft.com/.default"]
         self.timeout_seconds = timeout_seconds
         self._token: str | None = None
 
@@ -128,13 +129,23 @@ class OutlookClient:
             return {}
         return response.json()
 
-    def list_unread_messages(self, limit: int = 25) -> list[OutlookMessage]:
-        params = {
-            "$filter": "isRead eq false",
+    def list_inbox_messages(
+        self, limit: int = 25, since: str | None = None
+    ) -> list[OutlookMessage]:
+        """Fetch inbox messages, optionally only those received after *since*.
+
+        Args:
+            limit: Max messages to return.
+            since: ISO 8601 timestamp — only return messages with
+                   receivedDateTime greater than this value.
+        """
+        params: dict[str, str] = {
             "$orderby": "receivedDateTime asc",
             "$top": str(limit),
-            "$select": "id,subject,from,bodyPreview,body,internetMessageId,hasAttachments",
+            "$select": "id,subject,from,bodyPreview,body,internetMessageId,hasAttachments,receivedDateTime",
         }
+        if since:
+            params["$filter"] = f"receivedDateTime gt {since}"
         data = self._request("GET", "/me/mailFolders/inbox/messages", params=params)
         messages: list[OutlookMessage] = []
 
@@ -151,6 +162,7 @@ class OutlookClient:
                     body_content=body.get("content") or "",
                     body_content_type=body.get("contentType") or "text",
                     internet_message_id=item.get("internetMessageId"),
+                    received_datetime=item.get("receivedDateTime"),
                     has_attachments=bool(item.get("hasAttachments", False)),
                 )
             )
