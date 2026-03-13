@@ -139,10 +139,12 @@ def test_girth_weld_price_lookup():
     assert get_girth_weld_price(36) == Decimal("800")
     assert get_girth_weld_price(44) == Decimal("800")
 
+    # Gap diameters now covered
+    assert get_girth_weld_price(19) == Decimal("300")
+    assert get_girth_weld_price(31) == Decimal("500")
+
     # Outside ranges returns None
     assert get_girth_weld_price(1) is None
-    assert get_girth_weld_price(19) is None
-    assert get_girth_weld_price(31) is None
     assert get_girth_weld_price(50) is None
 
 
@@ -271,6 +273,309 @@ def test_price_item_converts_bundle_count_to_piece_count_for_standard_sleeves():
 
     assert result is not None
     assert result.quantity == 10
+
+
+def test_price_item_bag():
+    """Test bag pricing by diameter range."""
+    # 36" pipe -> GTW 30-36 range, $155.00/bag
+    item = ParsedItem(
+        product_type="bag",
+        quantity=10,
+        description="bag weights for 36\" pipe",
+        diameter=36,
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.product_type == "bag"
+    assert result.part_number == "GTW 30-36"
+    assert result.unit_price == Decimal("155.00")
+    assert result.total == Decimal("1550.00")
+    assert result.quantity == 10
+
+
+def test_price_item_bag_small():
+    """Test bag pricing for small diameter."""
+    # 12" pipe -> GTW 10-12 range, $52.08/bag
+    item = ParsedItem(
+        product_type="bag",
+        quantity=5,
+        description="geotextile bags 12\"",
+        diameter=12,
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.unit_price == Decimal("52.08")
+    assert result.total == Decimal("260.40")
+
+
+def test_price_item_bag_missing_diameter():
+    """Test bag with missing diameter returns TBD line item."""
+    item = ParsedItem(
+        product_type="bag",
+        quantity=5,
+        description="bag weights",
+        diameter=None,
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.unit_price == Decimal("0.00")
+    assert result.notes == "Pricing TBD — contact sales"
+
+
+def test_price_item_bag_out_of_range():
+    """Test bag with diameter outside supported ranges returns TBD."""
+    item = ParsedItem(
+        product_type="bag",
+        quantity=5,
+        description="bag weights 6\" pipe",
+        diameter=6,
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.unit_price == Decimal("0.00")
+    assert result.notes == "Pricing TBD — contact sales"
+
+
+def test_price_item_compression():
+    """Test compression sleeve pricing."""
+    item = ParsedItem(
+        product_type="compression",
+        quantity=2,
+        description="compression sleeve 36\"",
+        diameter=36,
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.product_type == "compression"
+    assert result.unit_price == Decimal("5000")
+    assert result.total == Decimal("10000.00")
+    assert "36" in result.part_number
+
+
+def test_price_item_compression_no_diameter():
+    """Test compression sleeve without diameter still prices correctly."""
+    item = ParsedItem(
+        product_type="compression",
+        quantity=1,
+        description="compression sleeve",
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.unit_price == Decimal("5000")
+    assert result.total == Decimal("5000.00")
+
+
+def test_price_item_omegawrap_carbon():
+    """Test omegawrap carbon variant pricing."""
+    item = ParsedItem(
+        product_type="omegawrap",
+        quantity=3,
+        description="OmegaWrap Carbon fiber roll",
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.product_type == "omegawrap"
+    assert result.unit_price == Decimal("650")
+    assert result.total == Decimal("1950.00")
+
+
+def test_price_item_omegawrap_eglass():
+    """Test omegawrap E-Glass variant pricing."""
+    item = ParsedItem(
+        product_type="omegawrap",
+        quantity=2,
+        description="OmegaWrap E-Glass roll",
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.unit_price == Decimal("420")
+    assert result.total == Decimal("840.00")
+
+
+def test_price_item_omegawrap_magnum():
+    """Test omegawrap Magnum variant pricing."""
+    item = ParsedItem(
+        product_type="omegawrap",
+        quantity=1,
+        description="OmegaWrap Magnum",
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.unit_price == Decimal("390")
+    assert result.total == Decimal("390.00")
+
+
+def test_price_item_omegawrap_default_carbon():
+    """Test omegawrap defaults to carbon when no variant specified."""
+    item = ParsedItem(
+        product_type="omegawrap",
+        quantity=1,
+        description="omegawrap",
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.unit_price == Decimal("650")
+
+
+def test_price_item_accessory_resin():
+    """Test accessory pricing for resin."""
+    item = ParsedItem(
+        product_type="accessory",
+        quantity=4,
+        description="resin quart",
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.product_type == "accessory"
+    assert result.unit_price == Decimal("125")
+    assert result.total == Decimal("500.00")
+
+
+def test_price_item_accessory_putty():
+    """Test accessory pricing for putty."""
+    item = ParsedItem(
+        product_type="accessory",
+        quantity=2,
+        description="putty pint",
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.unit_price == Decimal("130")
+    assert result.total == Decimal("260.00")
+
+
+def test_price_item_accessory_unknown():
+    """Test unknown accessory returns TBD."""
+    item = ParsedItem(
+        product_type="accessory",
+        quantity=1,
+        description="some unknown widget",
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.unit_price == Decimal("0.00")
+    assert result.notes == "Pricing TBD — contact sales"
+
+
+def test_price_item_service_supervisor():
+    """Test service pricing for supervisor."""
+    item = ParsedItem(
+        product_type="service",
+        quantity=3,
+        description="supervisor on-site",
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.product_type == "service"
+    assert result.unit_price == Decimal("1950")
+    assert result.total == Decimal("5850.00")
+
+
+def test_price_item_service_training():
+    """Test service pricing for training package."""
+    item = ParsedItem(
+        product_type="service",
+        quantity=1,
+        description="training package",
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.unit_price == Decimal("400")
+    assert result.total == Decimal("400.00")
+
+
+def test_price_item_service_unknown():
+    """Test unknown service returns TBD."""
+    item = ParsedItem(
+        product_type="service",
+        quantity=1,
+        description="special inspection",
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.unit_price == Decimal("0.00")
+    assert result.notes == "Pricing TBD — contact sales"
+
+
+def test_price_item_unknown_product_type():
+    """Test completely unknown product type returns TBD line item."""
+    item = ParsedItem(
+        product_type="unknown_thing",
+        quantity=1,
+        description="something we don't know",
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.unit_price == Decimal("0.00")
+    assert result.notes == "Pricing TBD — contact sales"
+    assert result.part_number == "TBD"
+
+
+def test_price_item_quantity_zero_defaults_to_one():
+    """Test that quantity=0 is treated as 1 with a note."""
+    item = ParsedItem(
+        product_type="compression",
+        quantity=0,
+        description="compression sleeve",
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.quantity == 1
+    assert result.unit_price == Decimal("5000")
+    assert result.total == Decimal("5000.00")
+    assert "Quantity not specified" in result.notes
+
+
+def test_bag_pricing_gap_diameter_13():
+    """Test that 13\" diameter (formerly a gap) is covered."""
+    item = ParsedItem(
+        product_type="bag",
+        quantity=5,
+        description="bags for 13\" pipe",
+        diameter=13,
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.unit_price == Decimal("52.08")
+
+
+def test_bag_pricing_gap_diameter_19():
+    """Test that 19\" diameter (formerly a gap) is covered."""
+    item = ParsedItem(
+        product_type="bag",
+        quantity=3,
+        description="bags for 19\" pipe",
+        diameter=19,
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.unit_price == Decimal("80.77")
+
+
+def test_bag_pricing_gap_diameter_27():
+    """Test that 27\" diameter (formerly a gap) is covered."""
+    item = ParsedItem(
+        product_type="bag",
+        quantity=2,
+        description="bags for 27\" pipe",
+        diameter=27,
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.unit_price == Decimal("138.24")
+
+
+def test_bag_pricing_gap_diameter_39():
+    """Test that 39\" diameter (formerly a gap) is covered."""
+    item = ParsedItem(
+        product_type="bag",
+        quantity=1,
+        description="bags for 39\" pipe",
+        diameter=39,
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.unit_price == Decimal("155.00")
 
 
 def test_generate_quote_adds_warning_for_invalid_standard_bundle_multiple():

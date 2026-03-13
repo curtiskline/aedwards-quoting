@@ -29,18 +29,18 @@ PRICE_PER_LB: dict[str, tuple[Decimal, Decimal]] = {
 # Girth weld pricing by diameter range
 # (min_diameter, max_diameter, price_per_set)
 GIRTH_WELD_PRICING = [
-    (2, 18, Decimal("300")),
-    (20, 30, Decimal("500")),
+    (2, 19, Decimal("300")),
+    (20, 31, Decimal("500")),
     (32, 44, Decimal("800")),
 ]
 
 # Bag pricing
 # (pipe_size_min, pipe_size_max, part_number, pieces_per_pallet, price_per_bag)
 BAG_PRICING = [
-    (10, 12, "GTW 10-12", 110, Decimal("52.08")),
-    (14, 18, "GTW 16", 52, Decimal("80.77")),
-    (20, 26, "GTW 20-24", 34, Decimal("138.24")),
-    (28, 38, "GTW 30-36", 30, Decimal("155.00")),
+    (10, 13, "GTW 10-12", 110, Decimal("52.08")),
+    (14, 19, "GTW 16", 52, Decimal("80.77")),
+    (20, 27, "GTW 20-24", 34, Decimal("138.24")),
+    (28, 39, "GTW 30-36", 30, Decimal("155.00")),
     (40, 48, "GTW 42-48", 21, Decimal("214.29")),
 ]
 
@@ -569,12 +569,107 @@ def _apply_item_defaults(item: ParsedItem) -> tuple[ParsedItem, list[str]]:
     return item, notes
 
 
+def _lookup_bag_pricing(diameter: float) -> tuple[str, int, Decimal] | None:
+    """Look up bag pricing by pipe diameter.
+
+    Returns (part_number, pieces_per_pallet, price_per_bag) or None.
+    """
+    for min_dia, max_dia, part_number, pcs_per_pallet, price in BAG_PRICING:
+        if min_dia <= diameter <= max_dia:
+            return part_number, pcs_per_pallet, price
+    return None
+
+
+# Keyword maps for matching parsed descriptions to OTHER_PRICING keys
+_OMEGAWRAP_KEYWORDS: dict[str, list[str]] = {
+    "omegawrap_carbon": ["carbon"],
+    "omegawrap_eglass": ["eglass", "e-glass", "e glass", "fiberglass"],
+    "omegawrap_magnum": ["magnum"],
+}
+
+_ACCESSORY_KEYS: dict[str, list[str]] = {
+    "bag_fill": ["bag fill", "fill"],
+    "isolation_wrap": ["isolation", "iso wrap"],
+    "resin": ["resin"],
+    "putty": ["putty"],
+    "porcupine_roller": ["porcupine", "roller"],
+    "magnet_set": ["magnet"],
+    "accessory_kit": ["accessory kit", "kit"],
+    "plastic_wrap_large": ["plastic wrap", "shrink wrap"],
+    "pipejacks": ["pipe jack", "pipejack"],
+    "pipejacks_large": ["large pipe jack", "large pipejack"],
+}
+
+_SERVICE_KEYS: dict[str, list[str]] = {
+    "supervisor": ["supervisor"],
+    "trainer_torch": ["trainer torch", "torch training"],
+    "kickoff_training": ["kickoff", "kick-off", "kick off"],
+    "training_package": ["training"],
+}
+
+
+def _match_omegawrap_key(description: str) -> str | None:
+    """Match an omegawrap description to the correct OTHER_PRICING key."""
+    desc_lower = (description or "").lower()
+    for key, keywords in _OMEGAWRAP_KEYWORDS.items():
+        for kw in keywords:
+            if kw in desc_lower:
+                return key
+    # Default to carbon if no variant specified
+    return "omegawrap_carbon"
+
+
+def _match_other_pricing_key(description: str, keyword_map: dict[str, list[str]]) -> str | None:
+    """Match a description against a keyword map to find the right pricing key."""
+    desc_lower = (description or "").lower()
+    for key, keywords in keyword_map.items():
+        for kw in keywords:
+            if kw in desc_lower:
+                return key
+    return None
+
+
+def _tbd_line_item(item: ParsedItem, sort_order: int) -> QuoteLineItem:
+    """Create a $0.00 line item with TBD note for unpriceable items."""
+    return QuoteLineItem(
+        sort_order=sort_order,
+        product_type=item.product_type,
+        part_number="TBD",
+        description=item.description or item.product_type,
+        quantity=item.quantity,
+        unit_price=Decimal("0.00"),
+        total=Decimal("0.00"),
+        notes="Pricing TBD — contact sales",
+    )
+
+
 def price_item(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
     """Calculate price for a single parsed item.
 
     Returns None if item cannot be priced (missing required dimensions).
     Applies sensible defaults for missing grade/length before rejecting.
     """
+    quantity_note: str | None = None
+    if item.quantity == 0:
+        from dataclasses import replace
+        item = replace(item, quantity=1)
+        quantity_note = "Quantity not specified — defaulted to 1"
+        logger.warning("Item '%s' has quantity 0 — defaulting to 1", item.description or item.product_type)
+
+    result = _price_item_core(item, sort_order)
+
+    if result is not None and quantity_note:
+        if result.notes:
+            result.notes = f"{result.notes}; {quantity_note}"
+        else:
+            result.notes = quantity_note
+
+    return result
+
+
+def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
+    """Core pricing logic for a single parsed item."""
+
     if item.product_type == "sleeve":
         if not all([item.diameter, item.wall_thickness]):
             logger.warning(
@@ -713,8 +808,121 @@ def price_item(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
             notes=notes,
         )
 
-    # TODO: Add pricing for other product types
-    return None
+    if item.product_type == "bag":
+        if item.diameter is None:
+            logger.warning(
+                "Bag item missing diameter — cannot determine pricing: %s",
+                item.description,
+            )
+            return _tbd_line_item(item, sort_order)
+
+        bag_entry = _lookup_bag_pricing(item.diameter)
+        if bag_entry is None:
+            logger.warning(
+                "No bag pricing for diameter %.1f: %s",
+                item.diameter, item.description,
+            )
+            return _tbd_line_item(item, sort_order)
+
+        part_number, pieces_per_pallet, price_per_bag = bag_entry
+        total = price_per_bag * Decimal(str(item.quantity))
+        desc = f'Geotextile Bag, {part_number}, {int(item.diameter)}" pipe'
+        return QuoteLineItem(
+            sort_order=sort_order,
+            product_type="bag",
+            part_number=part_number,
+            description=desc,
+            quantity=item.quantity,
+            unit_price=price_per_bag,
+            total=total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+        )
+
+    if item.product_type == "compression":
+        price, unit = OTHER_PRICING["compression_sleeve"]
+        total = price * Decimal(str(item.quantity))
+        dia_str = f', {int(item.diameter)}"' if item.diameter else ""
+        return QuoteLineItem(
+            sort_order=sort_order,
+            product_type="compression",
+            part_number=f"CS{'-' + str(int(item.diameter)) if item.diameter else ''}",
+            description=f"Compression Sleeve{dia_str}",
+            quantity=item.quantity,
+            unit_price=price,
+            total=total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+        )
+
+    if item.product_type == "omegawrap":
+        key = _match_omegawrap_key(item.description)
+        if key is None:
+            logger.warning(
+                "Cannot determine omegawrap variant from description: %s",
+                item.description,
+            )
+            return _tbd_line_item(item, sort_order)
+
+        price, unit = OTHER_PRICING[key]
+        label = key.replace("omegawrap_", "").replace("_", " ").title()
+        total = price * Decimal(str(item.quantity))
+        return QuoteLineItem(
+            sort_order=sort_order,
+            product_type="omegawrap",
+            part_number=f"OW-{label.upper()}",
+            description=f"OmegaWrap {label} ({unit.replace('_', ' ')})",
+            quantity=item.quantity,
+            unit_price=price,
+            total=total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+        )
+
+    if item.product_type == "accessory":
+        key = _match_other_pricing_key(item.description, _ACCESSORY_KEYS)
+        if key is None:
+            logger.warning(
+                "Cannot match accessory from description: %s",
+                item.description,
+            )
+            return _tbd_line_item(item, sort_order)
+
+        price, unit = OTHER_PRICING[key]
+        label = key.replace("_", " ").title()
+        total = price * Decimal(str(item.quantity))
+        return QuoteLineItem(
+            sort_order=sort_order,
+            product_type="accessory",
+            part_number=f"ACC-{key.upper()}",
+            description=f"{label} ({unit.replace('_', ' ')})",
+            quantity=item.quantity,
+            unit_price=price,
+            total=total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+        )
+
+    if item.product_type == "service":
+        key = _match_other_pricing_key(item.description, _SERVICE_KEYS)
+        if key is None:
+            logger.warning(
+                "Cannot match service from description: %s",
+                item.description,
+            )
+            return _tbd_line_item(item, sort_order)
+
+        price, unit = OTHER_PRICING[key]
+        label = key.replace("_", " ").title()
+        total = price * Decimal(str(item.quantity))
+        return QuoteLineItem(
+            sort_order=sort_order,
+            product_type="service",
+            part_number=f"SVC-{key.upper()}",
+            description=f"{label} ({unit.replace('_', ' ')})",
+            quantity=item.quantity,
+            unit_price=price,
+            total=total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+        )
+
+    # Unknown product type — include as TBD rather than silently dropping
+    logger.warning(
+        "Unknown product type '%s' for item: %s",
+        item.product_type, item.description,
+    )
+    return _tbd_line_item(item, sort_order)
 
 
 def _build_shipping_note_text(rfq: ParsedRFQ) -> str:
