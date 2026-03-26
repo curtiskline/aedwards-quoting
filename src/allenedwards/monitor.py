@@ -8,6 +8,7 @@ from pathlib import Path
 import signal
 import tempfile
 import time
+from datetime import datetime, timezone
 from typing import Any
 
 from .outlook import OutlookAttachment, OutlookClient, OutlookMessage
@@ -52,8 +53,27 @@ class ProcessedState:
 
     def advance_watermark(self, received_datetime: str) -> None:
         """Move the high-water mark forward if *received_datetime* is newer."""
-        if not self.last_seen_datetime or received_datetime > self.last_seen_datetime:
-            self.last_seen_datetime = received_datetime
+        received_at = _parse_datetime(received_datetime)
+        if received_at is None:
+            logger.warning("Ignoring invalid receivedDateTime %r", received_datetime)
+            return
+
+        if not self.last_seen_datetime:
+            self.last_seen_datetime = _format_datetime(received_at)
+            return
+
+        last_seen_at = _parse_datetime(self.last_seen_datetime)
+        if last_seen_at is None:
+            logger.warning(
+                "State file %s has invalid last_seen_datetime %r; replacing it",
+                self.path,
+                self.last_seen_datetime,
+            )
+            self.last_seen_datetime = _format_datetime(received_at)
+            return
+
+        if received_at > last_seen_at:
+            self.last_seen_datetime = _format_datetime(received_at)
 
     def save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -233,6 +253,20 @@ def _normalize_body(content: str, preview: str) -> str:
     if body:
         return body
     return (preview or "").strip()
+
+
+def _parse_datetime(value: str) -> datetime | None:
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _format_datetime(value: datetime) -> str:
+    return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 def _generate_quote_number() -> str:

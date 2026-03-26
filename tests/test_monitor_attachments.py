@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from allenedwards.monitor import InboxMonitor, _parse_message_to_rfqs
+from allenedwards.monitor import InboxMonitor, ProcessedState, _parse_message_to_rfqs
 from allenedwards.outlook import OutlookAttachment, OutlookClient, OutlookMessage
 
 
@@ -142,6 +142,49 @@ class TestGetAttachments:
 
 
 class TestMonitorAttachmentWiring:
+    def test_run_once_normalizes_fractional_second_watermark(self, tmp_path):
+        """A newer fractional-second timestamp still advances the watermark."""
+        state_path = tmp_path / "state.json"
+        state_path.write_text(
+            json.dumps(
+                {
+                    "processed_ids": [],
+                    "last_seen_datetime": "2026-03-13T12:00:00Z",
+                }
+            )
+        )
+
+        outlook = MagicMock(spec=OutlookClient)
+        outlook.list_inbox_messages.return_value = [
+            OutlookMessage(
+                id="msg-fractional",
+                subject="RFQ - Sleeves",
+                sender_name="Test User",
+                sender_email="test@example.com",
+                body_preview="Please quote 10 pcs",
+                body_content="Please quote 10 pcs 6-5/8 x 0.25 GR50 sleeves",
+                body_content_type="text",
+                internet_message_id="<fractional@example.com>",
+                received_datetime="2026-03-13T12:00:00.123Z",
+                has_attachments=False,
+            )
+        ]
+        outlook.create_draft.return_value = "draft-1"
+
+        monitor = InboxMonitor(
+            outlook=outlook,
+            provider=FakeProvider(),
+            poll_interval_seconds=60,
+            state_path=state_path,
+            output_dir=tmp_path / "quotes",
+        )
+
+        with patch("allenedwards.monitor.generate_quote_pdf"):
+            with patch.object(Path, "read_bytes", return_value=b"%PDF-fake"):
+                monitor.run_once()
+
+        assert monitor.state.last_seen_datetime == "2026-03-13T12:00:00.123000Z"
+
     def test_has_attachments_triggers_fetch(self, tmp_path):
         """Message with has_attachments=True triggers get_attachments call."""
         outlook = MagicMock(spec=OutlookClient)
@@ -238,3 +281,13 @@ class TestParseMessageAttachments:
 
         rfqs2 = _parse_message_to_rfqs(msg, msg.body_content, provider)
         assert rfqs2 is not None
+
+
+class TestProcessedState:
+    def test_advance_watermark_handles_fractional_seconds(self, tmp_path):
+        state = ProcessedState(tmp_path / "state.json")
+
+        state.advance_watermark("2026-03-13T12:00:00Z")
+        state.advance_watermark("2026-03-13T12:00:00.123Z")
+
+        assert state.last_seen_datetime == "2026-03-13T12:00:00.123000Z"
