@@ -1,0 +1,15 @@
+project: allenedwards
+description: Automated RFQ-to-quote system for steel pipe distributor
+
+cli:
+  allenedwards:
+    description: RFQ quote processing CLI
+    commands:
+      - name: parse <eml_file>
+        description: Parse RFQ email into structured JSON
+      - name: quote <eml_file>
+        description: Generate PDF quote from RFQ email
+      - name: batch <directory>
+        description: Batch process directory of RFQ emails
+      - name: monitor
+        description: Poll inbox for new RFQs and auto-process
