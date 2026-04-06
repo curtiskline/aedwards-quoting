@@ -1,0 +1,16 @@
+[Unit]
+Description=Allen Edwards Flask Web App
+After=network.target
+
+[Service]
+Type=simple
+User=aedwards
+Group=aedwards
+WorkingDirectory=/opt/aedwards/src
+EnvironmentFile=/opt/aedwards/.env
+ExecStart=/opt/aedwards/venv/bin/gunicorn --workers 3 --bind 127.0.0.1:8000 'app.wsgi:app'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

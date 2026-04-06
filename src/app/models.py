@@ -1,0 +1,156 @@
+"""SQLAlchemy models for the quote management web app."""
+
+from __future__ import annotations
+
+from datetime import datetime
+from enum import Enum
+
+from sqlalchemy import Enum as SAEnum
+from sqlalchemy import ForeignKey, Numeric, Text
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from .extensions import db
+
+
+class QuoteStatus(str, Enum):
+    NEW = "new"
+    IN_REVIEW = "in_review"
+    NEEDS_PRICING = "needs_pricing"
+    READY = "ready"
+    SENT = "sent"
+    ARCHIVED = "archived"
+
+
+class TimestampMixin:
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
+
+
+class User(TimestampMixin, db.Model):
+    __tablename__ = "user"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(unique=True, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(nullable=False)
+    password_hash: Mapped[str] = mapped_column(nullable=False)
+    magic_link_token: Mapped[str | None]
+
+
+class Customer(TimestampMixin, db.Model):
+    __tablename__ = "customer"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    company_name: Mapped[str] = mapped_column(nullable=False, index=True)
+    discount_pct: Mapped[float] = mapped_column(Numeric(5, 2), default=0, nullable=False)
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    contacts: Mapped[list["Contact"]] = relationship(back_populates="customer", cascade="all, delete-orphan")
+    ship_to_addresses: Mapped[list["ShipToAddress"]] = relationship(
+        back_populates="customer", cascade="all, delete-orphan"
+    )
+    quotes: Mapped[list["Quote"]] = relationship(back_populates="customer")
+
+
+class Contact(db.Model):
+    __tablename__ = "contact"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("customer.id"), nullable=False, index=True)
+    name: Mapped[str] = mapped_column(nullable=False)
+    email: Mapped[str] = mapped_column(nullable=False)
+    phone: Mapped[str | None]
+
+    customer: Mapped[Customer] = relationship(back_populates="contacts")
+
+
+class ShipToAddress(db.Model):
+    __tablename__ = "ship_to_address"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("customer.id"), nullable=False, index=True)
+    address_line1: Mapped[str] = mapped_column(nullable=False)
+    address_line2: Mapped[str | None]
+    city: Mapped[str] = mapped_column(nullable=False)
+    state: Mapped[str] = mapped_column(nullable=False)
+    postal_code: Mapped[str] = mapped_column(nullable=False)
+    country: Mapped[str] = mapped_column(default="US", nullable=False)
+    is_default: Mapped[bool] = mapped_column(default=False, nullable=False)
+
+    customer: Mapped[Customer] = relationship(back_populates="ship_to_addresses")
+
+
+class Quote(db.Model):
+    __tablename__ = "quote"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    quote_number: Mapped[str] = mapped_column(unique=True, nullable=False, index=True)
+    customer_id: Mapped[int] = mapped_column(ForeignKey("customer.id"), nullable=False, index=True)
+    status: Mapped[QuoteStatus] = mapped_column(
+        SAEnum(QuoteStatus, name="quote_status"), default=QuoteStatus.NEW, nullable=False
+    )
+    reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"))
+    project_name: Mapped[str | None]
+    notes_customer: Mapped[str | None] = mapped_column(Text)
+    notes_internal: Mapped[str | None] = mapped_column(Text)
+    source_email_id: Mapped[str | None]
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    customer: Mapped[Customer] = relationship(back_populates="quotes")
+    line_items: Mapped[list["QuoteLineItem"]] = relationship(
+        back_populates="quote", cascade="all, delete-orphan"
+    )
+    versions: Mapped[list["QuoteVersion"]] = relationship(back_populates="quote", cascade="all, delete-orphan")
+    audit_logs: Mapped[list["AuditLog"]] = relationship(back_populates="quote", cascade="all, delete-orphan")
+
+
+class QuoteLineItem(db.Model):
+    __tablename__ = "quote_line_item"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    quote_id: Mapped[int] = mapped_column(ForeignKey("quote.id"), nullable=False, index=True)
+    product_type: Mapped[str] = mapped_column(nullable=False, index=True)
+    description: Mapped[str] = mapped_column(nullable=False)
+    quantity: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    unit_price: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    line_total: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    specs_json: Mapped[dict | None] = mapped_column(db.JSON)
+    part_number: Mapped[str | None]
+    sort_order: Mapped[int] = mapped_column(default=0, nullable=False)
+
+    quote: Mapped[Quote] = relationship(back_populates="line_items")
+
+
+class QuoteVersion(db.Model):
+    __tablename__ = "quote_version"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    quote_id: Mapped[int] = mapped_column(ForeignKey("quote.id"), nullable=False, index=True)
+    version_number: Mapped[int] = mapped_column(nullable=False)
+    pdf_path: Mapped[str] = mapped_column(nullable=False)
+    sent_at: Mapped[datetime | None]
+    sent_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"))
+    sent_to: Mapped[str | None]
+
+    quote: Mapped[Quote] = relationship(back_populates="versions")
+
+
+class PricingTable(db.Model):
+    __tablename__ = "pricing_table"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    product_type: Mapped[str] = mapped_column(nullable=False, index=True)
+    key_fields: Mapped[dict] = mapped_column(db.JSON, nullable=False)
+    price: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class AuditLog(TimestampMixin, db.Model):
+    __tablename__ = "audit_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    quote_id: Mapped[int] = mapped_column(ForeignKey("quote.id"), nullable=False, index=True)
+    action: Mapped[str] = mapped_column(nullable=False)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("user.id"))
+    details: Mapped[dict | None] = mapped_column(db.JSON)
+
+    quote: Mapped[Quote] = relationship(back_populates="audit_logs")

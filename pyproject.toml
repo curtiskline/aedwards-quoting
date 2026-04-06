@@ -17,6 +17,11 @@ dependencies = [
     "anthropic>=0.21",
     "msal>=1.30",
     "reportlab>=4.0",
+    "flask>=3.0",
+    "flask-sqlalchemy>=3.1",
+    "alembic>=1.13",
+    "gunicorn>=22.0",
+    "psycopg2-binary>=2.9",
 ]
 
 [project.optional-dependencies]
@@ -29,12 +34,14 @@ dev = [
 
 [project.scripts]
 allenedwards = "allenedwards.cli:main"
+allenedwards-web = "app.wsgi:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
 allenedwards = ["assets/*.jpg"]
+app = ["templates/*.html"]
 
 [tool.ruff]
 line-length = 100

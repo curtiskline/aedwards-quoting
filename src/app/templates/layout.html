@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{% block title %}Allen Edwards Quotes{% endblock %}</title>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <style>
+      :root {
+        --bg: #f3f5f7;
+        --surface: #ffffff;
+        --text: #111827;
+        --accent: #0f766e;
+      }
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+      nav {
+        background: var(--surface);
+        border-bottom: 1px solid #d1d5db;
+        padding: 1rem;
+      }
+      main {
+        max-width: 960px;
+        margin: 1.5rem auto;
+        background: var(--surface);
+        border-radius: 8px;
+        padding: 1.25rem;
+      }
+      .pill {
+        display: inline-block;
+        background: #d1fae5;
+        color: var(--accent);
+        border-radius: 999px;
+        padding: 0.25rem 0.75rem;
+        font-weight: 600;
+      }
+    </style>
+  </head>
+  <body>
+    <nav>
+      <strong>Allen Edwards Quote Manager</strong>
+    </nav>
+    <main>
+      {% block body %}{% endblock %}
+    </main>
+  </body>
+</html>
