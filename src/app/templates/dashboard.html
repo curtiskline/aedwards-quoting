@@ -2,6 +2,32 @@
 {% block title %}Dashboard{% endblock %}
 {% block body %}
   <h1>Dashboard</h1>
-  <p class="pill">Phase 2A scaffold ready</p>
-  <p>No quotes yet.</p>
+  <p class="pill">Quote workflow active</p>
+  {% if quotes %}
+    <p style="color:#4b5563;margin-top:0.35rem;">Recent quotes ({{ quotes|length }})</p>
+    <table style="width:100%;border-collapse:collapse;margin-top:0.5rem;">
+      <thead>
+        <tr>
+          <th style="text-align:left;padding:0.5rem;border-bottom:1px solid #e5e7eb;">Quote #</th>
+          <th style="text-align:left;padding:0.5rem;border-bottom:1px solid #e5e7eb;">Customer</th>
+          <th style="text-align:left;padding:0.5rem;border-bottom:1px solid #e5e7eb;">Status</th>
+          <th style="text-align:left;padding:0.5rem;border-bottom:1px solid #e5e7eb;">Updated</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for quote in quotes %}
+          <tr>
+            <td style="padding:0.5rem;border-bottom:1px solid #f3f4f6;">
+              <a href="/quotes/{{ quote.id }}">{{ quote.quote_number }}</a>
+            </td>
+            <td style="padding:0.5rem;border-bottom:1px solid #f3f4f6;">{{ quote.customer_name_raw or "Unknown" }}</td>
+            <td style="padding:0.5rem;border-bottom:1px solid #f3f4f6;">{{ quote.status.value.replace('_', ' ').title() }}</td>
+            <td style="padding:0.5rem;border-bottom:1px solid #f3f4f6;">{{ quote.updated_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>No quotes yet.</p>
+  {% endif %}
 {% endblock %}

@@ -1,0 +1,7 @@
+{% extends "layout.html" %}
+{% block title %}Quote {{ quote.quote_number }}{% endblock %}
+{% block body %}
+  <div id="quote-editor">
+    {% include "quotes/_editor.html" %}
+  </div>
+{% endblock %}

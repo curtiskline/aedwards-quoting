@@ -1,0 +1,146 @@
+<h1>Quote {{ quote.quote_number }}</h1>
+
+<div style="display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;margin-bottom:1rem;">
+  <div>
+    <strong>Status:</strong> {{ quote.status.value.replace('_', ' ').title() }}
+    {% if review_user %}
+      <span class="pill" style="margin-left:0.5rem;">In Review by {{ review_user.name }}</span>
+    {% elif quote.status.value == 'in_review' %}
+      <span class="pill" style="margin-left:0.5rem;">In Review</span>
+    {% endif %}
+  </div>
+  <div style="display:flex;gap:0.5rem;">
+    <form method="post" action="/quotes/{{ quote.id }}/status" hx-post="/quotes/{{ quote.id }}/status" hx-target="#quote-editor" hx-swap="outerHTML">
+      <input type="hidden" name="status" value="in_review" />
+      <button type="submit">Mark In Review</button>
+    </form>
+    <form method="post" action="/quotes/{{ quote.id }}/status" hx-post="/quotes/{{ quote.id }}/status" hx-target="#quote-editor" hx-swap="outerHTML">
+      <input type="hidden" name="status" value="ready" />
+      <button type="submit">Mark Ready</button>
+    </form>
+    <form method="post" action="/quotes/{{ quote.id }}/status" hx-post="/quotes/{{ quote.id }}/status" hx-target="#quote-editor" hx-swap="outerHTML">
+      <input type="hidden" name="status" value="archived" />
+      <button type="submit">Archive</button>
+    </form>
+  </div>
+</div>
+
+<section style="border:1px solid #e5e7eb;border-radius:8px;padding:1rem;margin-bottom:1rem;">
+  <h2 style="margin-top:0">Quote Fields</h2>
+  <form method="post" action="/quotes/{{ quote.id }}/meta" hx-post="/quotes/{{ quote.id }}/meta" hx-target="#quote-editor" hx-swap="outerHTML">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.75rem;">
+      <label>Quote Number <input name="quote_number" value="{{ quote.quote_number }}" style="width:100%;" /></label>
+      <label>Project Name <input name="project_name" value="{{ quote.project_name or '' }}" style="width:100%;" /></label>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem;margin-top:0.75rem;">
+      <label>Customer Notes <textarea name="notes_customer" rows="3" style="width:100%;">{{ quote.notes_customer or '' }}</textarea></label>
+      <label>Internal Notes <textarea name="notes_internal" rows="3" style="width:100%;">{{ quote.notes_internal or '' }}</textarea></label>
+    </div>
+    <button type="submit" style="margin-top:0.75rem;">Save Quote Fields</button>
+  </form>
+</section>
+
+<section style="border:1px solid #e5e7eb;border-radius:8px;padding:1rem;margin-bottom:1rem;">
+  <h2 style="margin-top:0">Customer Info</h2>
+  <form method="post" action="/quotes/{{ quote.id }}/customer" hx-post="/quotes/{{ quote.id }}/customer" hx-target="#quote-editor" hx-swap="outerHTML">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0.75rem;">
+      <label>Company <input name="customer_name_raw" value="{{ quote.customer_name_raw or '' }}" style="width:100%;" /></label>
+      <label>Contact <input name="contact_name" value="{{ quote.contact_name or '' }}" style="width:100%;" /></label>
+      <label>Email <input name="contact_email" value="{{ quote.contact_email or '' }}" style="width:100%;" /></label>
+      <label>Phone <input name="contact_phone" value="{{ quote.contact_phone or '' }}" style="width:100%;" /></label>
+      <label>Ship To Address 1 <input name="ship_to_address_line1" value="{{ (quote.ship_to_json or {}).get('address_line1', '') }}" style="width:100%;" /></label>
+      <label>Ship To Address 2 <input name="ship_to_address_line2" value="{{ (quote.ship_to_json or {}).get('address_line2', '') }}" style="width:100%;" /></label>
+      <label>City <input name="ship_to_city" value="{{ (quote.ship_to_json or {}).get('city', '') }}" style="width:100%;" /></label>
+      <label>State <input name="ship_to_state" value="{{ (quote.ship_to_json or {}).get('state', '') }}" style="width:100%;" /></label>
+      <label>ZIP <input name="ship_to_postal_code" value="{{ (quote.ship_to_json or {}).get('postal_code', '') }}" style="width:100%;" /></label>
+      <label>Country <input name="ship_to_country" value="{{ (quote.ship_to_json or {}).get('country', '') }}" style="width:100%;" /></label>
+    </div>
+    <button type="submit" style="margin-top:0.75rem;">Save Customer Info</button>
+  </form>
+</section>
+
+<section style="border:1px solid #e5e7eb;border-radius:8px;padding:1rem;">
+  <h2 style="margin-top:0">Line Items</h2>
+  <table style="width:100%;border-collapse:collapse;">
+    <thead>
+      <tr>
+        <th style="text-align:left;border-bottom:1px solid #e5e7eb;padding:0.4rem;">Type</th>
+        <th style="text-align:left;border-bottom:1px solid #e5e7eb;padding:0.4rem;">Description</th>
+        <th style="text-align:left;border-bottom:1px solid #e5e7eb;padding:0.4rem;">Qty</th>
+        <th style="text-align:left;border-bottom:1px solid #e5e7eb;padding:0.4rem;">Unit</th>
+        <th style="text-align:left;border-bottom:1px solid #e5e7eb;padding:0.4rem;">Line Total</th>
+        <th style="text-align:left;border-bottom:1px solid #e5e7eb;padding:0.4rem;">Part #</th>
+        <th style="text-align:left;border-bottom:1px solid #e5e7eb;padding:0.4rem;">Specs / Source</th>
+        <th style="text-align:left;border-bottom:1px solid #e5e7eb;padding:0.4rem;">Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for item in line_items %}
+        <tr style="background:{% if item.needs_pricing %}#fff1f2{% else %}transparent{% endif %};">
+          <td colspan="8" style="padding:0.45rem;border-bottom:1px solid #f3f4f6;">
+            <form method="post" action="/quotes/{{ quote.id }}/line-items/{{ item.id }}/update" hx-post="/quotes/{{ quote.id }}/line-items/{{ item.id }}/update" hx-target="#quote-editor" hx-swap="outerHTML" style="display:grid;grid-template-columns:1.1fr 2fr 0.7fr 0.8fr 0.9fr 1.2fr 2fr auto;gap:0.45rem;align-items:start;">
+              <select name="product_type" style="width:100%;">
+                {% for pt in ['sleeve', 'bag', 'girth_weld', 'compression', 'oversleeve', 'accessory', 'service'] %}
+                  <option value="{{ pt }}" {% if item.product_type == pt %}selected{% endif %}>{{ pt.replace('_', ' ').title() }}</option>
+                {% endfor %}
+              </select>
+              <input name="description" value="{{ item.description }}" style="width:100%;" />
+              <input name="quantity" type="number" min="0" step="0.01" value="{{ item.quantity }}" style="width:100%;" />
+              <input name="unit_price" type="number" min="0" step="0.01" value="{{ '%.2f'|format(item.unit_price) }}" style="width:100%;" />
+              <div><strong>${{ '%.2f'|format(item.line_total) }}</strong></div>
+              <div>{{ item.part_number or 'TBD' }}</div>
+              <div>
+                {% for spec in item.spec_fields %}
+                  <label style="display:inline-flex;align-items:center;gap:0.25rem;margin-right:0.4rem;">
+                    {% if spec.type == 'checkbox' %}
+                      <input type="checkbox" name="spec_{{ spec.key }}" {% if spec.checked %}checked{% endif %} />
+                      <span>{{ spec.label }}</span>
+                    {% else %}
+                      <span>{{ spec.label }}</span>
+                      <input name="spec_{{ spec.key }}" type="{{ spec.type }}" step="{{ spec.step }}" value="{{ spec.value }}" style="width:5rem;" />
+                    {% endif %}
+                  </label>
+                {% endfor %}
+                <div style="font-size:0.85rem;color:#374151;">{{ item.pricing_source }}</div>
+                {% if item.rounding_indicator %}<div style="font-size:0.85rem;color:#b45309;">{{ item.rounding_indicator }}</div>{% endif %}
+                {% if item.note %}<div style="font-size:0.85rem;color:#4b5563;">{{ item.note }}</div>{% endif %}
+                {% if item.needs_pricing %}<div style="font-size:0.85rem;color:#be123c;font-weight:600;">Needs Pricing</div>{% endif %}
+              </div>
+              <button type="submit">Save</button>
+            </form>
+            <div style="display:flex;gap:0.35rem;margin-top:0.35rem;justify-content:flex-end;">
+              <form method="post" action="/quotes/{{ quote.id }}/line-items/{{ item.id }}/move" hx-post="/quotes/{{ quote.id }}/line-items/{{ item.id }}/move" hx-target="#quote-editor" hx-swap="outerHTML">
+                <input type="hidden" name="direction" value="up" />
+                <button type="submit">Up</button>
+              </form>
+              <form method="post" action="/quotes/{{ quote.id }}/line-items/{{ item.id }}/move" hx-post="/quotes/{{ quote.id }}/line-items/{{ item.id }}/move" hx-target="#quote-editor" hx-swap="outerHTML">
+                <input type="hidden" name="direction" value="down" />
+                <button type="submit">Down</button>
+              </form>
+              <form method="post" action="/quotes/{{ quote.id }}/line-items/{{ item.id }}/delete" hx-post="/quotes/{{ quote.id }}/line-items/{{ item.id }}/delete" hx-target="#quote-editor" hx-swap="outerHTML">
+                <button type="submit">Remove</button>
+              </form>
+            </div>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <form method="post" action="/quotes/{{ quote.id }}/line-items/add" hx-post="/quotes/{{ quote.id }}/line-items/add" hx-target="#quote-editor" hx-swap="outerHTML" style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.75rem;">
+    <select name="product_type">
+      {% for pt in ['sleeve', 'bag', 'girth_weld', 'compression', 'oversleeve', 'accessory', 'service'] %}
+        <option value="{{ pt }}">{{ pt.replace('_', ' ').title() }}</option>
+      {% endfor %}
+    </select>
+    <input name="description" placeholder="Description" style="min-width:18rem;" />
+    <input name="quantity" type="number" min="0" step="0.01" value="1" style="width:6rem;" />
+    <input name="unit_price" type="number" min="0" step="0.01" value="0" style="width:7rem;" />
+    <button type="submit">Add Line Item</button>
+  </form>
+
+  <div style="margin-top:1rem;text-align:right;">
+    <div><strong>Subtotal:</strong> ${{ '%.2f'|format(totals.subtotal) }}</div>
+    <div><strong>Total:</strong> ${{ '%.2f'|format(totals.total) }}</div>
+  </div>
+</section>
