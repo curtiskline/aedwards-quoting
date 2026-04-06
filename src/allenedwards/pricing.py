@@ -4,9 +4,20 @@ import logging
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 import re
+from time import monotonic
 from typing import Any
 
+from flask import has_app_context
+from sqlalchemy import inspect
+
 from .parser import ParsedItem, ParsedRFQ
+from .pricing_catalog import (
+    DEFAULT_BAG_PRICING,
+    DEFAULT_GIRTH_WELD_PRICING,
+    DEFAULT_OTHER_PRICING,
+    DEFAULT_PRICE_PER_LB,
+    DEFAULT_SERVICE_PRICES,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -17,54 +28,18 @@ DEFAULT_LENGTH_GIRTH_WELD = 6.0
 
 # Price per pound lookup table
 # wall_thickness -> (GR50 price, GR65 price)
-PRICE_PER_LB: dict[str, tuple[Decimal, Decimal]] = {
-    "0.25": (Decimal("2.82"), Decimal("2.92")),
-    "0.3125": (Decimal("2.69"), Decimal("2.79")),
-    "0.375": (Decimal("2.57"), Decimal("2.67")),
-    "0.5": (Decimal("2.52"), Decimal("2.62")),
-    "0.625": (Decimal("2.52"), Decimal("2.62")),
-    "0.75": (Decimal("2.52"), Decimal("2.62")),
-}
+PRICE_PER_LB: dict[str, tuple[Decimal, Decimal]] = DEFAULT_PRICE_PER_LB.copy()
 
 # Girth weld pricing by diameter range
 # (min_diameter, max_diameter, price_per_set)
-GIRTH_WELD_PRICING = [
-    (2, 19, Decimal("300")),
-    (20, 31, Decimal("500")),
-    (32, 44, Decimal("800")),
-]
+GIRTH_WELD_PRICING = list(DEFAULT_GIRTH_WELD_PRICING)
 
 # Bag pricing
 # (pipe_size_min, pipe_size_max, part_number, pieces_per_pallet, price_per_bag)
-BAG_PRICING = [
-    (10, 13, "GTW 10-12", 110, Decimal("52.08")),
-    (14, 19, "GTW 16", 52, Decimal("80.77")),
-    (20, 27, "GTW 20-24", 34, Decimal("138.24")),
-    (28, 39, "GTW 30-36", 30, Decimal("155.00")),
-    (40, 48, "GTW 42-48", 21, Decimal("214.29")),
-]
+BAG_PRICING = list(DEFAULT_BAG_PRICING)
 
 # Other product pricing
-OTHER_PRICING: dict[str, tuple[Decimal, str]] = {
-    "bag_fill": (Decimal("0.02"), "per_lb"),
-    "omegawrap_carbon": (Decimal("650"), "per_roll"),
-    "omegawrap_eglass": (Decimal("420"), "per_roll"),
-    "omegawrap_magnum": (Decimal("390"), "per_roll"),
-    "isolation_wrap": (Decimal("200"), "per_roll"),
-    "resin": (Decimal("125"), "per_quart"),
-    "putty": (Decimal("130"), "per_pint"),
-    "compression_sleeve": (Decimal("5000"), "per_set"),
-    "porcupine_roller": (Decimal("210"), "each"),
-    "magnet_set": (Decimal("80"), "per_set"),
-    "accessory_kit": (Decimal("122"), "per_kit"),
-    "plastic_wrap_large": (Decimal("101"), "per_roll"),
-    "pipejacks": (Decimal("1800"), "each"),
-    "pipejacks_large": (Decimal("2200"), "each"),
-    "supervisor": (Decimal("1950"), "per_day"),
-    "trainer_torch": (Decimal("6000"), "per_package"),
-    "kickoff_training": (Decimal("6000"), "per_package"),
-    "training_package": (Decimal("400"), "per_package"),
-}
+OTHER_PRICING: dict[str, tuple[Decimal, str]] = DEFAULT_OTHER_PRICING.copy()
 
 # Standard sleeve bundle sizing rule:
 # up to 24" diameter and 10' length are sold as bundles of 5 pieces (50 LF total).
@@ -73,8 +48,8 @@ STANDARD_BUNDLE_LENGTH_FT = 10.0
 STANDARD_BUNDLE_PIECES = 5
 
 # Service pricing
-MILLING_PRICE = Decimal("30")
-PAINTING_PRICE = Decimal("40")
+MILLING_PRICE = DEFAULT_SERVICE_PRICES["milling"]
+PAINTING_PRICE = DEFAULT_SERVICE_PRICES["painting"]
 
 # Standard sleeve diameter lookup from quoting-spreadsheet.xlsm ("Part Number Description" tab)
 # Maps parsed decimal ID -> (part-number diameter code, display text for descriptions)
@@ -165,6 +140,139 @@ class Quote:
     requested_by_phone: str | None = None
 
 
+@dataclass
+class PricingSnapshot:
+    price_per_lb: dict[str, tuple[Decimal, Decimal]]
+    girth_weld_pricing: list[tuple[int, int, Decimal]]
+    bag_pricing: list[tuple[int, int, str, int, Decimal]]
+    other_pricing: dict[str, tuple[Decimal, str]]
+    flat_pricing: dict[str, Decimal]
+
+
+_PRICING_CACHE: PricingSnapshot | None = None
+_PRICING_CACHE_EXPIRES_AT = 0.0
+_PRICING_CACHE_TTL_SECONDS = 5.0
+
+
+def _default_pricing_snapshot() -> PricingSnapshot:
+    return PricingSnapshot(
+        price_per_lb=PRICE_PER_LB.copy(),
+        girth_weld_pricing=list(GIRTH_WELD_PRICING),
+        bag_pricing=list(BAG_PRICING),
+        other_pricing=OTHER_PRICING.copy(),
+        flat_pricing={"milling": MILLING_PRICE, "painting": PAINTING_PRICE},
+    )
+
+
+def _load_pricing_rows_from_db() -> list[tuple[str, dict[str, Any], Decimal]] | None:
+    if not has_app_context():
+        return None
+
+    try:
+        from app.extensions import db
+        from app.models import PricingTable
+
+        if not inspect(db.engine).has_table("pricing_table"):
+            return None
+
+        rows = db.session.query(PricingTable).all()
+        if not rows:
+            return None
+
+        return [
+            (
+                row.product_type,
+                dict(row.key_fields or {}),
+                Decimal(str(row.price)),
+            )
+            for row in rows
+        ]
+    except Exception:
+        logger.exception("Pricing DB lookup failed; using fallback pricing constants")
+        return None
+
+
+def _build_pricing_snapshot() -> PricingSnapshot:
+    snapshot = _default_pricing_snapshot()
+    rows = _load_pricing_rows_from_db()
+    if rows is None:
+        return snapshot
+
+    for product_type, key_fields, price in rows:
+        if product_type == "sleeve":
+            wt = str(key_fields.get("wall_thickness", ""))
+            grade = int(key_fields.get("grade", 50))
+            base = snapshot.price_per_lb.get(wt, (Decimal("0"), Decimal("0")))
+            if grade == 65:
+                snapshot.price_per_lb[wt] = (base[0], price)
+            else:
+                snapshot.price_per_lb[wt] = (price, base[1])
+
+        elif product_type == "girth_weld":
+            min_diameter = int(key_fields.get("min_diameter", 0))
+            max_diameter = int(key_fields.get("max_diameter", 0))
+            match_index = next(
+                (
+                    i
+                    for i, (min_dia, max_dia, _) in enumerate(snapshot.girth_weld_pricing)
+                    if min_dia == min_diameter and max_dia == max_diameter
+                ),
+                None,
+            )
+            if match_index is not None:
+                snapshot.girth_weld_pricing[match_index] = (min_diameter, max_diameter, price)
+            else:
+                snapshot.girth_weld_pricing.append((min_diameter, max_diameter, price))
+
+        elif product_type == "bag":
+            min_size = int(key_fields.get("pipe_size_min", 0))
+            max_size = int(key_fields.get("pipe_size_max", 0))
+            part_number = str(key_fields.get("part_number", "GTW TBD"))
+            pieces_per_pallet = int(key_fields.get("pieces_per_pallet", 0))
+            match_index = next(
+                (
+                    i
+                    for i, (min_dia, max_dia, _, _, _) in enumerate(snapshot.bag_pricing)
+                    if min_dia == min_size and max_dia == max_size
+                ),
+                None,
+            )
+            updated = (min_size, max_size, part_number, pieces_per_pallet, price)
+            if match_index is not None:
+                snapshot.bag_pricing[match_index] = updated
+            else:
+                snapshot.bag_pricing.append(updated)
+
+        elif product_type in {"compression", "omegawrap", "accessory", "service", "flat"}:
+            key = str(key_fields.get("key", ""))
+            if not key:
+                continue
+            unit = str(key_fields.get("unit", "flat"))
+            if key in {"milling", "painting"}:
+                snapshot.flat_pricing[key] = price
+            else:
+                snapshot.other_pricing[key] = (price, unit)
+
+    snapshot.girth_weld_pricing.sort(key=lambda row: row[0])
+    snapshot.bag_pricing.sort(key=lambda row: row[0])
+    return snapshot
+
+
+def _get_pricing_snapshot() -> PricingSnapshot:
+    global _PRICING_CACHE, _PRICING_CACHE_EXPIRES_AT
+    now = monotonic()
+    if _PRICING_CACHE is None or now >= _PRICING_CACHE_EXPIRES_AT:
+        _PRICING_CACHE = _build_pricing_snapshot()
+        _PRICING_CACHE_EXPIRES_AT = now + _PRICING_CACHE_TTL_SECONDS
+    return _PRICING_CACHE
+
+
+def _clear_pricing_cache() -> None:
+    global _PRICING_CACHE, _PRICING_CACHE_EXPIRES_AT
+    _PRICING_CACHE = None
+    _PRICING_CACHE_EXPIRES_AT = 0.0
+
+
 def calculate_sleeve_weight_per_ft(diameter: float, wall_thickness: float) -> Decimal:
     """Calculate weight per foot for a sleeve.
 
@@ -178,19 +286,20 @@ def calculate_sleeve_weight_per_ft(diameter: float, wall_thickness: float) -> De
 
 def get_price_per_lb(wall_thickness: float, grade: int) -> Decimal:
     """Get price per pound for given wall thickness and grade."""
+    price_per_lb = _get_pricing_snapshot().price_per_lb
     wt_key = str(wall_thickness)
 
     # Find the matching wall thickness tier
-    if wt_key in PRICE_PER_LB:
-        prices = PRICE_PER_LB[wt_key]
+    if wt_key in price_per_lb:
+        prices = price_per_lb[wt_key]
     elif wall_thickness >= 0.5:
-        prices = PRICE_PER_LB["0.5"]
+        prices = price_per_lb["0.5"]
     elif wall_thickness >= 0.375:
-        prices = PRICE_PER_LB["0.375"]
+        prices = price_per_lb["0.375"]
     elif wall_thickness >= 0.3125:
-        prices = PRICE_PER_LB["0.3125"]
+        prices = price_per_lb["0.3125"]
     else:
-        prices = PRICE_PER_LB["0.25"]
+        prices = price_per_lb["0.25"]
 
     return prices[1] if grade == 65 else prices[0]
 
@@ -217,9 +326,9 @@ def calculate_sleeve_price(
 
     # Add services
     if milling:
-        unit_price += MILLING_PRICE
+        unit_price += _get_pricing_snapshot().flat_pricing["milling"]
     if painting:
-        unit_price += PAINTING_PRICE
+        unit_price += _get_pricing_snapshot().flat_pricing["painting"]
 
     return (
         unit_price.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
@@ -236,7 +345,7 @@ def get_girth_weld_price(diameter: float) -> Decimal | None:
     Returns:
         Price per set, or None if diameter is outside supported ranges.
     """
-    for min_dia, max_dia, price in GIRTH_WELD_PRICING:
+    for min_dia, max_dia, price in _get_pricing_snapshot().girth_weld_pricing:
         if min_dia <= diameter <= max_dia:
             return price
     return None
@@ -574,10 +683,15 @@ def _lookup_bag_pricing(diameter: float) -> tuple[str, int, Decimal] | None:
 
     Returns (part_number, pieces_per_pallet, price_per_bag) or None.
     """
-    for min_dia, max_dia, part_number, pcs_per_pallet, price in BAG_PRICING:
+    for min_dia, max_dia, part_number, pcs_per_pallet, price in _get_pricing_snapshot().bag_pricing:
         if min_dia <= diameter <= max_dia:
             return part_number, pcs_per_pallet, price
     return None
+
+
+def _get_other_pricing(key: str) -> tuple[Decimal, str]:
+    snapshot = _get_pricing_snapshot()
+    return snapshot.other_pricing[key]
 
 
 # Keyword maps for matching parsed descriptions to OTHER_PRICING keys
@@ -838,7 +952,7 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
         )
 
     if item.product_type == "compression":
-        price, unit = OTHER_PRICING["compression_sleeve"]
+        price, unit = _get_other_pricing("compression_sleeve")
         total = price * Decimal(str(item.quantity))
         dia_str = f', {int(item.diameter)}"' if item.diameter else ""
         return QuoteLineItem(
@@ -860,7 +974,7 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
             )
             return _tbd_line_item(item, sort_order)
 
-        price, unit = OTHER_PRICING[key]
+        price, unit = _get_other_pricing(key)
         label = key.replace("omegawrap_", "").replace("_", " ").title()
         total = price * Decimal(str(item.quantity))
         return QuoteLineItem(
@@ -882,7 +996,7 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
             )
             return _tbd_line_item(item, sort_order)
 
-        price, unit = OTHER_PRICING[key]
+        price, unit = _get_other_pricing(key)
         label = key.replace("_", " ").title()
         total = price * Decimal(str(item.quantity))
         return QuoteLineItem(
@@ -904,7 +1018,7 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
             )
             return _tbd_line_item(item, sort_order)
 
-        price, unit = OTHER_PRICING[key]
+        price, unit = _get_other_pricing(key)
         label = key.replace("_", " ").title()
         total = price * Decimal(str(item.quantity))
         return QuoteLineItem(

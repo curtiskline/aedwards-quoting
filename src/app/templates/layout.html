@@ -133,6 +133,7 @@
         {% if is_authenticated %}
           <a href="{{ url_for('main.dashboard') }}">Dashboard</a>
           <a href="{{ url_for('customers.customer_list') }}">Customers</a>
+          <a href="{{ url_for('main.pricing_admin') }}">Pricing Admin</a>
           <a href="{{ url_for('admin.users_page') }}">Users</a>
           <form method="post" action="{{ url_for('auth.logout') }}">
             <button type="submit">Logout</button>

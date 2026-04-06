@@ -1,0 +1,126 @@
+{% extends "layout.html" %}
+{% block title %}Pricing Admin{% endblock %}
+{% block body %}
+  <h1>Pricing Administration</h1>
+  <p class="pill">DB-backed rates with inline editing</p>
+
+  {% if not sections %}
+    <p>No pricing rows found.</p>
+  {% else %}
+    <div class="tabbar">
+      {% for section in sections %}
+        <button
+          type="button"
+          class="tab-btn {% if loop.first %}active{% endif %}"
+          data-tab-target="tab-{{ section.product_type }}"
+        >
+          {{ section.title }}
+        </button>
+      {% endfor %}
+    </div>
+
+    {% for section in sections %}
+      <section
+        id="tab-{{ section.product_type }}"
+        class="tab-panel {% if loop.first %}active{% endif %}"
+      >
+        <h2>{{ section.title }}</h2>
+        <table class="pricing-table">
+          <thead>
+            <tr>
+              <th>Rate Key</th>
+              <th>Price</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in section.entries %}
+              {% include "partials/pricing_row.html" %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </section>
+    {% endfor %}
+  {% endif %}
+
+  <style>
+    .tabbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin: 1rem 0;
+    }
+    .tab-btn {
+      border: 1px solid #cbd5e1;
+      background: #f8fafc;
+      color: #1f2937;
+      border-radius: 999px;
+      padding: 0.4rem 0.9rem;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .tab-btn.active {
+      background: #0f766e;
+      color: #ffffff;
+      border-color: #0f766e;
+    }
+    .tab-panel {
+      display: none;
+    }
+    .tab-panel.active {
+      display: block;
+    }
+    .pricing-table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    .pricing-table th,
+    .pricing-table td {
+      border-bottom: 1px solid #e5e7eb;
+      text-align: left;
+      padding: 0.6rem;
+      vertical-align: middle;
+    }
+    .price-input {
+      width: 120px;
+      padding: 0.35rem 0.45rem;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 0.95rem;
+    }
+    .save-btn {
+      border: 1px solid #0f766e;
+      background: #0f766e;
+      color: #fff;
+      border-radius: 6px;
+      padding: 0.35rem 0.7rem;
+      cursor: pointer;
+    }
+    @media (max-width: 640px) {
+      .pricing-table th:nth-child(3),
+      .pricing-table td:nth-child(3) {
+        width: 1%;
+        white-space: nowrap;
+      }
+      .price-input {
+        width: 90px;
+      }
+    }
+  </style>
+  <script>
+    (function() {
+      const tabs = document.querySelectorAll('.tab-btn');
+      const panels = document.querySelectorAll('.tab-panel');
+      tabs.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const target = btn.dataset.tabTarget;
+          tabs.forEach((tab) => tab.classList.remove('active'));
+          panels.forEach((panel) => panel.classList.remove('active'));
+          btn.classList.add('active');
+          const panel = document.getElementById(target);
+          if (panel) panel.classList.add('active');
+        });
+      });
+    })();
+  </script>
+{% endblock %}
