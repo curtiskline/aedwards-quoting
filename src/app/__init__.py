@@ -6,6 +6,7 @@ from flask import Flask
 
 from .config import Config
 from .extensions import db
+from .customers import customers_bp
 from .routes import main_bp
 from . import models  # noqa: F401
 
@@ -16,5 +17,6 @@ def create_app() -> Flask:
 
     db.init_app(app)
     app.register_blueprint(main_bp)
+    app.register_blueprint(customers_bp)
 
     return app
