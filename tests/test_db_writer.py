@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from app import create_app
+from app.config import Config
 from app.extensions import db
 from app.models import AuditLog, Customer, Contact, Quote as DBQuote, QuoteLineItem as DBQuoteLineItem, QuoteStatus
 from allenedwards.db_writer import write_quote_to_db, _generate_fiscal_quote_number
@@ -21,7 +22,10 @@ def app(tmp_path: Path):
     """Create Flask app with a fresh SQLite database per test."""
     db_path = tmp_path / "test.db"
     import os
+    previous_database_url = os.environ.get("DATABASE_URL")
+    previous_config_database_url = Config.SQLALCHEMY_DATABASE_URI
     os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
+    Config.SQLALCHEMY_DATABASE_URI = f"sqlite:///{db_path}"
     app = create_app()
     app.config["TESTING"] = True
 
@@ -30,6 +34,11 @@ def app(tmp_path: Path):
         yield app
         db.session.remove()
         db.drop_all()
+    Config.SQLALCHEMY_DATABASE_URI = previous_config_database_url
+    if previous_database_url is None:
+        os.environ.pop("DATABASE_URL", None)
+    else:
+        os.environ["DATABASE_URL"] = previous_database_url
 
 
 @pytest.fixture()

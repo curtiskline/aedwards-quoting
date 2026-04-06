@@ -1,0 +1,29 @@
+<div id="queue-body">
+  {% if quotes %}
+    {% for q in quotes %}
+    <div class="quote-card">
+      <div>
+        <div class="top-row">
+          <span class="quote-number">{{ q.quote_number }}</span>
+          <span class="customer-name">{{ q.customer_name }}</span>
+          <span class="status-badge status-{{ q.status }}">{{ q.status_label }}</span>
+          {% if q.lock_active and q.reviewer_name %}
+          <span class="reviewer-tag">{{ q.reviewer_name }}</span>
+          {% endif %}
+        </div>
+        <div class="meta">
+          <span>{{ q.item_count }} item{{ 's' if q.item_count != 1 else '' }}</span>
+          <span>{{ q.time_ago }}</span>
+        </div>
+      </div>
+      <div class="amount{% if q.needs_pricing %} needs-pricing{% endif %}">
+        {{ q.total }}
+      </div>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="empty-state">
+      <p>No quotes found.</p>
+    </div>
+  {% endif %}
+</div>

@@ -1,0 +1,21 @@
+{% extends "layout.html" %}
+{% block title %}Create First User{% endblock %}
+{% block body %}
+  <h1>Create First User</h1>
+  <p>No users exist yet. Create the initial account for this workspace.</p>
+
+  <section class="panel">
+    <form method="post" action="{{ url_for('auth.bootstrap_user') }}" class="stack">
+      <label>Name
+        <input type="text" name="name" required autocomplete="name" />
+      </label>
+      <label>Email
+        <input type="email" name="email" required autocomplete="email" />
+      </label>
+      <label>Password
+        <input type="password" name="password" required autocomplete="new-password" />
+      </label>
+      <button type="submit">Create User</button>
+    </form>
+  </section>
+{% endblock %}

@@ -18,6 +18,7 @@ dependencies = [
     "msal>=1.30",
     "reportlab>=4.0",
     "flask>=3.0",
+    "flask-login>=0.6",
     "flask-sqlalchemy>=3.1",
     "alembic>=1.13",
     "gunicorn>=22.0",
@@ -41,7 +42,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 allenedwards = ["assets/*.jpg"]
-app = ["templates/*.html", "templates/partials/*.html"]
+app = ["templates/*.html", "templates/*/*.html", "templates/*/*/*.html"]
 
 [tool.ruff]
 line-length = 100

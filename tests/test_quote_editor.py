@@ -1,16 +1,27 @@
 from __future__ import annotations
 
+import os
+
 from app import create_app
+from app.config import Config
 from app.extensions import db
 from app.models import PricingTable, Quote, QuoteLineItem, QuoteStatus, User
 
 
 def _make_app(tmp_path):
     db_path = tmp_path / "quote-editor.db"
+    os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
+    Config.SQLALCHEMY_DATABASE_URI = f"sqlite:///{db_path}"
     app = create_app()
     app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_path}"
     app.config["TESTING"] = True
     return app
+
+
+def _login(client, user_id: int) -> None:
+    with client.session_transaction() as session:
+        session["_user_id"] = str(user_id)
+        session["_fresh"] = True
 
 
 def test_quote_detail_loads_and_locks_by_user(tmp_path):
@@ -36,8 +47,10 @@ def test_quote_detail_loads_and_locks_by_user(tmp_path):
         )
         db.session.commit()
         quote_id = quote.id
+        reviewer_id = reviewer.id
 
     client = app.test_client()
+    _login(client, reviewer_id)
     response = client.get(f"/quotes/{quote_id}")
     assert response.status_code == 200
     assert b"Quote 126-200" in response.data
@@ -53,6 +66,8 @@ def test_line_item_update_recalculates_and_generates_sleeve_part(tmp_path):
     app = _make_app(tmp_path)
     with app.app_context():
         db.create_all()
+        user = User(email="editor@example.com", name="Editor", password_hash="x")
+        db.session.add(user)
         quote = Quote(quote_number="126-201", status=QuoteStatus.IN_REVIEW)
         db.session.add(quote)
         db.session.flush()
@@ -70,8 +85,10 @@ def test_line_item_update_recalculates_and_generates_sleeve_part(tmp_path):
         db.session.commit()
         quote_id = quote.id
         item_id = li.id
+        user_id = user.id
 
     client = app.test_client()
+    _login(client, user_id)
     response = client.post(
         f"/quotes/{quote_id}/line-items/{item_id}/update",
         data={
@@ -98,6 +115,8 @@ def test_add_remove_move_and_status_transitions(tmp_path):
     app = _make_app(tmp_path)
     with app.app_context():
         db.create_all()
+        user = User(email="queue@example.com", name="Queue User", password_hash="x")
+        db.session.add(user)
         quote = Quote(quote_number="126-202", status=QuoteStatus.NEW)
         db.session.add(quote)
         db.session.flush()
@@ -136,8 +155,10 @@ def test_add_remove_move_and_status_transitions(tmp_path):
         )
         db.session.commit()
         quote_id = quote.id
+        user_id = user.id
 
     client = app.test_client()
+    _login(client, user_id)
 
     add_resp = client.post(
         f"/quotes/{quote_id}/line-items/add",

@@ -7,28 +7,39 @@ import json
 import pytest
 
 from app import create_app
+from app.config import Config
 from app.customers import auto_match
 from app.extensions import db
-from app.models import Contact, Customer, ShipToAddress
+from app.models import Contact, Customer, ShipToAddress, User
 
 
 @pytest.fixture()
-def app(tmp_path):
+def app(tmp_path, monkeypatch):
     """Create a test app with an in-memory-like SQLite DB."""
     db_path = tmp_path / "test.db"
+    monkeypatch.setattr(Config, "SQLALCHEMY_DATABASE_URI", f"sqlite:///{db_path}")
+    monkeypatch.setattr(Config, "TESTING", True, raising=False)
     app = create_app()
-    app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_path}"
-    app.config["TESTING"] = True
 
     with app.app_context():
         db.create_all()
+        user = User(email="owner@example.com", name="Owner", password_hash="")
+        user.set_password("secret123")
+        db.session.add(user)
+        db.session.commit()
         yield app
         db.session.remove()
 
 
 @pytest.fixture()
 def client(app):
-    return app.test_client()
+    client = app.test_client()
+    client.post(
+        "/auth/password",
+        data={"email": "owner@example.com", "password": "secret123"},
+        follow_redirects=True,
+    )
+    return client
 
 
 @pytest.fixture()

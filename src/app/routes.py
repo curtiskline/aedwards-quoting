@@ -6,7 +6,8 @@ import math
 from decimal import ROUND_HALF_UP
 from decimal import Decimal, InvalidOperation
 
-from flask import Blueprint, abort, render_template, request
+from flask import Blueprint, abort, redirect, render_template, request
+from flask_login import login_required
 from sqlalchemy import inspect
 
 from .extensions import db
@@ -17,11 +18,9 @@ main_bp = Blueprint("main", __name__)
 
 
 @main_bp.get("/")
+@login_required
 def dashboard():
-    if not inspect(db.engine).has_table("quote"):
-        return render_template("dashboard.html", quotes=[], totals={"subtotal": Decimal("0.00"), "total": Decimal("0.00")})
-    quotes = db.session.query(Quote).order_by(Quote.updated_at.desc()).limit(50).all()
-    return render_template("dashboard.html", quotes=quotes, totals=_quote_totals(quotes))
+    return redirect("/quotes/")
 
 
 def _format_product_label(product_type: str) -> str:
@@ -442,12 +441,14 @@ def quote_move_line_item(quote_id: int, item_id: int):
 
 
 @main_bp.get("/admin/pricing")
+@login_required
 def pricing_admin():
     sections = _group_pricing_rows()
     return render_template("pricing_admin.html", sections=sections)
 
 
 @main_bp.post("/admin/pricing/<int:row_id>")
+@login_required
 def update_pricing_row(row_id: int):
     row = db.session.get(PricingTable, row_id)
     if row is None:
