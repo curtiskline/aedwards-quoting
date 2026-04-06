@@ -16,14 +16,14 @@ def _alembic_env(db_path: Path) -> dict[str, str]:
     return env
 
 
-def test_dashboard_page_loads() -> None:
+def test_dashboard_redirects_to_quotes() -> None:
     app = create_app()
     client = app.test_client()
 
     response = client.get("/")
 
-    assert response.status_code == 200
-    assert b"Dashboard" in response.data
+    assert response.status_code == 302
+    assert "/quotes/" in response.headers["Location"]
 
 
 def test_migrations_create_tables(tmp_path: Path) -> None:

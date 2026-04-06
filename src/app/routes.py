@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from decimal import Decimal, InvalidOperation
 
-from flask import Blueprint, abort, render_template, request
+from flask import Blueprint, abort, redirect, render_template, request
 from sqlalchemy import inspect
 
 from .extensions import db
@@ -15,7 +15,7 @@ main_bp = Blueprint("main", __name__)
 
 @main_bp.get("/")
 def dashboard():
-    return render_template("dashboard.html")
+    return redirect("/quotes/")
 
 
 def _format_product_label(product_type: str) -> str:

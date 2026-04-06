@@ -88,6 +88,7 @@ class Quote(db.Model):
         SAEnum(QuoteStatus, name="quote_status"), default=QuoteStatus.NEW, nullable=False
     )
     reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"))
+    review_started_at: Mapped[datetime | None] = mapped_column(nullable=True)
     project_name: Mapped[str | None]
     notes_customer: Mapped[str | None] = mapped_column(Text)
     notes_internal: Mapped[str | None] = mapped_column(Text)
@@ -105,6 +106,7 @@ class Quote(db.Model):
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     customer: Mapped[Customer] = relationship(back_populates="quotes")
+    reviewer: Mapped[User | None] = relationship(foreign_keys=[reviewed_by])
     line_items: Mapped[list["QuoteLineItem"]] = relationship(
         back_populates="quote", cascade="all, delete-orphan"
     )

@@ -1,0 +1,88 @@
+{% extends "layout.html" %}
+{% block title %}Quote Queue{% endblock %}
+{% block body %}
+<style>
+  .queue-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+  .tabs { display: flex; gap: 0.25rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  .tab {
+    padding: 0.4rem 0.75rem; border-radius: 6px; border: 1px solid #d1d5db;
+    background: #fff; color: #374151; font-size: 0.875rem; cursor: pointer;
+    text-decoration: none; font-weight: 500;
+  }
+  .tab:hover { background: #f3f4f6; }
+  .tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .tab .count { font-size: 0.75rem; opacity: 0.8; margin-left: 0.25rem; }
+  .search-box {
+    width: 100%; padding: 0.5rem; border: 1px solid #d1d5db;
+    border-radius: 6px; font-size: 1rem; margin-bottom: 1rem;
+  }
+  .quote-card {
+    display: grid; grid-template-columns: 1fr auto;
+    gap: 0.5rem; padding: 0.75rem 1rem;
+    border: 1px solid #e5e7eb; border-radius: 8px;
+    margin-bottom: 0.5rem; background: #fff;
+    transition: box-shadow 0.15s;
+  }
+  .quote-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+  .quote-card .top-row {
+    display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;
+  }
+  .quote-number { font-weight: 700; color: var(--accent); }
+  .customer-name { font-weight: 500; }
+  .meta { font-size: 0.85rem; color: #6b7280; display: flex; gap: 1rem; flex-wrap: wrap; }
+  .status-badge {
+    display: inline-block; padding: 0.15rem 0.5rem; border-radius: 999px;
+    font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+  }
+  .status-new { background: #dbeafe; color: #1d4ed8; }
+  .status-in_review { background: #fef3c7; color: #92400e; }
+  .status-needs_pricing { background: #fecaca; color: #991b1b; }
+  .status-ready { background: #d1fae5; color: #065f46; }
+  .status-sent { background: #e0e7ff; color: #3730a3; }
+  .status-archived { background: #f3f4f6; color: #6b7280; }
+  .reviewer-tag {
+    font-size: 0.75rem; color: #92400e; background: #fef3c7;
+    padding: 0.1rem 0.5rem; border-radius: 999px;
+  }
+  .amount { font-weight: 600; text-align: right; white-space: nowrap; }
+  .amount.needs-pricing { color: #dc2626; font-style: italic; }
+  .empty-state { text-align: center; padding: 3rem 1rem; color: #9ca3af; }
+</style>
+
+<div class="queue-header">
+  <h1 style="margin:0">Quote Queue</h1>
+</div>
+
+<div id="queue-container"
+     hx-get="/quotes/?status={{ active_status }}&q={{ search }}"
+     hx-trigger="every 30s"
+     hx-target="#queue-body"
+     hx-select="#queue-body"
+     hx-swap="outerHTML">
+
+  <div class="tabs" id="status-tabs">
+    {% for tab in tabs %}
+    <a class="tab{% if tab.key == active_status %} active{% endif %}"
+       href="#"
+       hx-get="/quotes/?status={{ tab.key }}&q={{ search }}"
+       hx-target="#queue-body"
+       hx-select="#queue-body"
+       hx-swap="outerHTML"
+       hx-push-url="/quotes/?status={{ tab.key }}">
+      {{ tab.label }} <span class="count">({{ tab.count }})</span>
+    </a>
+    {% endfor %}
+  </div>
+
+  <input type="search" name="q" value="{{ search }}" placeholder="Search by customer or quote number..."
+         class="search-box"
+         hx-get="/quotes/?status={{ active_status }}"
+         hx-target="#queue-body"
+         hx-select="#queue-body"
+         hx-swap="outerHTML"
+         hx-trigger="input changed delay:300ms"
+         hx-include="this">
+
+  {% include "quotes/_queue_body.html" %}
+</div>
+{% endblock %}
