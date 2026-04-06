@@ -96,6 +96,9 @@ class InboxMonitor:
         output_dir: Path,
         quote_email_cc: str | None = None,
         processed_folder_name: str | None = None,
+        enable_db_writes: bool = False,
+        enable_outlook_drafts: bool = True,
+        flask_app: Any | None = None,
     ):
         self.outlook = outlook
         self.provider = provider
@@ -106,6 +109,9 @@ class InboxMonitor:
         self.processed_folder_name = processed_folder_name
         self._processed_folder_id: str | None = None
         self._running = True
+        self.enable_db_writes = enable_db_writes
+        self.enable_outlook_drafts = enable_outlook_drafts
+        self._flask_app = flask_app
 
     def _shutdown_signal(self, signum: int, _frame: Any) -> None:
         logger.info("Received signal %s; shutting down", signum)
@@ -173,40 +179,78 @@ class InboxMonitor:
             self._finalize_message(msg.id)
             return False
 
-        base_quote_number = _generate_quote_number()
+        if self.enable_db_writes:
+            base_quote_number = self._generate_db_quote_number()
+        else:
+            base_quote_number = _generate_quote_number()
 
         for idx, rfq in enumerate(rfqs):
             quote_number = base_quote_number if len(rfqs) == 1 else f"{base_quote_number}-{idx + 1:02d}"
             quote = generate_quote(rfq, quote_number)
 
-            to_email = rfq.contact_email or msg.sender_email
-            if not to_email:
-                raise RuntimeError(f"No recipient email available for message {msg.id}")
+            # --- DB write path ---
+            if self.enable_db_writes:
+                try:
+                    self._write_to_db(msg, rfq, quote, quote_number)
+                except Exception:
+                    logger.exception("Failed writing quote %s to database", quote_number)
 
-            if quote.subtotal == 0:
-                draft_id = self._create_review_draft(msg, rfq, quote, to_email)
-                logger.warning(
-                    "Created REVIEW draft %s for message %s ($0 quote — needs manual pricing)",
-                    draft_id or "<unknown>", msg.id,
-                )
-            else:
-                pdf_name, pdf_bytes = self._build_quote_pdf(quote)
-                subject = f"Quote {quote.quote_number}"
-                if quote.project_line:
-                    subject = f"{subject} - {quote.project_line}"
+            # --- Outlook draft path ---
+            if self.enable_outlook_drafts:
+                to_email = rfq.contact_email or msg.sender_email
+                if not to_email:
+                    raise RuntimeError(f"No recipient email available for message {msg.id}")
 
-                body = _build_draft_body(quote)
-                draft_id = self.outlook.create_draft(
-                    to_email=to_email,
-                    subject=subject,
-                    body_text=body,
-                    attachments=[(pdf_name, pdf_bytes)],
-                    cc_email=self.quote_email_cc,
-                )
-                logger.info("Created draft %s for message %s", draft_id or "<unknown>", msg.id)
+                if quote.subtotal == 0:
+                    draft_id = self._create_review_draft(msg, rfq, quote, to_email)
+                    logger.warning(
+                        "Created REVIEW draft %s for message %s ($0 quote — needs manual pricing)",
+                        draft_id or "<unknown>", msg.id,
+                    )
+                else:
+                    pdf_name, pdf_bytes = self._build_quote_pdf(quote)
+                    subject = f"Quote {quote.quote_number}"
+                    if quote.project_line:
+                        subject = f"{subject} - {quote.project_line}"
+
+                    body = _build_draft_body(quote)
+                    draft_id = self.outlook.create_draft(
+                        to_email=to_email,
+                        subject=subject,
+                        body_text=body,
+                        attachments=[(pdf_name, pdf_bytes)],
+                        cc_email=self.quote_email_cc,
+                    )
+                    logger.info("Created draft %s for message %s", draft_id or "<unknown>", msg.id)
 
         self._finalize_message(msg.id)
         return True
+
+    def _write_to_db(
+        self,
+        msg: OutlookMessage,
+        rfq: ParsedRFQ,
+        quote: Quote,
+        quote_number: str,
+    ) -> None:
+        """Write quote data to the database within Flask app context."""
+        from .db_writer import write_quote_to_db
+
+        if not self._flask_app:
+            raise RuntimeError("DB writes enabled but no Flask app provided")
+
+        with self._flask_app.app_context():
+            write_quote_to_db(msg, rfq, quote, quote_number)
+
+    def _generate_db_quote_number(self) -> str:
+        """Generate a sequential quote number from the database."""
+        from .db_writer import _generate_fiscal_quote_number
+
+        if not self._flask_app:
+            return _generate_quote_number()
+
+        with self._flask_app.app_context():
+            return _generate_fiscal_quote_number()
 
     def _build_quote_pdf(self, quote: Quote) -> tuple[str, bytes]:
         self.output_dir.mkdir(parents=True, exist_ok=True)
