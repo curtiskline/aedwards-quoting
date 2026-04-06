@@ -1,0 +1,33 @@
+{% macro sort_link(col, label) %}
+  {% set new_order = 'desc' if sort == col and order == 'asc' else 'asc' %}
+  <a href="/customers/?q={{ q }}&sort={{ col }}&order={{ new_order }}"
+     hx-get="/customers/?q={{ q }}&sort={{ col }}&order={{ new_order }}"
+     hx-target="#customer-table" style="text-decoration:none;color:inherit">
+    {{ label }}
+    {% if sort == col %}{{ '&#9650;' if order == 'asc' else '&#9660;' }}{% endif %}
+  </a>
+{% endmacro %}
+
+<table style="width:100%;border-collapse:collapse">
+  <thead>
+    <tr style="border-bottom:2px solid #d1d5db;text-align:left">
+      <th style="padding:0.5rem">{{ sort_link('company_name', 'Company') }}</th>
+      <th style="padding:0.5rem">Contacts</th>
+      <th style="padding:0.5rem">Addresses</th>
+      <th style="padding:0.5rem">{{ sort_link('discount_pct', 'Discount') }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for c in customers %}
+    <tr style="border-bottom:1px solid #e5e7eb;cursor:pointer"
+        onclick="location.href='/customers/{{ c.id }}'">
+      <td style="padding:0.5rem;font-weight:600">{{ c.company_name }}</td>
+      <td style="padding:0.5rem">{{ c.contacts | length }}</td>
+      <td style="padding:0.5rem">{{ c.ship_to_addresses | length }}</td>
+      <td style="padding:0.5rem">{{ '%.1f' | format(c.discount_pct) }}%</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" style="padding:1rem;text-align:center;color:#6b7280">No customers found.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>

@@ -1,0 +1,26 @@
+<div style="border:1px solid #e5e7eb;border-radius:6px;padding:0.75rem;margin-bottom:0.5rem">
+  <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem;flex-wrap:wrap">
+    <input type="text" name="addr_line1" placeholder="Address Line 1 *"
+           value="{{ address.address_line1 if address else '' }}"
+           style="flex:2;min-width:200px;padding:0.4rem;border:1px solid #d1d5db;border-radius:4px">
+    <input type="text" name="addr_line2" placeholder="Line 2"
+           value="{{ address.address_line2 if address and address.address_line2 else '' }}"
+           style="flex:1;min-width:120px;padding:0.4rem;border:1px solid #d1d5db;border-radius:4px">
+  </div>
+  <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center">
+    <input type="text" name="addr_city" placeholder="City *"
+           value="{{ address.city if address else '' }}"
+           style="flex:2;min-width:120px;padding:0.4rem;border:1px solid #d1d5db;border-radius:4px">
+    <input type="text" name="addr_state" placeholder="State *" maxlength="2"
+           value="{{ address.state if address else '' }}"
+           style="width:60px;padding:0.4rem;border:1px solid #d1d5db;border-radius:4px">
+    <input type="text" name="addr_zip" placeholder="ZIP *"
+           value="{{ address.postal_code if address else '' }}"
+           style="width:100px;padding:0.4rem;border:1px solid #d1d5db;border-radius:4px">
+    <label style="display:flex;align-items:center;gap:0.25rem">
+      <input type="checkbox" name="addr_default" value="{{ idx }}"
+             {{ 'checked' if address and address.is_default else '' }}>
+      Default
+    </label>
+  </div>
+</div>
