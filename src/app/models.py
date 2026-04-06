@@ -97,7 +97,7 @@ class Quote(db.Model):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     quote_number: Mapped[str] = mapped_column(unique=True, nullable=False, index=True)
-    customer_id: Mapped[int] = mapped_column(ForeignKey("customer.id"), nullable=False, index=True)
+    customer_id: Mapped[int | None] = mapped_column(ForeignKey("customer.id"), nullable=True, index=True)
     status: Mapped[QuoteStatus] = mapped_column(
         SAEnum(QuoteStatus, name="quote_status"), default=QuoteStatus.NEW, nullable=False
     )
@@ -106,6 +106,15 @@ class Quote(db.Model):
     notes_customer: Mapped[str | None] = mapped_column(Text)
     notes_internal: Mapped[str | None] = mapped_column(Text)
     source_email_id: Mapped[str | None]
+    sender_email: Mapped[str | None]
+    sender_name: Mapped[str | None]
+    subject: Mapped[str | None]
+    customer_name_raw: Mapped[str | None]
+    contact_name: Mapped[str | None]
+    contact_email: Mapped[str | None]
+    contact_phone: Mapped[str | None]
+    po_number: Mapped[str | None]
+    ship_to_json: Mapped[dict | None] = mapped_column(db.JSON)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
