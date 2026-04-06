@@ -9,6 +9,13 @@ from app import create_app
 from app.config import Config
 
 
+def _alembic_env(db_path: Path) -> dict[str, str]:
+    env = os.environ.copy()
+    env["DATABASE_URL"] = f"sqlite:///{db_path}"
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
+    return env
+
+
 def test_dashboard_page_loads() -> None:
     app = create_app()
     client = app.test_client()
@@ -21,8 +28,7 @@ def test_dashboard_page_loads() -> None:
 
 def test_migrations_create_tables(tmp_path: Path) -> None:
     db_path = tmp_path / "migrations.db"
-    env = os.environ.copy()
-    env["DATABASE_URL"] = f"sqlite:///{db_path}"
+    env = _alembic_env(db_path)
 
     subprocess.run(["alembic", "upgrade", "head"], check=True, cwd=Path(__file__).resolve().parents[1], env=env)
 
@@ -46,8 +52,7 @@ def test_migrations_create_tables(tmp_path: Path) -> None:
 
 def test_migrations_seed_pricing_rows(tmp_path: Path) -> None:
     db_path = tmp_path / "seeded.db"
-    env = os.environ.copy()
-    env["DATABASE_URL"] = f"sqlite:///{db_path}"
+    env = _alembic_env(db_path)
 
     subprocess.run(["alembic", "upgrade", "head"], check=True, cwd=Path(__file__).resolve().parents[1], env=env)
 
@@ -70,7 +75,7 @@ def test_pricing_admin_page_and_inline_update(tmp_path: Path) -> None:
             ["alembic", "upgrade", "head"],
             check=True,
             cwd=Path(__file__).resolve().parents[1],
-            env=os.environ.copy(),
+            env=_alembic_env(db_path),
         )
 
         Config.SQLALCHEMY_DATABASE_URI = f"sqlite:///{db_path}"

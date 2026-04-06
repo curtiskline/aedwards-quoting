@@ -620,6 +620,7 @@ def test_price_lookup_uses_db_override_in_app_context(tmp_path: Path):
     db_path = tmp_path / "pricing_override.db"
     env = os.environ.copy()
     env["DATABASE_URL"] = f"sqlite:///{db_path}"
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
     subprocess.run(["alembic", "upgrade", "head"], check=True, cwd=Path(__file__).resolve().parents[1], env=env)
 
     previous_db_uri = Config.SQLALCHEMY_DATABASE_URI
