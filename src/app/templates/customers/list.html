@@ -1,0 +1,18 @@
+{% extends "layout.html" %}
+{% block title %}Customers{% endblock %}
+{% block body %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+  <h1 style="margin:0">Customers</h1>
+  <a href="/customers/new" class="pill" style="text-decoration:none">+ New Customer</a>
+</div>
+
+<form hx-get="/customers/" hx-target="#customer-table" hx-trigger="input changed delay:300ms, submit"
+      style="margin-bottom:1rem">
+  <input type="search" name="q" value="{{ q }}" placeholder="Search customers..."
+         style="width:100%;padding:0.5rem;border:1px solid #d1d5db;border-radius:6px;font-size:1rem">
+</form>
+
+<div id="customer-table">
+  {% include "customers/_table.html" %}
+</div>
+{% endblock %}

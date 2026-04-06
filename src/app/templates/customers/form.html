@@ -1,0 +1,79 @@
+{% extends "layout.html" %}
+{% set editing = customer is not none %}
+{% block title %}{{ 'Edit' if editing else 'New' }} Customer{% endblock %}
+{% block body %}
+<h1>{{ 'Edit' if editing else 'New' }} Customer</h1>
+<p><a href="/customers/" style="color:var(--accent)">&larr; All customers</a></p>
+
+<form method="post" action="/customers/{{ customer.id if editing else '' }}"
+      hx-post="/customers/{{ customer.id if editing else '' }}"
+      hx-swap="none">
+  <fieldset style="border:1px solid #d1d5db;border-radius:8px;padding:1rem;margin-bottom:1rem">
+    <legend><strong>Company</strong></legend>
+    <label style="display:block;margin-bottom:0.75rem">
+      Company Name *<br>
+      <input type="text" name="company_name" value="{{ customer.company_name if editing else '' }}" required
+             style="width:100%;padding:0.4rem;border:1px solid #d1d5db;border-radius:4px">
+    </label>
+    <label style="display:block;margin-bottom:0.75rem">
+      Discount %<br>
+      <input type="number" name="discount_pct" step="0.01" min="0" max="100"
+             value="{{ customer.discount_pct if editing else '0' }}"
+             style="width:120px;padding:0.4rem;border:1px solid #d1d5db;border-radius:4px">
+    </label>
+    <label style="display:block;margin-bottom:0.75rem">
+      Notes<br>
+      <textarea name="notes" rows="3"
+                style="width:100%;padding:0.4rem;border:1px solid #d1d5db;border-radius:4px">{{ customer.notes or '' if editing else '' }}</textarea>
+    </label>
+  </fieldset>
+
+  <fieldset style="border:1px solid #d1d5db;border-radius:8px;padding:1rem;margin-bottom:1rem">
+    <legend><strong>Contacts</strong></legend>
+    <div id="contacts-list">
+      {% if editing and customer.contacts %}
+        {% for c in customer.contacts %}
+          {% include "customers/_contact_row.html" with context %}
+        {% endfor %}
+      {% else %}
+        {% set idx = 0 %}
+        {% set contact = None %}
+        {% include "customers/_contact_row.html" %}
+      {% endif %}
+    </div>
+    <button type="button"
+            hx-get="/customers/partial/contact-row?idx={{ (customer.contacts | length) if editing and customer.contacts else 1 }}"
+            hx-target="#contacts-list" hx-swap="beforeend"
+            style="margin-top:0.5rem;padding:0.3rem 0.75rem;border:1px solid var(--accent);background:transparent;color:var(--accent);border-radius:4px;cursor:pointer">
+      + Add Contact
+    </button>
+  </fieldset>
+
+  <fieldset style="border:1px solid #d1d5db;border-radius:8px;padding:1rem;margin-bottom:1rem">
+    <legend><strong>Ship-To Addresses</strong></legend>
+    <div id="addresses-list">
+      {% if editing and customer.ship_to_addresses %}
+        {% for address in customer.ship_to_addresses %}
+          {% set idx = loop.index0 %}
+          {% include "customers/_address_row.html" with context %}
+        {% endfor %}
+      {% else %}
+        {% set idx = 0 %}
+        {% set address = None %}
+        {% include "customers/_address_row.html" %}
+      {% endif %}
+    </div>
+    <button type="button"
+            hx-get="/customers/partial/address-row?idx={{ (customer.ship_to_addresses | length) if editing and customer.ship_to_addresses else 1 }}"
+            hx-target="#addresses-list" hx-swap="beforeend"
+            style="margin-top:0.5rem;padding:0.3rem 0.75rem;border:1px solid var(--accent);background:transparent;color:var(--accent);border-radius:4px;cursor:pointer">
+      + Add Address
+    </button>
+  </fieldset>
+
+  <button type="submit"
+          style="padding:0.5rem 1.5rem;background:var(--accent);color:#fff;border:none;border-radius:6px;font-size:1rem;cursor:pointer">
+    {{ 'Save Changes' if editing else 'Create Customer' }}
+  </button>
+</form>
+{% endblock %}

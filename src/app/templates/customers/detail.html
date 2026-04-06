@@ -1,0 +1,94 @@
+{% extends "layout.html" %}
+{% block title %}{{ customer.company_name }}{% endblock %}
+{% block body %}
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+  <h1 style="margin:0">{{ customer.company_name }}</h1>
+  <div>
+    <a href="/customers/{{ customer.id }}/edit" class="pill" style="text-decoration:none">Edit</a>
+    <button hx-delete="/customers/{{ customer.id }}" hx-confirm="Delete this customer?"
+            style="background:#ef4444;color:#fff;border:none;border-radius:999px;padding:0.25rem 0.75rem;font-weight:600;cursor:pointer;margin-left:0.5rem">
+      Delete
+    </button>
+  </div>
+</div>
+
+<p><a href="/customers/" style="color:var(--accent)">&larr; All customers</a></p>
+
+<section style="margin-bottom:1.5rem">
+  <h2>Details</h2>
+  <p><strong>Discount:</strong> {{ '%.1f' | format(customer.discount_pct) }}%</p>
+  {% if customer.notes %}<p><strong>Notes:</strong> {{ customer.notes }}</p>{% endif %}
+</section>
+
+<section style="margin-bottom:1.5rem">
+  <h2>Contacts</h2>
+  {% if customer.contacts %}
+  <table style="width:100%;border-collapse:collapse">
+    <thead><tr style="border-bottom:2px solid #d1d5db;text-align:left">
+      <th style="padding:0.5rem">Name</th>
+      <th style="padding:0.5rem">Email</th>
+      <th style="padding:0.5rem">Phone</th>
+    </tr></thead>
+    <tbody>
+      {% for c in customer.contacts %}
+      <tr style="border-bottom:1px solid #e5e7eb">
+        <td style="padding:0.5rem">{{ c.name }}</td>
+        <td style="padding:0.5rem">{{ c.email }}</td>
+        <td style="padding:0.5rem">{{ c.phone or '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p style="color:#6b7280">No contacts.</p>{% endif %}
+</section>
+
+<section style="margin-bottom:1.5rem">
+  <h2>Ship-To Addresses</h2>
+  {% if customer.ship_to_addresses %}
+  <table style="width:100%;border-collapse:collapse">
+    <thead><tr style="border-bottom:2px solid #d1d5db;text-align:left">
+      <th style="padding:0.5rem">Address</th>
+      <th style="padding:0.5rem">City</th>
+      <th style="padding:0.5rem">State</th>
+      <th style="padding:0.5rem">ZIP</th>
+      <th style="padding:0.5rem">Default</th>
+    </tr></thead>
+    <tbody>
+      {% for a in customer.ship_to_addresses %}
+      <tr style="border-bottom:1px solid #e5e7eb">
+        <td style="padding:0.5rem">{{ a.address_line1 }}{% if a.address_line2 %}<br>{{ a.address_line2 }}{% endif %}</td>
+        <td style="padding:0.5rem">{{ a.city }}</td>
+        <td style="padding:0.5rem">{{ a.state }}</td>
+        <td style="padding:0.5rem">{{ a.postal_code }}</td>
+        <td style="padding:0.5rem">{{ 'Yes' if a.is_default else '' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p style="color:#6b7280">No ship-to addresses.</p>{% endif %}
+</section>
+
+<section>
+  <h2>Quote History</h2>
+  {% if quotes %}
+  <table style="width:100%;border-collapse:collapse">
+    <thead><tr style="border-bottom:2px solid #d1d5db;text-align:left">
+      <th style="padding:0.5rem">Quote #</th>
+      <th style="padding:0.5rem">Status</th>
+      <th style="padding:0.5rem">Items</th>
+      <th style="padding:0.5rem">Date</th>
+    </tr></thead>
+    <tbody>
+      {% for q in quotes %}
+      <tr style="border-bottom:1px solid #e5e7eb">
+        <td style="padding:0.5rem">{{ q.quote_number }}</td>
+        <td style="padding:0.5rem"><span class="pill">{{ q.status.value }}</span></td>
+        <td style="padding:0.5rem">{{ q.line_items | length }}</td>
+        <td style="padding:0.5rem">{{ q.created_at.strftime('%Y-%m-%d') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}<p style="color:#6b7280">No quotes yet.</p>{% endif %}
+</section>
+{% endblock %}

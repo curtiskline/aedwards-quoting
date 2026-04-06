@@ -512,6 +512,14 @@ def monitor(
             client_id=client_id,
             scopes=parsed_scopes,
         )
+        enable_db = os.environ.get("ENABLE_DB_WRITES", "").lower() in ("1", "true", "yes")
+        enable_drafts = os.environ.get("ENABLE_OUTLOOK_DRAFTS", "true").lower() not in ("0", "false", "no")
+
+        flask_app = None
+        if enable_db:
+            from app import create_app
+            flask_app = create_app()
+
         service = InboxMonitor(
             outlook=outlook,
             provider=get_provider(),
@@ -520,6 +528,9 @@ def monitor(
             output_dir=output_dir,
             quote_email_cc=cc_email,
             processed_folder_name=processed_folder,
+            enable_db_writes=enable_db,
+            enable_outlook_drafts=enable_drafts,
+            flask_app=flask_app,
         )
 
         if once:
