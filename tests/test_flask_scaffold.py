@@ -7,6 +7,8 @@ from pathlib import Path
 
 from app import create_app
 from app.config import Config
+from app.extensions import db
+from app.models import User
 
 
 def _alembic_env(db_path: Path) -> dict[str, str]:
@@ -23,7 +25,7 @@ def test_dashboard_redirects_to_quotes() -> None:
     response = client.get("/")
 
     assert response.status_code == 302
-    assert "/quotes/" in response.headers["Location"]
+    assert "/auth/login" in response.headers["Location"]
 
 
 def test_migrations_create_tables(tmp_path: Path) -> None:
@@ -34,12 +36,12 @@ def test_migrations_create_tables(tmp_path: Path) -> None:
 
     conn = sqlite3.connect(db_path)
     try:
-      tables = {
-          row[0]
-          for row in conn.execute(
-              "SELECT name FROM sqlite_master WHERE type='table'"
-          ).fetchall()
-      }
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
     finally:
       conn.close()
 
@@ -81,6 +83,18 @@ def test_pricing_admin_page_and_inline_update(tmp_path: Path) -> None:
         Config.SQLALCHEMY_DATABASE_URI = f"sqlite:///{db_path}"
         app = create_app()
         client = app.test_client()
+
+        with app.app_context():
+            user = User(email="owner@example.com", name="Owner", password_hash="")
+            user.set_password("secret123")
+            db.session.add(user)
+            db.session.commit()
+
+        client.post(
+            "/auth/password",
+            data={"email": "owner@example.com", "password": "secret123"},
+            follow_redirects=True,
+        )
 
         page = client.get("/admin/pricing")
         assert page.status_code == 200

@@ -12,26 +12,34 @@ from app.models import Quote, QuoteLineItem, QuoteStatus, User
 
 
 @pytest.fixture()
-def app(tmp_path):
-    """Create an app with an in-memory database for testing."""
-    import os
+def app(tmp_path, monkeypatch):
+    """Create an app with a test SQLite DB."""
     from app.config import Config
 
     db_path = tmp_path / "test.db"
-    Config.SQLALCHEMY_DATABASE_URI = f"sqlite:///{db_path}"
+    monkeypatch.setattr(Config, "SQLALCHEMY_DATABASE_URI", f"sqlite:///{db_path}")
+    monkeypatch.setattr(Config, "TESTING", True, raising=False)
     application = create_app()
-    application.config["TESTING"] = True
 
     with application.app_context():
         _db.create_all()
+        owner = User(email="owner@example.com", name="Owner", password_hash="")
+        owner.set_password("secret123")
+        _db.session.add(owner)
+        _db.session.commit()
         yield application
-
-    Config.SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL", Config.SQLALCHEMY_DATABASE_URI)
+        _db.session.remove()
 
 
 @pytest.fixture()
 def client(app):
-    return app.test_client()
+    c = app.test_client()
+    c.post(
+        "/auth/password",
+        data={"email": "owner@example.com", "password": "secret123"},
+        follow_redirects=True,
+    )
+    return c
 
 
 @pytest.fixture()

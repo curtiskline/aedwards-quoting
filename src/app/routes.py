@@ -5,6 +5,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 
 from flask import Blueprint, abort, redirect, render_template, request
+from flask_login import login_required
 from sqlalchemy import inspect
 
 from .extensions import db
@@ -14,6 +15,7 @@ main_bp = Blueprint("main", __name__)
 
 
 @main_bp.get("/")
+@login_required
 def dashboard():
     return redirect("/quotes/")
 
@@ -81,12 +83,14 @@ def _group_pricing_rows() -> list[dict]:
 
 
 @main_bp.get("/admin/pricing")
+@login_required
 def pricing_admin():
     sections = _group_pricing_rows()
     return render_template("pricing_admin.html", sections=sections)
 
 
 @main_bp.post("/admin/pricing/<int:row_id>")
+@login_required
 def update_pricing_row(row_id: int):
     row = db.session.get(PricingTable, row_id)
     if row is None:
