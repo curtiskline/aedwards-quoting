@@ -4,10 +4,13 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+import secrets
 
+from flask_login import UserMixin
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy import ForeignKey, Numeric, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from .extensions import db
 
@@ -25,7 +28,7 @@ class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
 
 
-class User(TimestampMixin, db.Model):
+class User(UserMixin, TimestampMixin, db.Model):
     __tablename__ = "user"
 
     id: Mapped[int] = mapped_column(primary_key=True)
@@ -33,6 +36,17 @@ class User(TimestampMixin, db.Model):
     name: Mapped[str] = mapped_column(nullable=False)
     password_hash: Mapped[str] = mapped_column(nullable=False)
     magic_link_token: Mapped[str | None]
+
+    def set_password(self, password: str) -> None:
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password: str) -> bool:
+        return check_password_hash(self.password_hash, password)
+
+    def issue_magic_link_token(self) -> str:
+        token = secrets.token_urlsafe(32)
+        self.magic_link_token = token
+        return token
 
 
 class Customer(TimestampMixin, db.Model):

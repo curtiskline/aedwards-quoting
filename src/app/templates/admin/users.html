@@ -1,0 +1,46 @@
+{% extends "layout.html" %}
+{% block title %}User Admin{% endblock %}
+{% block body %}
+  <h1>User Admin</h1>
+  <p>All users have full access. Add or remove users below.</p>
+
+  <section class="panel">
+    <h2>Add User</h2>
+    <form
+      method="post"
+      action="{{ url_for('admin.create_user') }}"
+      hx-post="{{ url_for('admin.create_user') }}"
+      hx-target="#user-list"
+      hx-swap="innerHTML"
+      class="stack"
+    >
+      <label>Name
+        <input type="text" name="name" required />
+      </label>
+      <label>Email
+        <input type="email" name="email" required />
+      </label>
+      <label>Password
+        <input type="password" name="password" required />
+      </label>
+      <button type="submit">Add User</button>
+    </form>
+  </section>
+
+  <section class="panel">
+    <h2>Users</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Created</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="user-list">
+        {% include "partials/user_rows.html" %}
+      </tbody>
+    </table>
+  </section>
+{% endblock %}

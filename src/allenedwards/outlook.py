@@ -265,6 +265,21 @@ class OutlookClient:
         data = self._request("POST", "/me/messages", json=payload)
         return data.get("id", "")
 
+    def send_mail(self, *, to_email: str, subject: str, body_text: str, cc_email: str | None = None) -> None:
+        recipients = [{"emailAddress": {"address": to_email}}]
+        cc_recipients = [{"emailAddress": {"address": cc_email}}] if cc_email else []
+
+        message: dict[str, Any] = {
+            "subject": subject,
+            "body": {"contentType": "Text", "content": body_text},
+            "toRecipients": recipients,
+        }
+        if cc_recipients:
+            message["ccRecipients"] = cc_recipients
+
+        payload = {"message": message, "saveToSentItems": "true"}
+        self._request("POST", "/me/sendMail", json=payload)
+
     def get_or_create_folder(self, display_name: str) -> str:
         """Return a mail folder id by display name, creating it under Inbox when missing."""
         data = self._request("GET", "/me/mailFolders/inbox/childFolders", params={"$top": "100"})

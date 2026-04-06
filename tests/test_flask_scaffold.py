@@ -14,8 +14,8 @@ def test_dashboard_page_loads() -> None:
 
     response = client.get("/")
 
-    assert response.status_code == 200
-    assert b"Dashboard" in response.data
+    assert response.status_code == 302
+    assert "/auth/login" in response.headers["Location"]
 
 
 def test_migrations_create_tables(tmp_path: Path) -> None:
@@ -27,12 +27,12 @@ def test_migrations_create_tables(tmp_path: Path) -> None:
 
     conn = sqlite3.connect(db_path)
     try:
-      tables = {
-          row[0]
-          for row in conn.execute(
-              "SELECT name FROM sqlite_master WHERE type='table'"
-          ).fetchall()
-      }
+        tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        }
     finally:
       conn.close()
 
