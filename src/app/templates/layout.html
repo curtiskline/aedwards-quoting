@@ -22,6 +22,20 @@
         background: var(--surface);
         border-bottom: 1px solid #d1d5db;
         padding: 1rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+      }
+      nav a {
+        color: var(--accent);
+        text-decoration: none;
+        font-weight: 600;
+      }
+      nav .links {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
       }
       main {
         max-width: 960px;
@@ -43,6 +57,10 @@
   <body>
     <nav>
       <strong>Allen Edwards Quote Manager</strong>
+      <div class="links">
+        <a href="/">Dashboard</a>
+        <a href="/admin/pricing">Pricing Admin</a>
+      </div>
     </nav>
     <main>
       {% block body %}{% endblock %}

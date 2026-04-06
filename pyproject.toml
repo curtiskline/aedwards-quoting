@@ -41,7 +41,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 allenedwards = ["assets/*.jpg"]
-app = ["templates/*.html"]
+app = ["templates/*.html", "templates/partials/*.html"]
 
 [tool.ruff]
 line-length = 100

@@ -1,9 +1,17 @@
 """Tests for the pricing module."""
 
 from decimal import Decimal
+import os
+from pathlib import Path
+import subprocess
 
+from app import create_app
+from app.config import Config
+from app.extensions import db
+from app.models import PricingTable
 from allenedwards.parser import ParsedItem, ParsedRFQ
 from allenedwards.pricing import (
+    _clear_pricing_cache,
     calculate_sleeve_price,
     calculate_sleeve_weight_per_ft,
     generate_quote,
@@ -606,3 +614,26 @@ def test_generate_quote_adds_warning_for_invalid_standard_bundle_multiple():
 
     warning_notes = [item for item in quote.line_items if item.is_note and "multiple of 5" in item.description]
     assert len(warning_notes) == 1
+
+
+def test_price_lookup_uses_db_override_in_app_context(tmp_path: Path):
+    db_path = tmp_path / "pricing_override.db"
+    env = os.environ.copy()
+    env["DATABASE_URL"] = f"sqlite:///{db_path}"
+    subprocess.run(["alembic", "upgrade", "head"], check=True, cwd=Path(__file__).resolve().parents[1], env=env)
+
+    previous_db_uri = Config.SQLALCHEMY_DATABASE_URI
+    try:
+        Config.SQLALCHEMY_DATABASE_URI = f"sqlite:///{db_path}"
+        app = create_app()
+        with app.app_context():
+            row = db.session.query(PricingTable).filter_by(product_type="sleeve").first()
+            assert row is not None
+            row.price = Decimal("9.99")
+            db.session.commit()
+
+            _clear_pricing_cache()
+            assert get_price_per_lb(0.25, int(row.key_fields["grade"])) == Decimal("9.99")
+    finally:
+        _clear_pricing_cache()
+        Config.SQLALCHEMY_DATABASE_URI = previous_db_uri
