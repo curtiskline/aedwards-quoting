@@ -33,51 +33,68 @@ Run continuously (polls every 5 minutes):
 allenedwards monitor --poll-minutes 5
 ```
 
-## Deploy to AWS (EC2)
+## Deploy to DigitalOcean
 
-Two scripts are provided in `deploy/`:
+Deployment scripts in `deploy/`:
 
-### Fresh Instance (provision + deploy)
+### 1) Provision droplet + firewall
 
-Provisions a new t3.nano EC2 instance, installs Python 3.13, deploys the app, and starts a systemd service.
+Creates a Basic 2 vCPU / 2 GB droplet on DigitalOcean, then configures a cloud firewall for ports 22, 80, and 443.
 
 ```bash
-# Set required env vars
-export O365_EMAIL=<mailbox@yourdomain.com>
-export O365_PASSWORD=<password>
-export ANTHROPIC_API_KEY=<key>
+# choose the SSH key fingerprint from: doctl compute ssh-key list
+export DO_SSH_KEY_FINGERPRINT=<fingerprint>
 
-# Optional overrides (these are the defaults)
-export REGION=us-east-1
-export INSTANCE_TYPE=t3.nano
-export KEY_NAME=NoJobDevKey
-export KEY_PATH=~/.ssh/NoJobDevKey.pem
+# optional overrides
+export DROPLET_NAME=aedwards
+export DO_REGION=nyc1
+export DO_SIZE=s-2vcpu-2gb
 
-bash deploy/provision.sh
+bash deploy/provision_do.sh
 ```
 
-### Redeploy to Existing Instance
+If `doctl` is unavailable/auth is missing, `deploy/provision_do.sh` prints manual console steps.
+
+### 2) Deploy monitor service
 
 Pushes updated code and restarts the service on an existing instance.
 
 ```bash
 export O365_EMAIL=<mailbox@yourdomain.com>
 export O365_PASSWORD=<password>
-export ANTHROPIC_API_KEY=<key>
+export ANTHROPIC_API_KEY=<key>   # optional if not using Claude
+export LLM_PROVIDER=claude        # optional; defaults to claude
 
-bash deploy/deploy.sh <ec2-host-or-ip>
+bash deploy/deploy.sh <droplet-ip>
 ```
 
-### Checking Logs
+### 3) Deploy web app (Flask + gunicorn + nginx)
 
 ```bash
-ssh -i ~/.ssh/NoJobDevKey.pem ubuntu@<host> 'sudo journalctl -u aedwards-monitor -f'
+export DATABASE_URL=sqlite:////opt/aedwards/instance/allenedwards.db
+export SECRET_KEY=<strong-random-secret>
+
+bash deploy/deploy_web.sh <droplet-ip>
 ```
 
-### Restarting the Service
+The web deploy runs:
+- package install into `/opt/aedwards/venv`
+- `flask --app app.wsgi:app db upgrade` (or `alembic upgrade head` fallback)
+- `aedwards-web` systemd restart
+- nginx config + restart
+
+### Checking logs
 
 ```bash
-ssh -i ~/.ssh/NoJobDevKey.pem ubuntu@<host> 'sudo systemctl restart aedwards-monitor'
+ssh -i ~/.ssh/id_rsa root@<host> 'sudo journalctl -u aedwards-monitor -f'
+ssh -i ~/.ssh/id_rsa root@<host> 'sudo journalctl -u aedwards-web -f'
+```
+
+### Restarting services
+
+```bash
+ssh -i ~/.ssh/id_rsa root@<host> 'sudo systemctl restart aedwards-monitor'
+ssh -i ~/.ssh/id_rsa root@<host> 'sudo systemctl restart aedwards-web'
 ```
 
 ## How It Works
@@ -101,9 +118,12 @@ src/allenedwards/
   pricing.py      — Price list lookup
   pdf.py          — Quote PDF generation
 deploy/
-  provision.sh    — EC2 provisioning script
-  deploy.sh       — Code deployment script
+  provision.sh    — Legacy EC2 provisioning script
+  provision_do.sh — DigitalOcean provisioning script
+  deploy.sh       — Monitor deployment script
+  deploy_web.sh   — Web app deployment script
   aedwards-monitor.service — systemd unit file
+  aedwards-web.service     — Web systemd unit file
 ```
 
 ## Environment Variables
