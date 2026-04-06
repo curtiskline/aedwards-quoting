@@ -1,0 +1,28 @@
+{% if success %}
+<div id="send-modal" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:100;">
+  <div style="background:#fff;border-radius:8px;padding:1.5rem;max-width:480px;width:100%;box-shadow:0 4px 24px rgba(0,0,0,0.15);">
+    <h2 style="margin-top:0;color:#16a34a;">Quote Sent</h2>
+    <dl style="margin:0;">
+      <dt><strong>Quote Number</strong></dt>
+      <dd>{{ quote.quote_number }}</dd>
+      <dt><strong>Sent To</strong></dt>
+      <dd>{{ to_email }}</dd>
+      <dt><strong>Sent At</strong></dt>
+      <dd>{{ sent_at.strftime('%Y-%m-%d %H:%M UTC') }}</dd>
+    </dl>
+    <div style="display:flex;justify-content:flex-end;margin-top:1rem;">
+      <button type="button" onclick="document.getElementById('send-modal').remove();location.reload();">Close</button>
+    </div>
+  </div>
+</div>
+{% else %}
+<div id="send-modal" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:100;">
+  <div style="background:#fff;border-radius:8px;padding:1.5rem;max-width:480px;width:100%;box-shadow:0 4px 24px rgba(0,0,0,0.15);">
+    <h2 style="margin-top:0;color:#dc2626;">Send Failed</h2>
+    <p>{{ error }}</p>
+    <div style="display:flex;justify-content:flex-end;margin-top:1rem;">
+      <button type="button" onclick="document.getElementById('send-modal').remove();">Close</button>
+    </div>
+  </div>
+</div>
+{% endif %}

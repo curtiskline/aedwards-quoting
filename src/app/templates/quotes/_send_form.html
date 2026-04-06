@@ -1,0 +1,26 @@
+<div id="send-modal" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:100;">
+  <div style="background:#fff;border-radius:8px;padding:1.5rem;max-width:480px;width:100%;box-shadow:0 4px 24px rgba(0,0,0,0.15);">
+    <h2 style="margin-top:0;">Send Quote {{ quote.quote_number }}</h2>
+    <form method="post" action="/quotes/{{ quote.id }}/send"
+          hx-post="/quotes/{{ quote.id }}/send"
+          hx-target="#send-modal"
+          hx-swap="outerHTML">
+      <label style="display:block;margin-bottom:0.75rem;">
+        Recipient Email
+        <input name="to_email" type="email" value="{{ default_to }}" required style="width:100%;margin-top:0.25rem;" />
+      </label>
+      <label style="display:block;margin-bottom:0.75rem;">
+        Subject
+        <input name="subject" value="{{ default_subject }}" style="width:100%;margin-top:0.25rem;" />
+      </label>
+      <label style="display:block;margin-bottom:0.75rem;">
+        CC (optional)
+        <input name="cc_email" type="email" value="{{ default_cc }}" style="width:100%;margin-top:0.25rem;" />
+      </label>
+      <div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:1rem;">
+        <button type="button" onclick="document.getElementById('send-modal').remove();">Cancel</button>
+        <button type="submit" style="background:#2563eb;color:#fff;border:none;padding:0.5rem 1rem;border-radius:4px;cursor:pointer;">Send Quote</button>
+      </div>
+    </form>
+  </div>
+</div>

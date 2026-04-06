@@ -22,6 +22,13 @@
       <input type="hidden" name="status" value="archived" />
       <button type="submit">Archive</button>
     </form>
+    <a href="/quotes/{{ quote.id }}/preview-pdf" target="_blank" style="display:inline-block;">
+      <button type="button">Preview PDF</button>
+    </a>
+    <button type="button"
+            hx-get="/quotes/{{ quote.id }}/send-form"
+            hx-target="body"
+            hx-swap="beforeend">Send Quote</button>
   </div>
 </div>
 
