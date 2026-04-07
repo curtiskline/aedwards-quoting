@@ -22,7 +22,7 @@ from app.models import (
     QuoteLineItem as DBQuoteLineItem,
     QuoteStatus,
 )
-from .outlook import OutlookMessage
+from .email_provider import EmailMessage
 from .parser import ParsedRFQ
 from .pricing import Quote as PricingQuote
 
@@ -86,7 +86,7 @@ def _ship_to_dict(rfq: ParsedRFQ) -> dict | None:
 
 
 def write_quote_to_db(
-    msg: OutlookMessage,
+    msg: EmailMessage,
     rfq: ParsedRFQ,
     priced_quote: PricingQuote,
     quote_number: str,

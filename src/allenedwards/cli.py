@@ -486,7 +486,7 @@ def monitor(
     cc_email: str | None,
     log_level: str,
 ):
-    """Monitor Outlook inbox for RFQs and create draft quote emails."""
+    """Monitor inbox for RFQs and process them through the pipeline."""
     try:
         load_environment()
         logging.basicConfig(
@@ -494,24 +494,53 @@ def monitor(
             format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         )
 
-        email_addr = os.environ.get("O365_EMAIL")
-        password = os.environ.get("O365_PASSWORD")
-        if not email_addr or not password:
-            raise ValueError("Missing O365 credentials. Set O365_EMAIL and O365_PASSWORD.")
-
-        client_id = os.environ.get("O365_CLIENT_ID", "04b07795-8ddb-461a-bbee-02f9e1bf7b46")
-        scopes = os.environ.get("O365_SCOPES")
-        parsed_scopes = [s.strip() for s in scopes.split(",")] if scopes else None
-
+        email_provider = os.environ.get("EMAIL_PROVIDER", "o365").strip().lower()
         from .monitor import InboxMonitor
-        from .outlook import OutlookClient
 
-        outlook = OutlookClient(
-            email_address=email_addr,
-            password=password,
-            client_id=client_id,
-            scopes=parsed_scopes,
-        )
+        if email_provider == "o365":
+            from .outlook import OutlookClient
+
+            email_addr = os.environ.get("O365_EMAIL")
+            password = os.environ.get("O365_PASSWORD")
+            if not email_addr or not password:
+                raise ValueError("Missing O365 credentials. Set O365_EMAIL and O365_PASSWORD.")
+
+            client_id = os.environ.get("O365_CLIENT_ID", "04b07795-8ddb-461a-bbee-02f9e1bf7b46")
+            scopes = os.environ.get("O365_SCOPES")
+            parsed_scopes = [s.strip() for s in scopes.split(",")] if scopes else None
+            inbox_client = OutlookClient(
+                email_address=email_addr,
+                password=password,
+                client_id=client_id,
+                scopes=parsed_scopes,
+            )
+        elif email_provider == "gmail":
+            from .gmail import GmailClient
+
+            gmail_email = os.environ.get("GMAIL_EMAIL")
+            gmail_client_id = os.environ.get("GMAIL_CLIENT_ID")
+            gmail_client_secret = os.environ.get("GMAIL_CLIENT_SECRET")
+            gmail_refresh_token = os.environ.get("GMAIL_REFRESH_TOKEN")
+            if not gmail_email:
+                raise ValueError("Missing GMAIL_EMAIL.")
+            if not gmail_client_id or not gmail_client_secret or not gmail_refresh_token:
+                raise ValueError(
+                    "Missing Gmail OAuth credentials. Set GMAIL_CLIENT_ID, "
+                    "GMAIL_CLIENT_SECRET, and GMAIL_REFRESH_TOKEN."
+                )
+
+            gmail_scopes = os.environ.get("GMAIL_SCOPES")
+            parsed_scopes = [s.strip() for s in gmail_scopes.split(",")] if gmail_scopes else None
+            inbox_client = GmailClient(
+                email_address=gmail_email,
+                client_id=gmail_client_id,
+                client_secret=gmail_client_secret,
+                refresh_token=gmail_refresh_token,
+                scopes=parsed_scopes,
+            )
+        else:
+            raise ValueError("Unsupported EMAIL_PROVIDER. Use 'o365' or 'gmail'.")
+
         enable_db = os.environ.get("ENABLE_DB_WRITES", "").lower() in ("1", "true", "yes")
         enable_drafts = os.environ.get("ENABLE_OUTLOOK_DRAFTS", "true").lower() not in ("0", "false", "no")
 
@@ -521,7 +550,7 @@ def monitor(
             flask_app = create_app()
 
         service = InboxMonitor(
-            outlook=outlook,
+            email_client=inbox_client,
             provider=get_provider(),
             poll_interval_seconds=max(1, poll_minutes * 60),
             state_path=state_file,

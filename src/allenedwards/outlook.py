@@ -11,6 +11,8 @@ from typing import Any
 import httpx
 import msal
 
+from .email_provider import EmailMessage, EmailProvider
+
 GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0"
 DEFAULT_CLIENT_ID = "d3590ed6-52b3-4102-aeff-aad2292ab01c"  # MS Office public client
 DEFAULT_TIMEOUT_SECONDS = 60.0
@@ -25,27 +27,14 @@ class OutlookAttachment:
     content_type: str
 
 
-@dataclass
-class OutlookMessage:
-    """Simplified inbox message payload."""
-
-    id: str
-    subject: str
-    sender_name: str | None
-    sender_email: str | None
-    body_preview: str
-    body_content: str
-    body_content_type: str
-    internet_message_id: str | None
-    received_datetime: str | None = None
-    has_attachments: bool = False
+OutlookMessage = EmailMessage
 
 
 class OutlookAuthError(RuntimeError):
     """Raised when Microsoft auth fails."""
 
 
-class OutlookClient:
+class OutlookClient(EmailProvider):
     """Thin Graph REST wrapper for inbox operations."""
 
     def __init__(
@@ -129,9 +118,7 @@ class OutlookClient:
             return {}
         return response.json()
 
-    def list_inbox_messages(
-        self, limit: int = 25, since: str | None = None
-    ) -> list[OutlookMessage]:
+    def fetch_messages(self, limit: int = 25, since: str | None = None) -> list[EmailMessage]:
         """Fetch inbox messages, optionally only those received after *since*.
 
         Args:
@@ -147,13 +134,13 @@ class OutlookClient:
         if since:
             params["$filter"] = f"receivedDateTime gt {since}"
         data = self._request("GET", "/me/mailFolders/inbox/messages", params=params)
-        messages: list[OutlookMessage] = []
+        messages: list[EmailMessage] = []
 
         for item in data.get("value", []):
             sender = item.get("from", {}).get("emailAddress", {})
             body = item.get("body") or {}
             messages.append(
-                OutlookMessage(
+                EmailMessage(
                     id=item["id"],
                     subject=item.get("subject") or "",
                     sender_name=sender.get("name"),
@@ -168,6 +155,10 @@ class OutlookClient:
             )
 
         return messages
+
+    def list_inbox_messages(self, limit: int = 25, since: str | None = None) -> list[EmailMessage]:
+        """Backward-compatible alias for fetch_messages()."""
+        return self.fetch_messages(limit=limit, since=since)
 
     def get_attachments(self, message_id: str) -> list[OutlookAttachment]:
         """Fetch attachments for a message via GET /me/messages/{id}/attachments."""
@@ -221,8 +212,12 @@ class OutlookClient:
         response.raise_for_status()
         return response.content
 
-    def mark_as_read(self, message_id: str) -> None:
+    def mark_read(self, message_id: str) -> None:
         self._request("PATCH", f"/me/messages/{message_id}", json={"isRead": True})
+
+    def mark_as_read(self, message_id: str) -> None:
+        """Backward-compatible alias for mark_read()."""
+        self.mark_read(message_id)
 
     def move_message(self, message_id: str, destination_folder_id: str) -> str:
         payload = {"destinationId": destination_folder_id}

@@ -1,4 +1,4 @@
-"""Polling monitor that turns Outlook RFQs into quote drafts."""
+"""Polling monitor that turns inbox RFQs into quote drafts."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
+from .email_provider import EmailMessage, EmailProvider
 from .outlook import OutlookAttachment, OutlookClient, OutlookMessage
 from .parser import ParsedRFQ, classify_rfq, parse_rfq_multi
 from .pdf_generator import generate_quote_pdf
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class ProcessedState:
-    """Tracks processed Outlook message IDs and a high-water mark on disk."""
+    """Tracks processed message IDs and a high-water mark on disk."""
 
     def __init__(self, path: Path):
         self.path = path
@@ -84,12 +85,13 @@ class ProcessedState:
 
 
 class InboxMonitor:
-    """Monitors unread Outlook messages and creates quote drafts for RFQs."""
+    """Monitors unread inbox messages and creates quote drafts for RFQs."""
 
     def __init__(
         self,
         *,
-        outlook: OutlookClient,
+        email_client: EmailProvider | None = None,
+        outlook: OutlookClient | None = None,
         provider: LLMProvider,
         poll_interval_seconds: int,
         state_path: Path,
@@ -100,7 +102,10 @@ class InboxMonitor:
         enable_outlook_drafts: bool = True,
         flask_app: Any | None = None,
     ):
-        self.outlook = outlook
+        if email_client is None and outlook is None:
+            raise ValueError("InboxMonitor requires email_client (or legacy outlook parameter).")
+
+        self.email_client = email_client or outlook
         self.provider = provider
         self.poll_interval_seconds = poll_interval_seconds
         self.state = ProcessedState(state_path)
@@ -132,7 +137,7 @@ class InboxMonitor:
             time.sleep(self.poll_interval_seconds)
 
     def run_once(self) -> int:
-        messages = self.outlook.list_inbox_messages(
+        messages = self.email_client.fetch_messages(
             since=self.state.last_seen_datetime
         )
         logger.info("Fetched %s inbox messages (since=%s)", len(messages), self.state.last_seen_datetime)
@@ -158,7 +163,7 @@ class InboxMonitor:
 
         return processed_count
 
-    def _process_message(self, msg: OutlookMessage) -> bool:
+    def _process_message(self, msg: EmailMessage) -> bool:
         body_text = _normalize_body(msg.body_content, msg.body_preview)
         if not classify_rfq(msg.subject, body_text, self.provider):
             logger.info("Message %s classified as non-RFQ", msg.id)
@@ -166,9 +171,9 @@ class InboxMonitor:
             return False
 
         attachments: list[OutlookAttachment] = []
-        if msg.has_attachments:
+        if msg.has_attachments and hasattr(self.email_client, "get_attachments"):
             try:
-                attachments = self.outlook.get_attachments(msg.id)
+                attachments = self.email_client.get_attachments(msg.id)
                 logger.info("Fetched %d attachments for message %s", len(attachments), msg.id)
             except Exception:
                 logger.exception("Failed fetching attachments for message %s", msg.id)
@@ -197,6 +202,13 @@ class InboxMonitor:
 
             # --- Outlook draft path ---
             if self.enable_outlook_drafts:
+                if not hasattr(self.email_client, "create_draft"):
+                    logger.warning(
+                        "Draft creation is enabled but provider %s does not support drafts; skipping",
+                        type(self.email_client).__name__,
+                    )
+                    continue
+
                 to_email = rfq.contact_email or msg.sender_email
                 if not to_email:
                     raise RuntimeError(f"No recipient email available for message {msg.id}")
@@ -214,7 +226,7 @@ class InboxMonitor:
                         subject = f"{subject} - {quote.project_line}"
 
                     body = _build_draft_body(quote)
-                    draft_id = self.outlook.create_draft(
+                    draft_id = self.email_client.create_draft(
                         to_email=to_email,
                         subject=subject,
                         body_text=body,
@@ -228,7 +240,7 @@ class InboxMonitor:
 
     def _write_to_db(
         self,
-        msg: OutlookMessage,
+        msg: EmailMessage,
         rfq: ParsedRFQ,
         quote: Quote,
         quote_number: str,
@@ -273,7 +285,7 @@ class InboxMonitor:
             subject += f" - {quote.project_line}"
 
         body = _build_review_body(msg, rfq, quote)
-        return self.outlook.create_draft(
+        return self.email_client.create_draft(
             to_email=to_email,
             subject=subject,
             body_text=body,
@@ -282,12 +294,16 @@ class InboxMonitor:
         )
 
     def _finalize_message(self, message_id: str) -> None:
-        if self.processed_folder_name:
+        if (
+            self.processed_folder_name
+            and hasattr(self.email_client, "get_or_create_folder")
+            and hasattr(self.email_client, "move_message")
+        ):
             if not self._processed_folder_id:
-                self._processed_folder_id = self.outlook.get_or_create_folder(self.processed_folder_name)
-            self.outlook.move_message(message_id, self._processed_folder_id)
+                self._processed_folder_id = self.email_client.get_or_create_folder(self.processed_folder_name)
+            self.email_client.move_message(message_id, self._processed_folder_id)
         else:
-            self.outlook.mark_as_read(message_id)
+            self.email_client.mark_read(message_id)
 
         self.state.add(message_id)
 
@@ -340,7 +356,7 @@ def _build_draft_body(quote: Quote) -> str:
     return "\n".join(lines)
 
 
-def _build_review_body(msg: OutlookMessage, rfq: ParsedRFQ, quote: Quote) -> str:
+def _build_review_body(msg: EmailMessage, rfq: ParsedRFQ, quote: Quote) -> str:
     """Build the body for a review draft when auto-pricing produces $0."""
     lines = [
         "*** AUTO-PRICING COULD NOT COMPLETE THIS QUOTE — MANUAL PRICING NEEDED ***",

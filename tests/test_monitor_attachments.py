@@ -155,7 +155,7 @@ class TestMonitorAttachmentWiring:
         )
 
         outlook = MagicMock(spec=OutlookClient)
-        outlook.list_inbox_messages.return_value = [
+        outlook.fetch_messages.return_value = [
             OutlookMessage(
                 id="msg-fractional",
                 subject="RFQ - Sleeves",
@@ -188,7 +188,7 @@ class TestMonitorAttachmentWiring:
     def test_has_attachments_triggers_fetch(self, tmp_path):
         """Message with has_attachments=True triggers get_attachments call."""
         outlook = MagicMock(spec=OutlookClient)
-        outlook.list_inbox_messages.return_value = [_make_msg(has_attachments=True)]
+        outlook.fetch_messages.return_value = [_make_msg(has_attachments=True)]
         outlook.get_attachments.return_value = []
         outlook.create_draft.return_value = "draft-1"
 
@@ -209,7 +209,7 @@ class TestMonitorAttachmentWiring:
     def test_no_attachments_skips_fetch(self, tmp_path):
         """Message with has_attachments=False does not call get_attachments."""
         outlook = MagicMock(spec=OutlookClient)
-        outlook.list_inbox_messages.return_value = [_make_msg(has_attachments=False)]
+        outlook.fetch_messages.return_value = [_make_msg(has_attachments=False)]
         outlook.create_draft.return_value = "draft-1"
 
         monitor = InboxMonitor(
