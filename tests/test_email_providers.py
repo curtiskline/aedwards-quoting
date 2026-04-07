@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from allenedwards.email_provider import EmailProvider
 from allenedwards.gmail import GmailClient
@@ -120,4 +120,34 @@ def test_gmail_mark_read_removes_unread_label():
         userId="me",
         id="abc123",
         body={"removeLabelIds": ["UNREAD"]},
+    )
+
+
+@patch("allenedwards.gmail.build")
+@patch("allenedwards.gmail.service_account_credentials")
+def test_gmail_build_service_uses_service_account_credentials(
+    mock_service_account_credentials, mock_build
+):
+    delegated_credentials = MagicMock()
+    mock_service_account_credentials.Credentials.from_service_account_file.return_value = (
+        delegated_credentials
+    )
+    mock_build.return_value = MagicMock()
+
+    client = GmailClient(
+        email_address="devin@918.software",
+        service_account_file="/tmp/service-account.json",
+    )
+    client._build_service()
+
+    mock_service_account_credentials.Credentials.from_service_account_file.assert_called_once_with(
+        "/tmp/service-account.json",
+        scopes=["https://www.googleapis.com/auth/gmail.modify"],
+        subject="devin@918.software",
+    )
+    mock_build.assert_called_once_with(
+        "gmail",
+        "v1",
+        credentials=delegated_credentials,
+        cache_discovery=False,
     )

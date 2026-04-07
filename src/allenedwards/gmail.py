@@ -1,4 +1,4 @@
-"""Gmail client for inbox polling using Google OAuth2 refresh tokens."""
+"""Gmail client for inbox polling using OAuth or service account credentials."""
 
 from __future__ import annotations
 
@@ -10,10 +10,12 @@ from typing import Any
 try:
     from google.auth.transport.requests import Request
     from google.oauth2.credentials import Credentials
+    from google.oauth2 import service_account as service_account_credentials
     from googleapiclient.discovery import build
 except ImportError:  # pragma: no cover - tested via integration/dependency install
     Request = None
     Credentials = None
+    service_account_credentials = None
     build = None
 
 from .email_provider import EmailMessage, EmailProvider
@@ -30,33 +32,54 @@ class GmailClient(EmailProvider):
         self,
         *,
         email_address: str,
-        client_id: str,
-        client_secret: str,
-        refresh_token: str,
+        client_id: str | None = None,
+        client_secret: str | None = None,
+        refresh_token: str | None = None,
+        service_account_file: str | None = None,
         scopes: list[str] | None = None,
     ):
         self.email_address = email_address
         self.client_id = client_id
         self.client_secret = client_secret
         self.refresh_token = refresh_token
+        self.service_account_file = service_account_file
         self.scopes = scopes or DEFAULT_GMAIL_SCOPES
         self._service: Any | None = None
 
     def _build_service(self) -> Any:
-        if Credentials is None or Request is None or build is None:
+        if build is None:
             raise RuntimeError(
                 "Gmail dependencies not installed. Install google-api-python-client and google-auth."
             )
 
-        creds = Credentials(
-            token=None,
-            refresh_token=self.refresh_token,
-            token_uri="https://oauth2.googleapis.com/token",
-            client_id=self.client_id,
-            client_secret=self.client_secret,
-            scopes=self.scopes,
-        )
-        creds.refresh(Request())
+        if self.service_account_file:
+            if service_account_credentials is None:
+                raise RuntimeError(
+                    "Gmail service-account dependencies not installed. Install google-auth."
+                )
+            creds = service_account_credentials.Credentials.from_service_account_file(
+                self.service_account_file,
+                scopes=self.scopes,
+                subject=self.email_address,
+            )
+        else:
+            if Credentials is None or Request is None:
+                raise RuntimeError(
+                    "Gmail OAuth dependencies not installed. Install google-api-python-client and google-auth."
+                )
+            if not self.client_id or not self.client_secret or not self.refresh_token:
+                raise ValueError(
+                    "Missing Gmail OAuth credentials. Set client_id, client_secret, and refresh_token."
+                )
+            creds = Credentials(
+                token=None,
+                refresh_token=self.refresh_token,
+                token_uri="https://oauth2.googleapis.com/token",
+                client_id=self.client_id,
+                client_secret=self.client_secret,
+                scopes=self.scopes,
+            )
+            creds.refresh(Request())
         return build(GMAIL_API_NAME, GMAIL_API_VERSION, credentials=creds, cache_discovery=False)
 
     @property

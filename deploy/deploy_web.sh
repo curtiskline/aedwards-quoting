@@ -29,6 +29,15 @@ O365_EMAIL="${O365_EMAIL:-$(read_from_dotenv O365_EMAIL || true)}"
 O365_PASSWORD="${O365_PASSWORD:-$(read_from_dotenv O365_PASSWORD || true)}"
 O365_CLIENT_ID="${O365_CLIENT_ID:-$(read_from_dotenv O365_CLIENT_ID || true)}"
 O365_SCOPES="${O365_SCOPES:-$(read_from_dotenv O365_SCOPES || true)}"
+GMAIL_EMAIL="${GMAIL_EMAIL:-$(read_from_dotenv GMAIL_EMAIL || true)}"
+GMAIL_CLIENT_ID="${GMAIL_CLIENT_ID:-$(read_from_dotenv GMAIL_CLIENT_ID || true)}"
+GMAIL_CLIENT_SECRET="${GMAIL_CLIENT_SECRET:-$(read_from_dotenv GMAIL_CLIENT_SECRET || true)}"
+GMAIL_REFRESH_TOKEN="${GMAIL_REFRESH_TOKEN:-$(read_from_dotenv GMAIL_REFRESH_TOKEN || true)}"
+GMAIL_SCOPES="${GMAIL_SCOPES:-$(read_from_dotenv GMAIL_SCOPES || true)}"
+LOCAL_GMAIL_SERVICE_ACCOUNT_FILE="${GMAIL_SERVICE_ACCOUNT_FILE:-$(read_from_dotenv GMAIL_SERVICE_ACCOUNT_FILE || true)}"
+EMAIL_PROVIDER="${EMAIL_PROVIDER:-$(read_from_dotenv EMAIL_PROVIDER || true)}"
+ENABLE_DB_WRITES="${ENABLE_DB_WRITES:-$(read_from_dotenv ENABLE_DB_WRITES || true)}"
+ENABLE_OUTLOOK_DRAFTS="${ENABLE_OUTLOOK_DRAFTS:-$(read_from_dotenv ENABLE_OUTLOOK_DRAFTS || true)}"
 LLM_PROVIDER="${LLM_PROVIDER:-$(read_from_dotenv LLM_PROVIDER || true)}"
 ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-$(read_from_dotenv ANTHROPIC_API_KEY || true)}"
 MINIMAX_API_KEY="${MINIMAX_API_KEY:-$(read_from_dotenv MINIMAX_API_KEY || true)}"
@@ -46,6 +55,15 @@ LLM_PROVIDER="${LLM_PROVIDER:-claude}"
 if [[ ! -f "${KEY_PATH}" ]]; then
   echo "SSH key not found: ${KEY_PATH}" >&2
   exit 1
+fi
+
+REMOTE_GMAIL_SERVICE_ACCOUNT_FILE=""
+if [[ -n "${LOCAL_GMAIL_SERVICE_ACCOUNT_FILE}" ]]; then
+  if [[ ! -f "${LOCAL_GMAIL_SERVICE_ACCOUNT_FILE}" ]]; then
+    echo "GMAIL_SERVICE_ACCOUNT_FILE not found: ${LOCAL_GMAIL_SERVICE_ACCOUNT_FILE}" >&2
+    exit 1
+  fi
+  REMOTE_GMAIL_SERVICE_ACCOUNT_FILE="${APP_DIR}/secrets/gmail-service-account.json"
 fi
 
 TMP_DIR="$(mktemp -d)"
@@ -77,6 +95,33 @@ tar \
   if [[ -n "${O365_PASSWORD}" ]]; then
     echo "O365_PASSWORD=${O365_PASSWORD}"
   fi
+  if [[ -n "${GMAIL_EMAIL}" ]]; then
+    echo "GMAIL_EMAIL=${GMAIL_EMAIL}"
+  fi
+  if [[ -n "${GMAIL_CLIENT_ID}" ]]; then
+    echo "GMAIL_CLIENT_ID=${GMAIL_CLIENT_ID}"
+  fi
+  if [[ -n "${GMAIL_CLIENT_SECRET}" ]]; then
+    echo "GMAIL_CLIENT_SECRET=${GMAIL_CLIENT_SECRET}"
+  fi
+  if [[ -n "${GMAIL_REFRESH_TOKEN}" ]]; then
+    echo "GMAIL_REFRESH_TOKEN=${GMAIL_REFRESH_TOKEN}"
+  fi
+  if [[ -n "${GMAIL_SCOPES}" ]]; then
+    echo "GMAIL_SCOPES=${GMAIL_SCOPES}"
+  fi
+  if [[ -n "${REMOTE_GMAIL_SERVICE_ACCOUNT_FILE}" ]]; then
+    echo "GMAIL_SERVICE_ACCOUNT_FILE=${REMOTE_GMAIL_SERVICE_ACCOUNT_FILE}"
+  fi
+  if [[ -n "${EMAIL_PROVIDER}" ]]; then
+    echo "EMAIL_PROVIDER=${EMAIL_PROVIDER}"
+  fi
+  if [[ -n "${ENABLE_DB_WRITES}" ]]; then
+    echo "ENABLE_DB_WRITES=${ENABLE_DB_WRITES}"
+  fi
+  if [[ -n "${ENABLE_OUTLOOK_DRAFTS}" ]]; then
+    echo "ENABLE_OUTLOOK_DRAFTS=${ENABLE_OUTLOOK_DRAFTS}"
+  fi
   if [[ -n "${ANTHROPIC_API_KEY}" ]]; then
     echo "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}"
   fi
@@ -97,6 +142,9 @@ scp "${SSH_OPTS[@]}" "${SRC_TARBALL}" "${SSH_USER}@${HOST}:/tmp/aedwards-src.tgz
 scp "${SSH_OPTS[@]}" "${SERVICE_FILE}" "${SSH_USER}@${HOST}:/tmp/${SERVICE_NAME}.service"
 scp "${SSH_OPTS[@]}" "${NGINX_FILE}" "${SSH_USER}@${HOST}:/tmp/${SERVICE_NAME}.nginx"
 scp "${SSH_OPTS[@]}" "${ENV_FILE}" "${SSH_USER}@${HOST}:/tmp/aedwards-web.env"
+if [[ -n "${REMOTE_GMAIL_SERVICE_ACCOUNT_FILE}" ]]; then
+  scp "${SSH_OPTS[@]}" "${LOCAL_GMAIL_SERVICE_ACCOUNT_FILE}" "${SSH_USER}@${HOST}:/tmp/gmail-service-account.json"
+fi
 
 ssh "${SSH_OPTS[@]}" "${SSH_USER}@${HOST}" bash <<'REMOTE'
 set -euo pipefail
@@ -118,6 +166,11 @@ fi
 sudo mkdir -p "${APP_DIR}/src" "${APP_DIR}/instance"
 sudo tar -xzf /tmp/aedwards-src.tgz -C "${APP_DIR}/src"
 sudo chown -R "${APP_USER}:${APP_USER}" "${APP_DIR}"
+
+if [[ -f /tmp/gmail-service-account.json ]]; then
+  sudo mkdir -p "${APP_DIR}/secrets"
+  sudo install -m 600 -o "${APP_USER}" -g "${APP_USER}" /tmp/gmail-service-account.json "${APP_DIR}/secrets/gmail-service-account.json"
+fi
 
 if [[ ! -x "${APP_DIR}/venv/bin/python" ]]; then
   sudo -u "${APP_USER}" python3.13 -m venv "${APP_DIR}/venv"

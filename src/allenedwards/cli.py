@@ -518,26 +518,34 @@ def monitor(
             from .gmail import GmailClient
 
             gmail_email = os.environ.get("GMAIL_EMAIL")
-            gmail_client_id = os.environ.get("GMAIL_CLIENT_ID")
-            gmail_client_secret = os.environ.get("GMAIL_CLIENT_SECRET")
-            gmail_refresh_token = os.environ.get("GMAIL_REFRESH_TOKEN")
+            gmail_service_account_file = os.environ.get("GMAIL_SERVICE_ACCOUNT_FILE")
             if not gmail_email:
                 raise ValueError("Missing GMAIL_EMAIL.")
-            if not gmail_client_id or not gmail_client_secret or not gmail_refresh_token:
-                raise ValueError(
-                    "Missing Gmail OAuth credentials. Set GMAIL_CLIENT_ID, "
-                    "GMAIL_CLIENT_SECRET, and GMAIL_REFRESH_TOKEN."
-                )
 
             gmail_scopes = os.environ.get("GMAIL_SCOPES")
             parsed_scopes = [s.strip() for s in gmail_scopes.split(",")] if gmail_scopes else None
-            inbox_client = GmailClient(
-                email_address=gmail_email,
-                client_id=gmail_client_id,
-                client_secret=gmail_client_secret,
-                refresh_token=gmail_refresh_token,
-                scopes=parsed_scopes,
-            )
+            if gmail_service_account_file:
+                inbox_client = GmailClient(
+                    email_address=gmail_email,
+                    service_account_file=gmail_service_account_file,
+                    scopes=parsed_scopes,
+                )
+            else:
+                gmail_client_id = os.environ.get("GMAIL_CLIENT_ID")
+                gmail_client_secret = os.environ.get("GMAIL_CLIENT_SECRET")
+                gmail_refresh_token = os.environ.get("GMAIL_REFRESH_TOKEN")
+                if not gmail_client_id or not gmail_client_secret or not gmail_refresh_token:
+                    raise ValueError(
+                        "Missing Gmail OAuth credentials. Set GMAIL_CLIENT_ID, "
+                        "GMAIL_CLIENT_SECRET, and GMAIL_REFRESH_TOKEN."
+                    )
+                inbox_client = GmailClient(
+                    email_address=gmail_email,
+                    client_id=gmail_client_id,
+                    client_secret=gmail_client_secret,
+                    refresh_token=gmail_refresh_token,
+                    scopes=parsed_scopes,
+                )
         else:
             raise ValueError("Unsupported EMAIL_PROVIDER. Use 'o365' or 'gmail'.")
 
