@@ -195,15 +195,16 @@ done < /tmp/aedwards-web.env
 
 sudo install -m 600 -o "${APP_USER}" -g "${APP_USER}" /tmp/aedwards-existing.env "${APP_DIR}/.env"
 sudo install -m 644 /tmp/${SERVICE_NAME}.service /etc/systemd/system/${SERVICE_NAME}.service
-sudo install -m 644 /tmp/${SERVICE_NAME}.nginx /etc/nginx/sites-available/${SERVICE_NAME}
-sudo ln -sf /etc/nginx/sites-available/${SERVICE_NAME} /etc/nginx/sites-enabled/${SERVICE_NAME}
-sudo rm -f /etc/nginx/sites-enabled/default
-
-if sudo -u "${APP_USER}" "${APP_DIR}/venv/bin/flask" --app app.wsgi:app --help | grep -q ' db '; then
-  sudo -u "${APP_USER}" "${APP_DIR}/venv/bin/flask" --app app.wsgi:app db upgrade
+if grep -q ssl_certificate /etc/nginx/sites-enabled/${SERVICE_NAME} 2>/dev/null; then
+  echo "Skipping nginx config — certbot SSL config already in place"
 else
-  sudo -u "${APP_USER}" bash -lc "cd ${APP_DIR}/src && ${APP_DIR}/venv/bin/alembic upgrade head"
+  sudo install -m 644 /tmp/${SERVICE_NAME}.nginx /etc/nginx/sites-available/${SERVICE_NAME}
+  sudo ln -sf /etc/nginx/sites-available/${SERVICE_NAME} /etc/nginx/sites-enabled/${SERVICE_NAME}
+  sudo rm -f /etc/nginx/sites-enabled/default
 fi
+
+echo "Running Alembic migrations..."
+sudo -u "${APP_USER}" bash -c "set -a; source ${APP_DIR}/.env; set +a; cd ${APP_DIR}/src && ${APP_DIR}/venv/bin/alembic upgrade head"
 
 sudo systemctl daemon-reload
 sudo systemctl enable "${SERVICE_NAME}"
