@@ -8,7 +8,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 import click
-from dotenv import load_dotenv
+from dotenv import dotenv_values
 
 from .parser import ParsedRFQ, parse_rfq, parse_rfq_multi
 from .pdf_generator import generate_quote_pdf
@@ -19,21 +19,27 @@ _ENV_LOADED = False
 
 
 def load_environment() -> None:
-    """Load environment variables from ~/.env and project .env.
+    """Load environment variables from ~/.env and project env files.
 
-    The project .env takes precedence over ~/.env.
+    Precedence (lowest to highest): ~/.env -> shared project .env -> worktree .env.
+    Existing process environment variables are never overridden.
     """
     global _ENV_LOADED
     if _ENV_LOADED:
         return
 
     home_env = Path.home() / ".env"
-    project_env = Path(__file__).resolve().parents[2] / ".env"
+    worktree_env = Path(__file__).resolve().parents[2] / ".env"
+    shared_project_env = Path(__file__).resolve().parents[4] / ".env"
 
-    if home_env.exists():
-        load_dotenv(home_env, override=False)
-    if project_env.exists():
-        load_dotenv(project_env, override=True)
+    preexisting_keys = set(os.environ.keys())
+    for env_path in (home_env, shared_project_env, worktree_env):
+        if not env_path.exists():
+            continue
+        for key, value in dotenv_values(env_path).items():
+            if value is None or key in preexisting_keys:
+                continue
+            os.environ[key] = value
 
     _ENV_LOADED = True
 
