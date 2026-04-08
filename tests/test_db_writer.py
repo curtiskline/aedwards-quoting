@@ -10,8 +10,8 @@ import pytest
 from app import create_app
 from app.config import Config
 from app.extensions import db
-from app.models import AuditLog, Customer, Contact, Quote as DBQuote, QuoteLineItem as DBQuoteLineItem, QuoteStatus
-from allenedwards.db_writer import write_quote_to_db, _generate_fiscal_quote_number
+from app.models import AuditLog, Customer, Contact, Quote as DBQuote, QuoteLineItem as DBQuoteLineItem, QuoteStatus, ShipToAddress
+from allenedwards.db_writer import write_quote_to_db, _generate_fiscal_quote_number, _normalize_company_name
 from allenedwards.outlook import OutlookMessage
 from allenedwards.parser import ParsedRFQ, ShipTo
 from allenedwards.pricing import Quote as PricingQuote, QuoteLineItem as PricingLineItem
@@ -147,7 +147,16 @@ def test_write_quote_creates_records(app, msg, rfq, priced_quote):
         assert db_quote.po_number == "PO-2026-001"
         assert db_quote.project_name == "Test Project"
         assert db_quote.ship_to_json["city"] == "Tulsa"
-        assert db_quote.customer_id is None  # no customer in DB to match
+        # Auto-created customer from RFQ data
+        assert db_quote.customer_id is not None
+        cust = Customer.query.get(db_quote.customer_id)
+        assert cust.company_name == "Acme Pipeline Co"
+        # Contact auto-created
+        assert len(cust.contacts) == 1
+        assert cust.contacts[0].email == "buyer@example.com"
+        # Ship-to address auto-created
+        assert len(cust.ship_to_addresses) == 1
+        assert cust.ship_to_addresses[0].city == "Tulsa"
 
         # 2 real line items (note row skipped)
         assert len(db_quote.line_items) == 2
@@ -209,3 +218,99 @@ def test_fiscal_quote_number_sequence(app):
 
         num2 = _generate_fiscal_quote_number()
         assert num2 == "126-002"
+
+
+# --- Normalize company name tests ---
+
+def test_normalize_strips_legal_suffixes():
+    assert _normalize_company_name("Acme Pipeline Inc.") == "acme pipeline"
+    assert _normalize_company_name("Acme Pipeline, LLC") == "acme pipeline"
+    assert _normalize_company_name("Acme Pipeline Corp") == "acme pipeline"
+    assert _normalize_company_name("Acme Pipeline Ltd.") == "acme pipeline"
+    assert _normalize_company_name("Acme Pipeline Co.") == "acme pipeline"
+
+
+def test_normalize_case_insensitive():
+    assert _normalize_company_name("ACME PIPELINE") == _normalize_company_name("acme pipeline")
+
+
+def test_normalize_strips_punctuation_and_whitespace():
+    assert _normalize_company_name("  Acme   Pipeline,  Inc. ") == "acme pipeline"
+
+
+# --- Dedup / normalized matching tests ---
+
+def test_dedup_matches_with_suffix_difference(app, msg, rfq, priced_quote):
+    """Customer 'Acme Pipeline Co, Inc.' should match RFQ for 'Acme Pipeline Co'."""
+    with app.app_context():
+        cust = Customer(company_name="Acme Pipeline Co, Inc.", discount_pct=0)
+        db.session.add(cust)
+        db.session.commit()
+        cust_id = cust.id
+
+        db_quote = write_quote_to_db(msg, rfq, priced_quote, "126-010")
+        assert db_quote.customer_id == cust_id
+
+
+def test_dedup_matches_case_difference(app, msg, rfq, priced_quote):
+    """Customer 'ACME PIPELINE CO' should match RFQ for 'Acme Pipeline Co'."""
+    with app.app_context():
+        cust = Customer(company_name="ACME PIPELINE CO", discount_pct=0)
+        db.session.add(cust)
+        db.session.commit()
+        cust_id = cust.id
+
+        db_quote = write_quote_to_db(msg, rfq, priced_quote, "126-011")
+        assert db_quote.customer_id == cust_id
+
+
+# --- New contact on existing customer ---
+
+def test_new_contact_added_to_existing_customer(app, msg, rfq, priced_quote):
+    """When a quote comes in for existing customer with a new email, add the contact."""
+    with app.app_context():
+        cust = Customer(company_name="Acme Pipeline Co", discount_pct=0)
+        db.session.add(cust)
+        db.session.flush()
+        existing_contact = Contact(customer_id=cust.id, name="Old Contact", email="old@example.com")
+        db.session.add(existing_contact)
+        db.session.commit()
+        cust_id = cust.id
+
+        # RFQ has a different email (buyer@example.com)
+        db_quote = write_quote_to_db(msg, rfq, priced_quote, "126-012")
+        assert db_quote.customer_id == cust_id
+
+        contacts = Contact.query.filter_by(customer_id=cust_id).all()
+        emails = {c.email for c in contacts}
+        assert "old@example.com" in emails
+        assert "buyer@example.com" in emails
+        assert len(contacts) == 2
+
+
+def test_no_duplicate_contact_on_existing_customer(app, msg, rfq, priced_quote):
+    """When contact email already exists on customer, don't create a duplicate."""
+    with app.app_context():
+        cust = Customer(company_name="Acme Pipeline Co", discount_pct=0)
+        db.session.add(cust)
+        db.session.flush()
+        existing_contact = Contact(customer_id=cust.id, name="John Buyer", email="buyer@example.com")
+        db.session.add(existing_contact)
+        db.session.commit()
+        cust_id = cust.id
+
+        db_quote = write_quote_to_db(msg, rfq, priced_quote, "126-013")
+        assert db_quote.customer_id == cust_id
+
+        contacts = Contact.query.filter_by(customer_id=cust_id).all()
+        assert len(contacts) == 1
+
+
+def test_no_customer_created_without_name(app, msg, rfq, priced_quote):
+    """When RFQ has no customer_name, don't create a customer."""
+    rfq.customer_name = None
+    rfq.contact_email = "unknown@example.com"
+    with app.app_context():
+        db_quote = write_quote_to_db(msg, rfq, priced_quote, "126-014")
+        assert db_quote.customer_id is None
+        assert Customer.query.count() == 0
