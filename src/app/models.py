@@ -49,6 +49,27 @@ class User(UserMixin, TimestampMixin, db.Model):
         return token
 
 
+class AuthToken(TimestampMixin, db.Model):
+    """Magic-link authentication tokens for cross-device polling flow."""
+
+    __tablename__ = "auth_token"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user.id"), nullable=False, index=True)
+    token: Mapped[str] = mapped_column(unique=True, nullable=False, index=True)
+    expires_at: Mapped[datetime] = mapped_column(nullable=False)
+    used_at: Mapped[datetime | None]
+
+    user: Mapped[User] = relationship(foreign_keys=[user_id])
+
+    @property
+    def is_valid(self) -> bool:
+        return self.used_at is None and self.expires_at > datetime.utcnow()
+
+    def mark_used(self) -> None:
+        self.used_at = datetime.utcnow()
+
+
 class Customer(TimestampMixin, db.Model):
     __tablename__ = "customer"
 

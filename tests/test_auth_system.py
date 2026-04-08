@@ -7,7 +7,7 @@ import pytest
 from app import create_app
 from app.config import Config
 from app.extensions import db
-from app.models import User
+from app.models import AuthToken, User
 
 
 @pytest.fixture
@@ -83,6 +83,7 @@ def test_password_login_required_dashboard(client, app) -> None:
 
 
 def test_magic_link_login(client, app, monkeypatch) -> None:
+    """Magic link: request -> waiting page -> consume link -> dashboard."""
     delivered: dict[str, str] = {}
 
     def fake_send_magic_link_email(*, to_email: str, magic_link: str) -> None:
@@ -94,24 +95,143 @@ def test_magic_link_login(client, app, monkeypatch) -> None:
     with app.app_context():
         _create_user(email="teammate@example.com", name="Teammate")
 
+    # Request magic link — should redirect to waiting page (not login).
     request_response = client.post(
         "/auth/magic-link",
         data={"email": "teammate@example.com"},
-        follow_redirects=True,
+        follow_redirects=False,
     )
-    assert request_response.status_code == 200
-    assert b"sign-in link was sent" in request_response.data
+    assert request_response.status_code == 302
+    assert "/auth/waiting" in request_response.headers["Location"]
     assert delivered["to"] == "teammate@example.com"
 
+    # Waiting page renders.
+    waiting_response = client.get("/auth/waiting")
+    assert waiting_response.status_code == 200
+    assert b"Check Your Email" in waiting_response.data
+
+    # Poll — should still be waiting.
+    check1 = client.get("/auth/check-magic-link")
+    assert check1.get_json()["status"] == "waiting"
+
+    # Consume the magic link (simulates clicking on phone).
     path = urlparse(delivered["link"]).path
     consume_response = client.get(path, follow_redirects=True)
     assert consume_response.status_code == 200
     assert b"Dashboard" in consume_response.data
 
     with app.app_context():
-        user = User.query.filter_by(email="teammate@example.com").first()
-        assert user is not None
-        assert user.magic_link_token is None
+        token = AuthToken.query.first()
+        assert token is not None
+        assert token.used_at is not None
+
+
+def test_magic_link_polling_cross_device(client, app, monkeypatch) -> None:
+    """Desktop polls and auto-logs-in after magic link consumed on another device."""
+    delivered: dict[str, str] = {}
+
+    def fake_send(*, to_email: str, magic_link: str) -> None:
+        delivered["link"] = magic_link
+
+    monkeypatch.setattr("app.auth_routes.send_magic_link_email", fake_send)
+
+    with app.app_context():
+        _create_user(email="user@example.com", name="User")
+
+    # Desktop: request magic link
+    client.post("/auth/magic-link", data={"email": "user@example.com"})
+
+    # Desktop: poll — waiting
+    check1 = client.get("/auth/check-magic-link")
+    assert check1.get_json()["status"] == "waiting"
+
+    # Phone: click magic link (different client session)
+    phone_client = app.test_client()
+    path = urlparse(delivered["link"]).path
+    phone_client.get(path, follow_redirects=True)
+
+    # Desktop: poll again — should now be authenticated
+    check2 = client.get("/auth/check-magic-link")
+    data = check2.get_json()
+    assert data["status"] == "authenticated"
+    assert data["redirect"] == "/"
+
+    # Desktop should now be logged in — can access dashboard
+    dash = client.get("/", follow_redirects=True)
+    assert dash.status_code == 200
+    assert b"Dashboard" in dash.data
+
+
+def test_magic_link_expired_token(client, app, monkeypatch) -> None:
+    """Expired token is rejected on poll."""
+    from datetime import datetime, timedelta
+
+    def fake_send(*, to_email: str, magic_link: str) -> None:
+        pass
+
+    monkeypatch.setattr("app.auth_routes.send_magic_link_email", fake_send)
+
+    with app.app_context():
+        _create_user(email="user@example.com", name="User")
+
+    client.post("/auth/magic-link", data={"email": "user@example.com"})
+
+    # Manually expire the token in the DB.
+    with app.app_context():
+        token = AuthToken.query.first()
+        token.expires_at = datetime.utcnow() - timedelta(seconds=10)
+        db.session.commit()
+
+    # Poll — should be expired
+    check = client.get("/auth/check-magic-link")
+    assert check.get_json()["status"] == "expired"
+
+
+def test_check_magic_link_no_session(client, app) -> None:
+    """Poll without pending token returns error."""
+    with app.app_context():
+        _create_user()
+
+    check = client.get("/auth/check-magic-link")
+    assert check.get_json()["status"] == "error"
+
+
+def test_waiting_page_no_session_redirects(client, app) -> None:
+    """Visiting /auth/waiting without pending token redirects to login."""
+    with app.app_context():
+        _create_user()
+
+    resp = client.get("/auth/waiting", follow_redirects=False)
+    assert resp.status_code == 302
+    assert "/auth/login" in resp.headers["Location"]
+
+
+def test_consume_invalid_token(client, app) -> None:
+    """Consuming a non-existent token shows error and redirects."""
+    with app.app_context():
+        _create_user()
+
+    resp = client.get("/auth/magic/bogus-token", follow_redirects=True)
+    assert b"Invalid or expired magic link" in resp.data
+
+
+def test_magic_link_unknown_email(client, app, monkeypatch) -> None:
+    """Requesting a magic link for unknown email returns generic message."""
+    def fake_send(*, to_email: str, magic_link: str) -> None:
+        raise AssertionError("Should not send email for unknown user")
+
+    monkeypatch.setattr("app.auth_routes.send_magic_link_email", fake_send)
+
+    with app.app_context():
+        _create_user()
+
+    resp = client.post(
+        "/auth/magic-link",
+        data={"email": "unknown@example.com"},
+        follow_redirects=True,
+    )
+    assert resp.status_code == 200
+    assert b"sign-in link was sent" in resp.data
 
 
 def test_user_admin_add_and_remove(client, app) -> None:
