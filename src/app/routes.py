@@ -274,6 +274,22 @@ def _render_editor(quote: Quote):
     return render_template("quotes/_editor.html", **_quote_context(quote))
 
 
+def _render_status_bar(quote: Quote):
+    return render_template("quotes/_status_bar.html", **_quote_context(quote))
+
+
+def _render_quote_fields(quote: Quote):
+    return render_template("quotes/_quote_fields.html", **_quote_context(quote))
+
+
+def _render_customer_info(quote: Quote):
+    return render_template("quotes/_customer_info.html", **_quote_context(quote))
+
+
+def _render_line_items(quote: Quote):
+    return render_template("quotes/_line_items.html", **_quote_context(quote))
+
+
 @main_bp.get("/quotes/<int:quote_id>")
 def quote_detail(quote_id: int):
     quote = db.get_or_404(Quote, quote_id)
@@ -296,7 +312,7 @@ def quote_update_meta(quote_id: int):
     quote.notes_customer = (request.form.get("notes_customer") or "").strip() or None
     quote.notes_internal = (request.form.get("notes_internal") or "").strip() or None
     db.session.commit()
-    return _render_editor(quote)
+    return _render_quote_fields(quote)
 
 
 @main_bp.post("/quotes/<int:quote_id>/customer")
@@ -319,7 +335,7 @@ def quote_update_customer(quote_id: int):
     else:
         quote.ship_to_json = None
     db.session.commit()
-    return _render_editor(quote)
+    return _render_customer_info(quote)
 
 
 @main_bp.post("/quotes/<int:quote_id>/status")
@@ -337,8 +353,10 @@ def quote_update_status(quote_id: int):
     quote.status = status_map[raw_status]
     if quote.status == QuoteStatus.IN_REVIEW and user is not None:
         quote.reviewed_by = user.id
+    else:
+        quote.reviewed_by = None
     db.session.commit()
-    return _render_editor(quote)
+    return _render_status_bar(quote)
 
 
 @main_bp.post("/quotes/<int:quote_id>/line-items/add")
@@ -361,7 +379,7 @@ def quote_add_line_item(quote_id: int):
     )
     db.session.add(line_item)
     db.session.commit()
-    return _render_editor(quote)
+    return _render_line_items(quote)
 
 
 @main_bp.post("/quotes/<int:quote_id>/line-items/<int:item_id>/update")
@@ -414,7 +432,7 @@ def quote_update_line_item(quote_id: int, item_id: int):
     item.specs_json = specs or None
 
     db.session.commit()
-    return _render_editor(quote)
+    return _render_line_items(quote)
 
 
 @main_bp.post("/quotes/<int:quote_id>/line-items/<int:item_id>/delete")
@@ -426,7 +444,7 @@ def quote_delete_line_item(quote_id: int, item_id: int):
     db.session.delete(item)
     _normalize_sort_orders(quote)
     db.session.commit()
-    return _render_editor(quote)
+    return _render_line_items(quote)
 
 
 @main_bp.post("/quotes/<int:quote_id>/line-items/<int:item_id>/move")
@@ -443,7 +461,7 @@ def quote_move_line_item(quote_id: int, item_id: int):
     elif direction == "down" and idx < len(items) - 1:
         items[idx].sort_order, items[idx + 1].sort_order = items[idx + 1].sort_order, items[idx].sort_order
     db.session.commit()
-    return _render_editor(quote)
+    return _render_line_items(quote)
 
 
 @main_bp.get("/admin/pricing")

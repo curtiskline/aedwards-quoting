@@ -1,0 +1,18 @@
+<section id="editor-customer-info" class="quote-editor-section">
+  <h2>Customer Info</h2>
+  <form method="post" action="/quotes/{{ quote.id }}/customer" hx-post="/quotes/{{ quote.id }}/customer" hx-target="#editor-customer-info" hx-swap="outerHTML">
+    <div class="quote-editor-grid quote-editor-grid-wide">
+      <label>Company <input name="customer_name_raw" value="{{ quote.customer_name_raw or '' }}" /></label>
+      <label>Contact <input name="contact_name" value="{{ quote.contact_name or '' }}" /></label>
+      <label>Email <input name="contact_email" value="{{ quote.contact_email or '' }}" /></label>
+      <label>Phone <input name="contact_phone" value="{{ quote.contact_phone or '' }}" /></label>
+      <label>Ship To Address 1 <input name="ship_to_address_line1" value="{{ (quote.ship_to_json or {}).get('address_line1', '') }}" /></label>
+      <label>Ship To Address 2 <input name="ship_to_address_line2" value="{{ (quote.ship_to_json or {}).get('address_line2', '') }}" /></label>
+      <label>City <input name="ship_to_city" value="{{ (quote.ship_to_json or {}).get('city', '') }}" /></label>
+      <label>State <input name="ship_to_state" value="{{ (quote.ship_to_json or {}).get('state', '') }}" /></label>
+      <label>ZIP <input name="ship_to_postal_code" value="{{ (quote.ship_to_json or {}).get('postal_code', '') }}" /></label>
+      <label>Country <input name="ship_to_country" value="{{ (quote.ship_to_json or {}).get('country', '') }}" /></label>
+    </div>
+    <button type="submit">Save Customer Info</button>
+  </form>
+</section>

@@ -1,0 +1,31 @@
+<div id="editor-status-bar" class="quote-editor-status-bar">
+  <div>
+    <strong>Status:</strong> {{ quote.status.value.replace('_', ' ').title() }}
+    {% if review_user %}
+      <span class="pill" style="margin-left:0.5rem;">In Review by {{ review_user.name }}</span>
+    {% elif quote.status.value == 'in_review' %}
+      <span class="pill" style="margin-left:0.5rem;">In Review</span>
+    {% endif %}
+  </div>
+  <div class="quote-editor-status-actions">
+    <form method="post" action="/quotes/{{ quote.id }}/status" hx-post="/quotes/{{ quote.id }}/status" hx-target="#editor-status-bar" hx-swap="outerHTML">
+      <input type="hidden" name="status" value="in_review" />
+      <button type="submit">Mark In Review</button>
+    </form>
+    <form method="post" action="/quotes/{{ quote.id }}/status" hx-post="/quotes/{{ quote.id }}/status" hx-target="#editor-status-bar" hx-swap="outerHTML">
+      <input type="hidden" name="status" value="ready" />
+      <button type="submit">Mark Ready</button>
+    </form>
+    <form method="post" action="/quotes/{{ quote.id }}/status" hx-post="/quotes/{{ quote.id }}/status" hx-target="#editor-status-bar" hx-swap="outerHTML">
+      <input type="hidden" name="status" value="archived" />
+      <button type="submit">Archive</button>
+    </form>
+    <a href="/quotes/{{ quote.id }}/preview-pdf" target="_blank">
+      <button type="button">Preview PDF</button>
+    </a>
+    <button type="button"
+            hx-get="/quotes/{{ quote.id }}/send-form"
+            hx-target="body"
+            hx-swap="beforeend">Send Quote</button>
+  </div>
+</div>

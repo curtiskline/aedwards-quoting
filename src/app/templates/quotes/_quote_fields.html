@@ -1,0 +1,14 @@
+<section id="editor-quote-fields" class="quote-editor-section">
+  <h2>Quote Fields</h2>
+  <form method="post" action="/quotes/{{ quote.id }}/meta" hx-post="/quotes/{{ quote.id }}/meta" hx-target="#editor-quote-fields" hx-swap="outerHTML">
+    <div class="quote-editor-grid quote-editor-grid-wide">
+      <label>Quote Number <input name="quote_number" value="{{ quote.quote_number }}" /></label>
+      <label>Project Name <input name="project_name" value="{{ quote.project_name or '' }}" /></label>
+    </div>
+    <div class="quote-editor-grid quote-editor-grid-two-col">
+      <label>Customer Notes <textarea name="notes_customer" rows="3">{{ quote.notes_customer or '' }}</textarea></label>
+      <label>Internal Notes <textarea name="notes_internal" rows="3">{{ quote.notes_internal or '' }}</textarea></label>
+    </div>
+    <button type="submit">Save Quote Fields</button>
+  </form>
+</section>
