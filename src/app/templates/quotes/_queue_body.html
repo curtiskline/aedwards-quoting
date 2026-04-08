@@ -1,6 +1,7 @@
 <div id="queue-body">
   {% if quotes %}
     {% for q in quotes %}
+    <a href="/quotes/{{ q.id }}" style="text-decoration:none;color:inherit;display:block;">
     <div class="quote-card">
       <div>
         <div class="top-row">
@@ -20,6 +21,7 @@
         {{ q.total }}
       </div>
     </div>
+    </a>
     {% endfor %}
   {% else %}
     <div class="empty-state">
