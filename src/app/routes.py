@@ -271,7 +271,8 @@ def _quote_context(quote: Quote) -> dict:
 
 
 def _render_editor(quote: Quote):
-    return render_template("quotes/_editor.html", **_quote_context(quote))
+    html = render_template("quotes/_editor.html", **_quote_context(quote))
+    return f'<div id="quote-editor">{html}</div>'
 
 
 def _render_status_bar(quote: Quote):
@@ -353,8 +354,10 @@ def quote_update_status(quote_id: int):
     quote.status = status_map[raw_status]
     if quote.status == QuoteStatus.IN_REVIEW and user is not None:
         quote.reviewed_by = user.id
+        quote.review_started_at = datetime.utcnow()
     else:
         quote.reviewed_by = None
+        quote.review_started_at = None
     db.session.commit()
     return _render_status_bar(quote)
 

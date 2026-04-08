@@ -1,10 +1,8 @@
 <div id="editor-status-bar" class="quote-editor-status-bar">
   <div>
     <strong>Status:</strong> {{ quote.status.value.replace('_', ' ').title() }}
-    {% if review_user %}
-      <span class="pill" style="margin-left:0.5rem;">In Review by {{ review_user.name }}</span>
-    {% elif quote.status.value == 'in_review' %}
-      <span class="pill" style="margin-left:0.5rem;">In Review</span>
+    {% if review_user and quote.status.value == 'in_review' %}
+      <span class="pill" style="margin-left:0.5rem;">by {{ review_user.name }}</span>
     {% endif %}
   </div>
   <div class="quote-editor-status-actions">
