@@ -682,6 +682,19 @@ def quote_send(quote_id: int):
 
     if not to_email:
         abort(400, description="Recipient email is required")
+
+    # Allowlist check: if SEND_EMAIL_ALLOWLIST is set, only permit listed recipients
+    allowlist_raw = os.getenv("SEND_EMAIL_ALLOWLIST", "").strip()
+    if allowlist_raw:
+        allowed = {e.strip().lower() for e in allowlist_raw.split(",") if e.strip()}
+        if to_email.lower() not in allowed:
+            return render_template(
+                "quotes/_send_result.html",
+                success=False,
+                error=f"Recipient '{to_email}' is not in the allowed send list. Allowed: {', '.join(sorted(allowed))}",
+                quote=quote,
+            )
+
     if not subject:
         subject = f"Quote {quote.quote_number} — Allan Edwards, Inc."
 
