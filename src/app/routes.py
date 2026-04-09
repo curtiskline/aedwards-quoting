@@ -31,6 +31,16 @@ from allenedwards.pdf_generator import generate_quote_pdf
 
 main_bp = Blueprint("main", __name__)
 
+STANDARD_PRODUCT_TYPES = {
+    "sleeve",
+    "bag",
+    "girth_weld",
+    "compression",
+    "oversleeve",
+    "accessory",
+    "service",
+}
+
 
 @main_bp.get("/")
 @login_required
@@ -132,6 +142,18 @@ def _parse_int(value: str | None) -> int | None:
         return int(raw)
     except ValueError:
         return None
+
+
+def _resolve_product_type(raw_product_type: str | None, raw_custom_product_type: str | None, fallback: str) -> str:
+    selected = (raw_product_type or "").strip() or fallback
+    if selected != "custom":
+        return selected
+    custom = (raw_custom_product_type or "").strip()
+    if custom:
+        return custom
+    if fallback not in STANDARD_PRODUCT_TYPES:
+        return fallback
+    return "custom"
 
 
 def _current_user() -> User | None:
@@ -384,7 +406,11 @@ def quote_update_status(quote_id: int):
 def quote_add_line_item(quote_id: int):
     quote = db.get_or_404(Quote, quote_id)
     _normalize_sort_orders(quote)
-    product_type = (request.form.get("product_type") or "sleeve").strip() or "sleeve"
+    product_type = _resolve_product_type(
+        request.form.get("product_type"),
+        request.form.get("custom_product_type"),
+        "sleeve",
+    )
     line_item = QuoteLineItem(
         quote_id=quote.id,
         product_type=product_type,
@@ -460,7 +486,11 @@ def quote_update_line_item(quote_id: int, item_id: int):
     if item.quote_id != quote.id:
         abort(404)
 
-    item.product_type = (request.form.get("product_type") or item.product_type).strip() or item.product_type
+    item.product_type = _resolve_product_type(
+        request.form.get("product_type"),
+        request.form.get("custom_product_type"),
+        item.product_type,
+    )
     item.description = (request.form.get("description") or item.description).strip() or item.description
     quantity = _parse_decimal(request.form.get("quantity"), Decimal(str(item.quantity)))
     unit_price = _parse_decimal(request.form.get("unit_price"), Decimal(str(item.unit_price)))
@@ -482,6 +512,7 @@ def quote_update_line_item(quote_id: int, item_id: int):
     # Apply pallet/bundle rounding to quantity
     requested_qty = int(math.ceil(float(quantity)))
     rounded_qty = requested_qty
+    item.part_number = None
     if item.product_type == "sleeve":
         diameter = _parse_float(str(specs.get("diameter", "")))
         length_ft = _parse_float(str(specs.get("length_ft", "")))

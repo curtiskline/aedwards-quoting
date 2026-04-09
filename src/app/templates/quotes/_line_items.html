@@ -1,16 +1,22 @@
 <section id="editor-line-items" class="quote-editor-section line-items-section">
+  {% set standard_product_types = ['sleeve', 'bag', 'girth_weld', 'compression', 'oversleeve', 'accessory', 'service'] %}
   <h2>Line Items</h2>
   <div class="line-item-list">
     {% for item in line_items %}
+      {% set is_custom_type = item.product_type not in standard_product_types %}
       <article class="line-item-card{% if item.needs_pricing %} needs-pricing{% endif %}">
         <form id="line-item-{{ item.id }}-form" method="post" action="/quotes/{{ quote.id }}/line-items/{{ item.id }}/update" hx-post="/quotes/{{ quote.id }}/line-items/{{ item.id }}/update" hx-target="#editor-line-items" hx-swap="outerHTML" class="line-item-form">
           <div class="line-item-row line-item-row-top">
             <label>Type
-              <select name="product_type">
-                {% for pt in ['sleeve', 'bag', 'girth_weld', 'compression', 'oversleeve', 'accessory', 'service'] %}
+              <select name="product_type" class="js-product-type-select">
+                {% for pt in standard_product_types %}
                   <option value="{{ pt }}" {% if item.product_type == pt %}selected{% endif %}>{{ pt.replace('_', ' ').title() }}</option>
                 {% endfor %}
+                <option value="custom" {% if is_custom_type %}selected{% endif %}>Other / Custom</option>
               </select>
+            </label>
+            <label class="js-custom-product-type-field" {% if not is_custom_type %}hidden{% endif %}>Custom Type
+              <input name="custom_product_type" value="{{ item.product_type if is_custom_type else '' }}" {% if is_custom_type %}required{% endif %} />
             </label>
             <label>Description
               <input name="description" value="{{ item.description }}" />
@@ -78,11 +84,15 @@
     <h3>Add Line Item</h3>
     <div class="add-line-item-grid">
       <label>Type
-        <select name="product_type">
-          {% for pt in ['sleeve', 'bag', 'girth_weld', 'compression', 'oversleeve', 'accessory', 'service'] %}
+        <select name="product_type" class="js-product-type-select">
+          {% for pt in standard_product_types %}
             <option value="{{ pt }}">{{ pt.replace('_', ' ').title() }}</option>
           {% endfor %}
+          <option value="custom">Other / Custom</option>
         </select>
+      </label>
+      <label class="js-custom-product-type-field" hidden>Custom Type
+        <input name="custom_product_type" value="" />
       </label>
       <label>Description
         <input name="description" placeholder="Description" />
@@ -101,4 +111,35 @@
     <div><strong>Subtotal:</strong> ${{ '%.2f'|format(totals.subtotal) }}</div>
     <div><strong>Total:</strong> ${{ '%.2f'|format(totals.total) }}</div>
   </div>
+
+  <script>
+    (() => {
+      const root = document.getElementById("editor-line-items");
+      if (!root) return;
+
+      const syncCustomTypeField = (container) => {
+        if (!container) return;
+        const select = container.querySelector(".js-product-type-select");
+        const field = container.querySelector(".js-custom-product-type-field");
+        if (!select || !field) return;
+        const input = field.querySelector("input[name='custom_product_type']");
+        const isCustom = select.value === "custom";
+        field.hidden = !isCustom;
+        if (input) {
+          input.required = isCustom;
+          if (!isCustom) input.value = "";
+        }
+      };
+
+      root.querySelectorAll(".line-item-row-top, .add-line-item-grid").forEach((container) => {
+        syncCustomTypeField(container);
+      });
+
+      root.querySelectorAll(".js-product-type-select").forEach((select) => {
+        select.addEventListener("change", () => {
+          syncCustomTypeField(select.closest(".line-item-row-top, .add-line-item-grid"));
+        });
+      });
+    })();
+  </script>
 </section>
