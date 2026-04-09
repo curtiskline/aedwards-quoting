@@ -363,7 +363,7 @@ def match_line_items(gt_items: list[dict], our_items: list[dict]) -> dict:
 def _normalize_gt_item(gt: dict) -> dict:
     """Extract structured fields from ground-truth part_number and description.
 
-    GT items have part_number (e.g. 'S-12.34-38-50-10') and description
+    GT items have part_number (e.g. 'S-12.34-38-50' or 'S-12.34-38-50-10') and description
     (e.g. 'reg half sole, 12-3/4" ID, 3/8" w/t, A572 GR50, 10\' long.')
     but lack the structured fields our parser outputs. This bridges the gap.
     """
@@ -394,15 +394,15 @@ def _normalize_gt_item(gt: dict) -> dict:
             item["product_type"] = "service"
 
     # --- Parse part_number for dimensions ---
-    # Format: S-<diam>-<wt_code>-<grade>-<length>[-M][-P]
-    # or G-<diam>-<wt_code>-<grade>-<length>[-M][-P]
+    # Format: S-<diam>-<wt_code>-<grade>[-<length>][-M][-P]
+    # or G/GW variants with same fields
     pn_match = re.match(
-        r"^[SG]-"
+        r"^(?:S|G|GW)-"
         r"([\d.]+)-"           # diameter
         r"(\d+)-"              # wall thickness code (e.g. 38 = 3/8)
-        r"(\d+)-"              # grade
-        r"([\d.]+)"            # length
-        r"(?:-([MP]+))?",      # optional milling/painting suffix
+        r"(\d+)"               # grade
+        r"(?:-([\d.]+))?"      # optional length
+        r"(?:-([MP]+))?$",     # optional milling/painting suffix
         part,
     )
     if pn_match:
@@ -410,12 +410,21 @@ def _normalize_gt_item(gt: dict) -> dict:
             item["diameter"] = float(pn_match.group(1))
         wt_code = pn_match.group(2)
         if not item.get("wall_thickness"):
-            wt_map = {"14": 0.25, "516": 0.3125, "38": 0.375,
-                       "12": 0.5, "58": 0.625, "34": 0.75}
+            wt_map = {
+                "316": 0.1875,
+                "14": 0.25,
+                "516": 0.3125,
+                "38": 0.375,
+                "12": 0.5,
+                "58": 0.625,
+                "34": 0.75,
+                "78": 0.875,
+                "1": 1.0,
+            }
             item["wall_thickness"] = wt_map.get(wt_code)
         if not item.get("grade"):
             item["grade"] = int(pn_match.group(3))
-        if not item.get("length_ft"):
+        if not item.get("length_ft") and pn_match.group(4):
             item["length_ft"] = float(pn_match.group(4))
         suffix = pn_match.group(5) or ""
         if "M" in suffix:

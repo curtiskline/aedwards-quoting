@@ -54,7 +54,8 @@ def test_quote_detail_loads_and_locks_by_user(tmp_path):
     response = client.get(f"/quotes/{quote_id}")
     assert response.status_code == 200
     assert b"Quote 126-200" in response.data
-    assert b"In Review by Reviewer One" in response.data
+    assert b"In Review" in response.data
+    assert b"by Reviewer One" in response.data
 
     with app.app_context():
         updated = db.session.get(Quote, quote_id)

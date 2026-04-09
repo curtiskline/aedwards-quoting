@@ -12,6 +12,7 @@ from app.models import PricingTable
 from allenedwards.parser import ParsedItem, ParsedRFQ
 from allenedwards.pricing import (
     _clear_pricing_cache,
+    calculate_oversleeve_od,
     calculate_sleeve_price,
     calculate_sleeve_weight_per_ft,
     generate_quote,
@@ -23,6 +24,7 @@ from allenedwards.pricing import (
     generate_sleeve_part_number,
     get_girth_weld_price,
     get_price_per_lb,
+    normalize_nominal_od,
     price_item,
 )
 
@@ -94,23 +96,29 @@ def test_part_number_generation():
     """Test sleeve part number generation."""
     # Basic sleeve
     pn = generate_sleeve_part_number(6.625, 0.25, 50, 10)
-    assert pn == "S-6.58-14-50-10"
+    assert pn == "S-6.58-14-50"
 
     # With milling
     pn = generate_sleeve_part_number(6.625, 0.25, 50, 10, milling=True)
-    assert pn == "S-6.58-14-50-10-M"
+    assert pn == "S-6.58-14-50-M"
 
     # With painting
     pn = generate_sleeve_part_number(6.625, 0.25, 50, 10, painting=True)
-    assert pn == "S-6.58-14-50-10-P"
+    assert pn == "S-6.58-14-50-P"
 
     # With both
     pn = generate_sleeve_part_number(6.625, 0.25, 50, 10, milling=True, painting=True)
-    assert pn == "S-6.58-14-50-10-M-P"
+    assert pn == "S-6.58-14-50-M-P"
 
     # Different wall thickness
     pn = generate_sleeve_part_number(12.75, 0.375, 65, 12)
-    assert pn == "S-12.34-38-65-12"
+    assert pn == "S-12.34-38-65"
+
+
+def test_nominal_od_mapping_and_oversleeve_od():
+    assert normalize_nominal_od(8.0) == 8.625
+    assert normalize_nominal_od(24.0) == 24.0
+    assert calculate_oversleeve_od(8.0, 0.375) == 9.375
 
 
 def test_description_generation():
@@ -160,15 +168,15 @@ def test_girth_weld_part_number():
     """Test girth weld part number generation."""
     # Basic girth weld sleeve (8-5/8" ID, 3/8" wall, GR50, 12' long)
     pn = generate_girth_weld_part_number(8.625, 0.375, 50, 12)
-    assert pn == "GW-8.625-38-50-12"
+    assert pn == "G-8.58-38-50"
 
     # Different wall thickness
     pn = generate_girth_weld_part_number(6.625, 0.25, 50, 10)
-    assert pn == "GW-6.625-14-50-10"
+    assert pn == "G-6.58-14-50"
 
     # GR65
     pn = generate_girth_weld_part_number(12.75, 0.5, 65, 8)
-    assert pn == "GW-12.75-12-65-8"
+    assert pn == "G-12.34-12-65"
 
 
 def test_girth_weld_description():
@@ -199,7 +207,7 @@ def test_price_item_girth_weld():
 
     assert result is not None
     assert result.product_type == "girth_weld"
-    assert result.part_number == "GW-8.625-38-50-1"
+    assert result.part_number == "G-8.58-38-50"
     assert result.unit_price == Decimal("300")  # Per set
     assert result.total == Decimal("1200")  # 4 sets * $300
     assert result.quantity == 4

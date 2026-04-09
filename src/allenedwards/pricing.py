@@ -87,6 +87,108 @@ SLEEVE_DIAMETER_LOOKUP: dict[Decimal, tuple[str, str]] = {
 
 DIAMETER_MATCH_TOLERANCE = Decimal("0.001")
 
+# Nominal pipe size to actual OD mapping (NPS -> actual OD in inches).
+# This is used when customers request nominal sizes like "8 inch".
+NOMINAL_OD_MAP: dict[Decimal, Decimal] = {
+    Decimal("2"): Decimal("2.375"),
+    Decimal("2.5"): Decimal("2.875"),
+    Decimal("3"): Decimal("3.5"),
+    Decimal("3.5"): Decimal("4"),
+    Decimal("4"): Decimal("4.5"),
+    Decimal("5"): Decimal("5.563"),
+    Decimal("6"): Decimal("6.625"),
+    Decimal("8"): Decimal("8.625"),
+    Decimal("10"): Decimal("10.75"),
+    Decimal("12"): Decimal("12.75"),
+    Decimal("14"): Decimal("14"),
+    Decimal("16"): Decimal("16"),
+    Decimal("18"): Decimal("18"),
+    Decimal("20"): Decimal("20"),
+    Decimal("22"): Decimal("22"),
+    Decimal("24"): Decimal("24"),
+    Decimal("26"): Decimal("26"),
+    Decimal("28"): Decimal("28"),
+    Decimal("30"): Decimal("30"),
+    Decimal("32"): Decimal("32"),
+    Decimal("34"): Decimal("34"),
+    Decimal("36"): Decimal("36"),
+    Decimal("38"): Decimal("38"),
+    Decimal("40"): Decimal("40"),
+    Decimal("42"): Decimal("42"),
+    Decimal("44"): Decimal("44"),
+    Decimal("46"): Decimal("46"),
+    Decimal("48"): Decimal("48"),
+}
+
+WALL_THICKNESS_CODE_MAP: dict[float, str] = {
+    0.1875: "316",
+    0.25: "14",
+    0.3125: "516",
+    0.375: "38",
+    0.5: "12",
+    0.625: "58",
+    0.75: "34",
+    0.875: "78",
+    1.0: "1",
+}
+
+
+def _format_decimal_inches(value: float | Decimal) -> str:
+    decimal_value = Decimal(str(value))
+    return f"{decimal_value:.3f}".rstrip("0").rstrip(".")
+
+
+def normalize_nominal_od(diameter: float) -> float:
+    """Convert nominal diameter to actual OD when there is an exact nominal match."""
+    diameter_decimal = Decimal(str(diameter))
+    for nominal_size, actual_od in NOMINAL_OD_MAP.items():
+        if abs(diameter_decimal - nominal_size) <= DIAMETER_MATCH_TOLERANCE:
+            return float(actual_od)
+    return diameter
+
+
+def calculate_oversleeve_od(pipe_diameter: float, wall_thickness: float) -> float:
+    """Compute oversleeve ID from pipe OD + 2x wall thickness."""
+    actual_pipe_od = Decimal(str(normalize_nominal_od(pipe_diameter)))
+    wt = Decimal(str(wall_thickness))
+    oversleeve_od = actual_pipe_od + (wt * Decimal("2"))
+    return float(oversleeve_od.quantize(Decimal("0.001"), rounding=ROUND_HALF_UP))
+
+
+def _part_number_diameter_code(diameter: float) -> str:
+    diameter_decimal = Decimal(str(diameter))
+    for standard_dia, (code, _) in SLEEVE_DIAMETER_LOOKUP.items():
+        if abs(diameter_decimal - standard_dia) <= DIAMETER_MATCH_TOLERANCE:
+            return code
+    return _format_decimal_inches(diameter_decimal)
+
+
+def generate_part_number(
+    part_type: str,
+    diameter: float,
+    wall_thickness: float,
+    grade: int,
+    milling: bool = False,
+    painting: bool = False,
+) -> str:
+    """Generate sleeve-style part numbers per spec Section 3.2."""
+    type_code_map = {
+        "sleeve": "S",
+        "oversleeve": "S",
+        "girth_weld": "G",
+        "compression": "CS",
+    }
+    type_code = type_code_map.get(part_type, part_type.upper())
+    wt_code = WALL_THICKNESS_CODE_MAP.get(wall_thickness, str(wall_thickness).replace(".", ""))
+    dia_code = _part_number_diameter_code(diameter)
+
+    part_num = f"{type_code}-{dia_code}-{wt_code}-{grade}"
+    if milling:
+        part_num += "-M"
+    if painting:
+        part_num += "-P"
+    return part_num
+
 
 @dataclass
 class QuoteLineItem:
@@ -359,33 +461,11 @@ def generate_girth_weld_part_number(
 ) -> str:
     """Generate a part number for a girth weld sleeve.
 
-    Format: GW-{diameter}-{wt_code}-{grade}-{length}
+    Format: G-{sleeve_id}-{wt_code}-{grade}[-M][-P]
     """
-    # Wall thickness codes
-    wt_codes = {
-        0.25: "14",
-        0.3125: "516",
-        0.375: "38",
-        0.5: "12",
-        0.625: "58",
-        0.75: "34",
-    }
-
-    wt_code = wt_codes.get(wall_thickness, str(wall_thickness).replace(".", ""))
-
-    # Format diameter
-    if diameter == int(diameter):
-        dia_str = str(int(diameter))
-    else:
-        dia_str = f"{diameter:.3f}".rstrip("0").rstrip(".")
-
-    # Format length
-    if length_ft == int(length_ft):
-        len_str = str(int(length_ft))
-    else:
-        len_str = f"{length_ft:.1f}".rstrip("0").rstrip(".")
-
-    return f"GW-{dia_str}-{wt_code}-{grade}-{len_str}"
+    del length_ft
+    actual_od = normalize_nominal_od(diameter)
+    return generate_part_number("girth_weld", actual_od, wall_thickness, grade)
 
 
 def generate_girth_weld_description(
@@ -406,7 +486,8 @@ def generate_girth_weld_description(
     }
     wt_str = wt_fractions.get(wall_thickness, f'{wall_thickness}"')
 
-    return f'Girth Weld Sleeve, {diameter}" ID, {wt_str} w/t, A572 GR{grade}, {length_ft}\' long'
+    actual_od = normalize_nominal_od(diameter)
+    return f'Girth Weld Sleeve, {actual_od}" ID, {wt_str} w/t, A572 GR{grade}, {length_ft}\' long'
 
 
 def generate_sleeve_part_number(
@@ -419,47 +500,18 @@ def generate_sleeve_part_number(
 ) -> str:
     """Generate a part number for a sleeve.
 
-    Format: S-{sleeve_id}-{wt_code}-{grade}-{length}[-M][-P]
+    Format: S-{sleeve_id}-{wt_code}-{grade}[-M][-P]
     """
-    # Wall thickness codes
-    wt_codes = {
-        0.25: "14",
-        0.3125: "516",
-        0.375: "38",
-        0.5: "12",
-        0.625: "58",
-        0.75: "34",
-    }
-
-    wt_code = wt_codes.get(wall_thickness, str(wall_thickness).replace(".", ""))
-
-    # Part numbers use canonical shorthand IDs from the quoting spreadsheet
-    diameter_decimal = Decimal(str(diameter))
-    dia_str = ""
-    for standard_dia, (code, _) in SLEEVE_DIAMETER_LOOKUP.items():
-        if abs(diameter_decimal - standard_dia) <= DIAMETER_MATCH_TOLERANCE:
-            dia_str = code
-            break
-    if not dia_str:
-        if diameter == int(diameter):
-            dia_str = str(int(diameter))
-        else:
-            dia_str = f"{diameter:.3f}".rstrip("0").rstrip(".")
-
-    # Format length
-    if length_ft == int(length_ft):
-        len_str = str(int(length_ft))
-    else:
-        len_str = f"{length_ft:.1f}".rstrip("0").rstrip(".")
-
-    part_num = f"S-{dia_str}-{wt_code}-{grade}-{len_str}"
-
-    if milling:
-        part_num += "-M"
-    if painting:
-        part_num += "-P"
-
-    return part_num
+    del length_ft
+    actual_od = normalize_nominal_od(diameter)
+    return generate_part_number(
+        "sleeve",
+        actual_od,
+        wall_thickness,
+        grade,
+        milling=milling,
+        painting=painting,
+    )
 
 
 def generate_sleeve_description(
@@ -482,7 +534,8 @@ def generate_sleeve_description(
     }
     wt_str = wt_fractions.get(wall_thickness, f'{wall_thickness}"')
 
-    diameter_decimal = Decimal(str(diameter))
+    actual_od = normalize_nominal_od(diameter)
+    diameter_decimal = Decimal(str(actual_od))
     dia_str = ""
     for standard_dia, (_, display) in SLEEVE_DIAMETER_LOOKUP.items():
         if abs(diameter_decimal - standard_dia) <= DIAMETER_MATCH_TOLERANCE:
@@ -570,40 +623,18 @@ def generate_oversleeve_part_number(
     """Generate a part number for an oversleeve.
 
     Oversleeves fit over the outside of carrier pipe + standard sleeve.
-    Format: OS-{diameter}-{wt_code}-{grade}-{length}[-M][-P]
+    Format: S-{oversleeve_id}-{wt_code}-{grade}[-M][-P]
     """
-    # Wall thickness codes
-    wt_codes = {
-        0.25: "14",
-        0.3125: "516",
-        0.375: "38",
-        0.5: "12",
-        0.625: "58",
-        0.75: "34",
-    }
-
-    wt_code = wt_codes.get(wall_thickness, str(wall_thickness).replace(".", ""))
-
-    # Format diameter
-    if diameter == int(diameter):
-        dia_str = str(int(diameter))
-    else:
-        dia_str = f"{diameter:.3f}".rstrip("0").rstrip(".")
-
-    # Format length
-    if length_ft == int(length_ft):
-        len_str = str(int(length_ft))
-    else:
-        len_str = f"{length_ft:.1f}".rstrip("0").rstrip(".")
-
-    part_num = f"OS-{dia_str}-{wt_code}-{grade}-{len_str}"
-
-    if milling:
-        part_num += "-M"
-    if painting:
-        part_num += "-P"
-
-    return part_num
+    del length_ft
+    oversleeve_od = calculate_oversleeve_od(diameter, wall_thickness)
+    return generate_part_number(
+        "oversleeve",
+        oversleeve_od,
+        wall_thickness,
+        grade,
+        milling=milling,
+        painting=painting,
+    )
 
 
 def generate_oversleeve_description(
@@ -626,7 +657,8 @@ def generate_oversleeve_description(
     }
     wt_str = wt_fractions.get(wall_thickness, f'{wall_thickness}"')
 
-    desc = f'Oversleeve, {diameter}" ID, {wt_str} w/t, A572 GR{grade}, {length_ft}\' long'
+    oversleeve_od = calculate_oversleeve_od(diameter, wall_thickness)
+    desc = f'Oversleeve, {oversleeve_od}" ID, {wt_str} w/t, A572 GR{grade}, {length_ft}\' long'
 
     services = []
     if milling:
@@ -794,9 +826,10 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
 
         item, default_notes = _apply_item_defaults(item)
         quote_quantity, _ = _quote_quantity_and_warning(item)
+        actual_od = normalize_nominal_od(item.diameter)
 
         unit_price, weight_per_ft, price_per_lb = calculate_sleeve_price(
-            item.diameter,
+            actual_od,
             item.wall_thickness,
             item.grade,
             item.length_ft,
@@ -811,7 +844,7 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
             sort_order=sort_order,
             product_type="sleeve",
             part_number=generate_sleeve_part_number(
-                item.diameter,
+                actual_od,
                 item.wall_thickness,
                 item.grade,
                 item.length_ft,
@@ -819,7 +852,7 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
                 item.painting,
             ),
             description=generate_sleeve_description(
-                item.diameter,
+                actual_od,
                 item.wall_thickness,
                 item.grade,
                 item.length_ft,
@@ -843,10 +876,11 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
             return None
 
         item, default_notes = _apply_item_defaults(item)
+        oversleeve_od = calculate_oversleeve_od(item.diameter, item.wall_thickness)
 
         # Oversleeves use same weight-based pricing as regular sleeves
         unit_price, weight_per_ft, price_per_lb = calculate_sleeve_price(
-            item.diameter,
+            oversleeve_od,
             item.wall_thickness,
             item.grade,
             item.length_ft,
@@ -893,8 +927,9 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
             return None
 
         item, default_notes = _apply_item_defaults(item)
+        actual_od = normalize_nominal_od(item.diameter)
 
-        unit_price = get_girth_weld_price(item.diameter)
+        unit_price = get_girth_weld_price(actual_od)
         if unit_price is None:
             return None
 
@@ -905,13 +940,13 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
             sort_order=sort_order,
             product_type="girth_weld",
             part_number=generate_girth_weld_part_number(
-                item.diameter,
+                actual_od,
                 item.wall_thickness,
                 item.grade,
                 item.length_ft,
             ),
             description=generate_girth_weld_description(
-                item.diameter,
+                actual_od,
                 item.wall_thickness,
                 item.grade,
                 item.length_ft,
@@ -955,10 +990,13 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
         price, unit = _get_other_pricing("compression_sleeve")
         total = price * Decimal(str(item.quantity))
         dia_str = f', {int(item.diameter)}"' if item.diameter else ""
+        diameter = normalize_nominal_od(item.diameter) if item.diameter is not None else 0.0
+        wt = item.wall_thickness or 0.25
+        grade = item.grade or DEFAULT_GRADE
         return QuoteLineItem(
             sort_order=sort_order,
             product_type="compression",
-            part_number=f"CS{'-' + str(int(item.diameter)) if item.diameter else ''}",
+            part_number=generate_part_number("compression", diameter, wt, grade),
             description=f"Compression Sleeve{dia_str}",
             quantity=item.quantity,
             unit_price=price,
