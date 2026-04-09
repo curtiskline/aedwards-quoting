@@ -744,6 +744,8 @@ _ACCESSORY_KEYS: dict[str, list[str]] = {
     "plastic_wrap_large": ["plastic wrap", "shrink wrap"],
     "pipejacks": ["pipe jack", "pipejack"],
     "pipejacks_large": ["large pipe jack", "large pipejack"],
+    "weld_cap": ["weld cap"],
+    "backing_strip": ["backing strip", "backing"],
 }
 
 _SERVICE_KEYS: dict[str, list[str]] = {
@@ -919,15 +921,20 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
         )
 
     if item.product_type == "girth_weld":
-        if not all([item.diameter, item.wall_thickness]):
+        # Girth welds are priced per SET by diameter range — wall_thickness is NOT required.
+        if item.diameter is None:
             logger.warning(
-                "Dropping girth_weld item — missing diameter or wall_thickness: %s",
+                "Dropping girth_weld item — missing diameter: %s",
                 item.description,
             )
             return None
 
         item, default_notes = _apply_item_defaults(item)
         actual_od = normalize_nominal_od(item.diameter)
+        # Default wall_thickness for part number/description if not provided
+        wall_thickness = item.wall_thickness or 0.375
+        if item.wall_thickness is None:
+            default_notes.append("wall thickness defaulted to 3/8\" for part number")
 
         unit_price = get_girth_weld_price(actual_od)
         if unit_price is None:
@@ -941,13 +948,13 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
             product_type="girth_weld",
             part_number=generate_girth_weld_part_number(
                 actual_od,
-                item.wall_thickness,
+                wall_thickness,
                 item.grade,
                 item.length_ft,
             ),
             description=generate_girth_weld_description(
                 actual_od,
-                item.wall_thickness,
+                wall_thickness,
                 item.grade,
                 item.length_ft,
             ),
