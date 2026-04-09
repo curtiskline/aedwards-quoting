@@ -166,6 +166,7 @@ def test_send_quote_success(mock_outlook_class, tmp_path):
         _login(client, user_id)
         os.environ["O365_EMAIL"] = "test@allanedwards.com"
         os.environ["O365_PASSWORD"] = "testpass"
+        os.environ["ENABLE_OUTLOOK_DRAFTS"] = "false"
         try:
             resp = client.post(
                 f"/quotes/{quote_id}/send",
@@ -178,21 +179,23 @@ def test_send_quote_success(mock_outlook_class, tmp_path):
         finally:
             os.environ.pop("O365_EMAIL", None)
             os.environ.pop("O365_PASSWORD", None)
+            os.environ.pop("ENABLE_OUTLOOK_DRAFTS", None)
 
         assert resp.status_code == 200
         html = resp.data.decode()
         assert "Quote Sent" in html
         assert "customer@example.com" in html
 
-        # Verify OutlookClient.create_draft was called with PDF attachment
-        mock_client.create_draft.assert_called_once()
-        call_kwargs = mock_client.create_draft.call_args
+        # Verify OutlookClient.send_mail was called with PDF attachment
+        mock_client.send_mail.assert_called_once()
+        call_kwargs = mock_client.send_mail.call_args
         assert call_kwargs.kwargs["to_email"] == "customer@example.com"
         assert call_kwargs.kwargs["cc_email"] == "cc@example.com"
         attachments = call_kwargs.kwargs["attachments"]
         assert len(attachments) == 1
         assert attachments[0][0].endswith(".pdf")
         assert attachments[0][1][:4] == b"%PDF"
+        mock_client.create_draft.assert_not_called()
 
     # Verify quote status changed to Sent
     with app.app_context():
@@ -210,6 +213,39 @@ def test_send_quote_success(mock_outlook_class, tmp_path):
         assert len(logs) == 1
         assert logs[0].details["to"] == "customer@example.com"
         assert logs[0].details["cc"] == "cc@example.com"
+
+
+@patch("allenedwards.outlook.OutlookClient")
+def test_send_quote_also_creates_draft_when_enabled(mock_outlook_class, tmp_path):
+    app = _make_app(tmp_path)
+    quote_id, user_id = _seed_quote(app)
+
+    mock_client = MagicMock()
+    mock_client.create_draft.return_value = "draft-id-123"
+    mock_outlook_class.return_value = mock_client
+
+    with app.test_client() as client:
+        _login(client, user_id)
+        os.environ["O365_EMAIL"] = "test@allanedwards.com"
+        os.environ["O365_PASSWORD"] = "testpass"
+        os.environ["ENABLE_OUTLOOK_DRAFTS"] = "true"
+        try:
+            resp = client.post(
+                f"/quotes/{quote_id}/send",
+                data={
+                    "to_email": "customer@example.com",
+                    "subject": "Quote 126-300",
+                    "cc_email": "cc@example.com",
+                },
+            )
+        finally:
+            os.environ.pop("O365_EMAIL", None)
+            os.environ.pop("O365_PASSWORD", None)
+            os.environ.pop("ENABLE_OUTLOOK_DRAFTS", None)
+
+    assert resp.status_code == 200
+    mock_client.send_mail.assert_called_once()
+    mock_client.create_draft.assert_called_once()
 
 
 def test_editor_has_preview_and_send_buttons(tmp_path):

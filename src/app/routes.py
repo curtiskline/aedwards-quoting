@@ -638,14 +638,24 @@ def quote_send(quote_id: int):
         f"Thank you,\nAllan Edwards, Inc.\n(918) 583-7184\nwww.allanedwards.com"
     )
 
+    enable_drafts = os.environ.get("ENABLE_OUTLOOK_DRAFTS", "true").lower() not in ("0", "false", "no")
+
     try:
-        client.create_draft(
+        client.send_mail(
             to_email=to_email,
             subject=subject,
             body_text=body_text,
             attachments=[(filename, pdf_bytes)],
             cc_email=cc_email,
         )
+        if enable_drafts:
+            client.create_draft(
+                to_email=to_email,
+                subject=subject,
+                body_text=body_text,
+                attachments=[(filename, pdf_bytes)],
+                cc_email=cc_email,
+            )
     except (OutlookAuthError, Exception) as exc:
         return render_template(
             "quotes/_send_result.html",

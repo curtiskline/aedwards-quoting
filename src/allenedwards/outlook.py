@@ -260,7 +260,27 @@ class OutlookClient(EmailProvider):
         data = self._request("POST", "/me/messages", json=payload)
         return data.get("id", "")
 
-    def send_mail(self, *, to_email: str, subject: str, body_text: str, cc_email: str | None = None) -> None:
+    def send_mail(
+        self,
+        *,
+        to_email: str,
+        subject: str,
+        body_text: str,
+        cc_email: str | None = None,
+        attachments: list[tuple[str, bytes]] | None = None,
+    ) -> None:
+        graph_attachments: list[dict[str, Any]] = []
+        for filename, content_bytes in attachments or []:
+            mime_type, _ = mimetypes.guess_type(filename)
+            graph_attachments.append(
+                {
+                    "@odata.type": "#microsoft.graph.fileAttachment",
+                    "name": filename,
+                    "contentType": mime_type or "application/octet-stream",
+                    "contentBytes": base64.b64encode(content_bytes).decode("ascii"),
+                }
+            )
+
         recipients = [{"emailAddress": {"address": to_email}}]
         cc_recipients = [{"emailAddress": {"address": cc_email}}] if cc_email else []
 
@@ -271,6 +291,8 @@ class OutlookClient(EmailProvider):
         }
         if cc_recipients:
             message["ccRecipients"] = cc_recipients
+        if graph_attachments:
+            message["attachments"] = graph_attachments
 
         payload = {"message": message, "saveToSentItems": "true"}
         self._request("POST", "/me/sendMail", json=payload)
