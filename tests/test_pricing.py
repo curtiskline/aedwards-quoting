@@ -12,6 +12,7 @@ from app.models import PricingTable
 from allenedwards.parser import ParsedItem, ParsedRFQ
 from allenedwards.pricing import (
     _clear_pricing_cache,
+    bundle_round,
     calculate_sleeve_price,
     calculate_sleeve_weight_per_ft,
     generate_quote,
@@ -23,6 +24,7 @@ from allenedwards.pricing import (
     generate_sleeve_part_number,
     get_girth_weld_price,
     get_price_per_lb,
+    pallet_round,
     price_item,
 )
 
@@ -284,8 +286,9 @@ def test_price_item_converts_bundle_count_to_piece_count_for_standard_sleeves():
 
 
 def test_price_item_bag():
-    """Test bag pricing by diameter range."""
-    # 36" pipe -> GTW 30-36 range, $155.00/bag
+    """Test bag pricing by diameter range with pallet rounding."""
+    # 36" pipe -> GTW 30-36 range, $155.00/bag, 30 pcs/pallet
+    # 10 pcs rounds up to 1 pallet = 30 pcs
     item = ParsedItem(
         product_type="bag",
         quantity=10,
@@ -297,13 +300,30 @@ def test_price_item_bag():
     assert result.product_type == "bag"
     assert result.part_number == "GTW 30-36"
     assert result.unit_price == Decimal("155.00")
-    assert result.total == Decimal("1550.00")
-    assert result.quantity == 10
+    assert result.quantity == 30  # rounded up to 1 pallet
+    assert result.total == Decimal("4650.00")  # 30 * $155
+
+
+def test_price_item_bag_exact_pallet():
+    """Test bag pricing when quantity is exactly a pallet — no rounding needed."""
+    # 30 pcs is exactly 1 pallet for GTW 30-36
+    item = ParsedItem(
+        product_type="bag",
+        quantity=30,
+        description="bag weights for 36\" pipe",
+        diameter=36,
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.quantity == 30
+    assert result.total == Decimal("4650.00")
+    assert result.notes is None  # no rounding note
 
 
 def test_price_item_bag_small():
-    """Test bag pricing for small diameter."""
-    # 12" pipe -> GTW 10-12 range, $52.08/bag
+    """Test bag pricing for small diameter with pallet rounding."""
+    # 12" pipe -> GTW 10-12 range, $52.08/bag, 110 pcs/pallet
+    # 5 pcs rounds up to 1 pallet = 110 pcs
     item = ParsedItem(
         product_type="bag",
         quantity=5,
@@ -313,7 +333,8 @@ def test_price_item_bag_small():
     result = price_item(item, sort_order=1)
     assert result is not None
     assert result.unit_price == Decimal("52.08")
-    assert result.total == Decimal("260.40")
+    assert result.quantity == 110  # rounded up to 1 pallet
+    assert result.total == Decimal("5728.80")  # 110 * $52.08
 
 
 def test_price_item_bag_missing_diameter():
@@ -586,8 +607,8 @@ def test_bag_pricing_gap_diameter_39():
     assert result.unit_price == Decimal("155.00")
 
 
-def test_generate_quote_adds_warning_for_invalid_standard_bundle_multiple():
-    """Standard sleeve quantities up to 24in should warn when not a 5-piece multiple."""
+def test_generate_quote_rounds_up_standard_bundle_sleeve():
+    """Standard sleeve quantities up to 24in should round up to bundle of 5 and note rounding."""
     rfq = ParsedRFQ(
         customer_name="Test Co",
         contact_name=None,
@@ -610,10 +631,16 @@ def test_generate_quote_adds_warning_for_invalid_standard_bundle_multiple():
         confidence=1.0,
     )
 
-    quote = generate_quote(rfq, "126-WARN")
+    quote = generate_quote(rfq, "126-ROUND")
 
-    warning_notes = [item for item in quote.line_items if item.is_note and "multiple of 5" in item.description]
-    assert len(warning_notes) == 1
+    # Quantity should be rounded up to 10 (2 bundles of 5)
+    sleeve_items = [item for item in quote.line_items if item.product_type == "sleeve"]
+    assert len(sleeve_items) == 1
+    assert sleeve_items[0].quantity == 10
+
+    # Rounding note should mention bundles
+    rounding_notes = [item for item in quote.line_items if item.is_note and "bundle" in item.description]
+    assert len(rounding_notes) == 1
 
 
 def test_price_lookup_uses_db_override_in_app_context(tmp_path: Path):
@@ -638,3 +665,32 @@ def test_price_lookup_uses_db_override_in_app_context(tmp_path: Path):
     finally:
         _clear_pricing_cache()
         Config.SQLALCHEMY_DATABASE_URI = previous_db_uri
+
+
+def test_pallet_round_basic():
+    """Test pallet rounding rounds up to whole pallets."""
+    assert pallet_round(10, 30) == (30, 1)
+    assert pallet_round(31, 30) == (60, 2)
+    assert pallet_round(30, 30) == (30, 1)  # exact match
+    assert pallet_round(500, 48) == (528, 11)
+
+
+def test_pallet_round_edge_cases():
+    """Test pallet rounding edge cases."""
+    assert pallet_round(0, 30) == (0, 0)
+    assert pallet_round(5, 0) == (5, 0)
+    assert pallet_round(1, 110) == (110, 1)
+
+
+def test_bundle_round_basic():
+    """Test bundle rounding rounds up to whole bundles of 5."""
+    assert bundle_round(3, 5) == (5, 1)
+    assert bundle_round(5, 5) == (5, 1)  # exact match
+    assert bundle_round(7, 5) == (10, 2)
+    assert bundle_round(11, 5) == (15, 3)
+
+
+def test_bundle_round_edge_cases():
+    """Test bundle rounding edge cases."""
+    assert bundle_round(0, 5) == (0, 0)
+    assert bundle_round(5, 0) == (5, 0)

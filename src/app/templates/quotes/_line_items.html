@@ -23,7 +23,7 @@
 
           <div class="line-item-row line-item-row-pricing">
             <label>Qty
-              <input name="quantity" type="number" min="0" step="0.01" value="{{ item.quantity }}" />
+              <input name="quantity" type="number" min="0" step="0.01" value="{{ item.display_qty }}" />
             </label>
             <label>Unit Price
               <input name="unit_price" type="number" min="0" step="0.01" value="{{ '%.2f'|format(item.unit_price) }}" />
@@ -31,6 +31,9 @@
             <div class="line-item-total">
               <span>Line Total</span>
               <strong>${{ '%.2f'|format(item.line_total) }}</strong>
+              {% if item.rounding_indicator %}
+                <span class="line-item-rounded-qty">({{ item.quantity|int }} pcs)</span>
+              {% endif %}
             </div>
             <div class="line-item-pricing-meta">
               <div>{{ item.pricing_source }}</div>

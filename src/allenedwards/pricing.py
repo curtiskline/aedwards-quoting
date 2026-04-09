@@ -88,6 +88,30 @@ SLEEVE_DIAMETER_LOOKUP: dict[Decimal, tuple[str, str]] = {
 DIAMETER_MATCH_TOLERANCE = Decimal("0.001")
 
 
+def pallet_round(quantity: int, pieces_per_pallet: int) -> tuple[int, int]:
+    """Round quantity up to whole pallets.
+
+    Returns (rounded_quantity, pallet_count).
+    """
+    if pieces_per_pallet <= 0 or quantity <= 0:
+        return quantity, 0
+    import math
+    pallet_count = math.ceil(quantity / pieces_per_pallet)
+    return pallet_count * pieces_per_pallet, pallet_count
+
+
+def bundle_round(quantity: int, bundle_size: int = STANDARD_BUNDLE_PIECES) -> tuple[int, int]:
+    """Round quantity up to whole bundles.
+
+    Returns (rounded_quantity, bundle_count).
+    """
+    if bundle_size <= 0 or quantity <= 0:
+        return quantity, 0
+    import math
+    bundle_count = math.ceil(quantity / bundle_size)
+    return bundle_count * bundle_size, bundle_count
+
+
 @dataclass
 class QuoteLineItem:
     """A calculated quote line item."""
@@ -531,7 +555,10 @@ def _extract_bundle_count(text: str) -> int | None:
 
 
 def _quote_quantity_and_warning(item: ParsedItem) -> tuple[int, str | None]:
-    """Resolve displayed quote quantity in pieces and optional warning text."""
+    """Resolve displayed quote quantity in pieces and optional warning text.
+
+    Rounds up to whole bundles for standard bundle sleeves.
+    """
     quote_quantity = item.quantity
     warning: str | None = None
 
@@ -550,11 +577,12 @@ def _quote_quantity_and_warning(item: ParsedItem) -> tuple[int, str | None]:
             )
 
     if quote_quantity % STANDARD_BUNDLE_PIECES != 0:
-        size = int(item.diameter) if item.diameter == int(item.diameter) else item.diameter
+        rounded, num_bundles = bundle_round(quote_quantity, STANDARD_BUNDLE_PIECES)
         warning = (
-            f'WARNING: Sleeve quantity {quote_quantity} for {size}" x 10\' must be a multiple of '
-            f"{STANDARD_BUNDLE_PIECES} pcs (standard bundle size)."
+            f"{quote_quantity} pcs rounded to {num_bundles} "
+            f"bundle{'s' if num_bundles != 1 else ''} ({rounded} pcs)"
         )
+        quote_quantity = rounded
 
     return quote_quantity, warning
 
@@ -939,16 +967,21 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
             return _tbd_line_item(item, sort_order)
 
         part_number, pieces_per_pallet, price_per_bag = bag_entry
-        total = price_per_bag * Decimal(str(item.quantity))
+        rounded_qty, num_pallets = pallet_round(item.quantity, pieces_per_pallet)
+        total = price_per_bag * Decimal(str(rounded_qty))
         desc = f'Geotextile Bag, {part_number}, {int(item.diameter)}" pipe'
+        notes = None
+        if rounded_qty != item.quantity and pieces_per_pallet > 0:
+            notes = f"{item.quantity} pcs rounded to {num_pallets} pallet{'s' if num_pallets != 1 else ''} ({rounded_qty} pcs)"
         return QuoteLineItem(
             sort_order=sort_order,
             product_type="bag",
             part_number=part_number,
             description=desc,
-            quantity=item.quantity,
+            quantity=rounded_qty,
             unit_price=price_per_bag,
             total=total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+            notes=notes,
         )
 
     if item.product_type == "compression":
