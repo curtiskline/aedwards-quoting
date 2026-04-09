@@ -4,7 +4,7 @@
      hx-get="/customers/?q={{ q }}&sort={{ col }}&order={{ new_order }}"
      hx-target="#customer-table" style="text-decoration:none;color:inherit">
     {{ label }}
-    {% if sort == col %}{{ '&#9650;' if order == 'asc' else '&#9660;' }}{% endif %}
+    {% if sort == col %}{{ '▲' if order == 'asc' else '▼' }}{% endif %}
   </a>
 {% endmacro %}
 

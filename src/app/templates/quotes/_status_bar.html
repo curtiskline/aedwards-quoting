@@ -18,7 +18,8 @@
       <input type="hidden" name="status" value="archived" />
       <button type="submit">Archive</button>
     </form>
-    <a href="/quotes/{{ quote.id }}/preview-pdf" target="_blank">
+    <a href="/quotes/{{ quote.id }}/preview-pdf" target="_blank"
+       onclick="event.preventDefault(); window.open(this.href, '_blank', 'width=900,height=700,scrollbars=yes,resizable=yes')">
       <button type="button">Preview PDF</button>
     </a>
     <button type="button"
