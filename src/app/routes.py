@@ -403,6 +403,56 @@ def quote_add_line_item(quote_id: int):
     return _render_line_items(quote)
 
 
+@main_bp.post("/quotes/<int:quote_id>/line-items/<int:item_id>/calc-total")
+def quote_calc_line_item_total(quote_id: int, item_id: int):
+    quote = db.get_or_404(Quote, quote_id)
+    item = db.get_or_404(QuoteLineItem, item_id)
+    if item.quote_id != quote.id:
+        abort(404)
+
+    quantity = _parse_decimal(request.form.get("quantity"), Decimal(str(item.quantity)))
+    unit_price = _quantize_money(_parse_decimal(request.form.get("unit_price"), Decimal(str(item.unit_price))))
+
+    specs = dict(item.specs_json or {})
+    requested_qty = int(math.ceil(float(quantity)))
+    rounded_qty = requested_qty
+    if item.product_type == "sleeve":
+        diameter = _parse_float(str(specs.get("diameter", "")))
+        length_ft = _parse_float(str(specs.get("length_ft", "")))
+        if diameter is not None and length_ft == 10 and diameter <= 24:
+            rounded_qty, _ = bundle_round(requested_qty, STANDARD_BUNDLE_PIECES)
+    elif item.product_type == "bag":
+        diameter = _parse_float(str(specs.get("diameter", "")))
+        bag_row = _bag_pricing_row_for_diameter(diameter)
+        if bag_row is not None:
+            _, pcs_per_pallet = bag_row
+            if pcs_per_pallet > 0:
+                rounded_qty, _ = pallet_round(requested_qty, pcs_per_pallet)
+
+    if rounded_qty != requested_qty:
+        specs["original_qty"] = str(requested_qty)
+    else:
+        specs.pop("original_qty", None)
+
+    line_total = _quantize_money(Decimal(str(rounded_qty)) * unit_price)
+    preview_item = QuoteLineItem(
+        product_type=item.product_type,
+        quantity=float(rounded_qty),
+        unit_price=float(unit_price),
+        line_total=float(line_total),
+        specs_json=specs,
+    )
+
+    return render_template(
+        "quotes/_line_total.html",
+        item_id=item.id,
+        line_total=line_total,
+        rounding_indicator=_line_item_rounding(preview_item, specs),
+        quantity=rounded_qty,
+        needs_pricing=unit_price <= 0,
+    )
+
+
 @main_bp.post("/quotes/<int:quote_id>/line-items/<int:item_id>/update")
 def quote_update_line_item(quote_id: int, item_id: int):
     quote = db.get_or_404(Quote, quote_id)
