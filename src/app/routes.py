@@ -19,7 +19,11 @@ from .models import AuditLog, PricingTable, Quote, QuoteLineItem, QuoteStatus, Q
 from allenedwards.pricing import (
     STANDARD_BUNDLE_PIECES,
     bundle_round,
+    generate_girth_weld_part_number,
+    generate_oversleeve_part_number,
+    generate_part_number,
     generate_sleeve_part_number,
+    normalize_nominal_od,
     pallet_round,
 )
 from allenedwards.pricing import Quote as PricingQuote, QuoteLineItem as PricingLineItem
@@ -462,6 +466,43 @@ def quote_update_line_item(quote_id: int, item_id: int):
                 length_ft=length_ft,  # type: ignore[arg-type]
                 milling=bool(specs.get("milling")),
                 painting=bool(specs.get("painting")),
+            )
+    elif item.product_type == "oversleeve":
+        diameter = _parse_float(str(specs.get("diameter", "")))
+        wall_thickness = _parse_float(str(specs.get("wall_thickness", "")))
+        grade = _parse_int(str(specs.get("grade", "")))
+        length_ft = _parse_float(str(specs.get("length_ft", "")))
+        if all(v is not None for v in (diameter, wall_thickness, grade, length_ft)):
+            item.part_number = generate_oversleeve_part_number(
+                diameter=diameter,  # type: ignore[arg-type]
+                wall_thickness=wall_thickness,  # type: ignore[arg-type]
+                grade=grade,  # type: ignore[arg-type]
+                length_ft=length_ft,  # type: ignore[arg-type]
+                milling=bool(specs.get("milling")),
+                painting=bool(specs.get("painting")),
+            )
+    elif item.product_type == "girth_weld":
+        diameter = _parse_float(str(specs.get("diameter", "")))
+        wall_thickness = _parse_float(str(specs.get("wall_thickness", "")))
+        grade = _parse_int(str(specs.get("grade", "")))
+        length_ft = _parse_float(str(specs.get("length_ft", "")))
+        if all(v is not None for v in (diameter, wall_thickness, grade, length_ft)):
+            item.part_number = generate_girth_weld_part_number(
+                diameter=diameter,  # type: ignore[arg-type]
+                wall_thickness=wall_thickness,  # type: ignore[arg-type]
+                grade=grade,  # type: ignore[arg-type]
+                length_ft=length_ft,  # type: ignore[arg-type]
+            )
+    elif item.product_type == "compression":
+        diameter = _parse_float(str(specs.get("diameter", "")))
+        wall_thickness = _parse_float(str(specs.get("wall_thickness", "")))
+        grade = _parse_int(str(specs.get("grade", "")))
+        if diameter is not None and wall_thickness is not None and grade is not None:
+            item.part_number = generate_part_number(
+                part_type="compression",
+                diameter=normalize_nominal_od(diameter),
+                wall_thickness=wall_thickness,
+                grade=grade,
             )
     elif item.product_type == "bag":
         diameter = _parse_float(str(specs.get("diameter", "")))

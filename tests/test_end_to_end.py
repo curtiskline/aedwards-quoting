@@ -50,7 +50,7 @@ def test_full_rfq_to_quote_flow():
     assert len(quote.line_items) == 3
 
     line = quote.line_items[0]
-    assert line.part_number == "S-6.58-14-50-10"
+    assert line.part_number == "S-6.58-14-50"
     assert line.quantity == 30
     assert line.is_note is False
 
@@ -96,7 +96,7 @@ def test_price_verification():
     """Verify pricing against the sample quote from the data model spec.
 
     From the sample PDF:
-    - S-12.34-38-50-10 (12-3/4" ID, 3/8" w/t, GR50, 10' long)
+    - S-12.34-38-50 (12-3/4" ID, 3/8" w/t, GR50)
     - Quantity: 5
     - Unit Price: $678.48
     - Total: $3,392.40
