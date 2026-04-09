@@ -16,7 +16,12 @@ from sqlalchemy import inspect
 
 from .extensions import db
 from .models import AuditLog, PricingTable, Quote, QuoteLineItem, QuoteStatus, QuoteVersion, User
-from allenedwards.pricing import STANDARD_BUNDLE_PIECES, generate_sleeve_part_number
+from allenedwards.pricing import (
+    STANDARD_BUNDLE_PIECES,
+    bundle_round,
+    generate_sleeve_part_number,
+    pallet_round,
+)
 from allenedwards.pricing import Quote as PricingQuote, QuoteLineItem as PricingLineItem
 from allenedwards.pdf_generator import generate_quote_pdf
 
@@ -177,6 +182,12 @@ def _line_item_pricing_source(item: QuoteLineItem, specs: dict) -> str:
 
 
 def _line_item_rounding(item: QuoteLineItem, specs: dict) -> str | None:
+    """Compute rounding indicator text for a line item.
+
+    Uses original_qty from specs if available (set when rounding was applied),
+    otherwise computes from the current quantity.
+    """
+    original_qty = _parse_int(str(specs.get("original_qty", "")))
     quantity = int(math.ceil(float(item.quantity or 0)))
     if quantity <= 0:
         return None
@@ -184,20 +195,20 @@ def _line_item_rounding(item: QuoteLineItem, specs: dict) -> str | None:
         diameter = _parse_float(str(specs.get("diameter", "")))
         length_ft = _parse_float(str(specs.get("length_ft", "")))
         if diameter is not None and length_ft == 10 and diameter <= 24:
-            rounded = int(math.ceil(quantity / STANDARD_BUNDLE_PIECES) * STANDARD_BUNDLE_PIECES)
-            if rounded != quantity:
-                bundles = rounded // STANDARD_BUNDLE_PIECES
-                return f"{quantity} pcs -> {bundles} bundles = {rounded} pcs"
+            check_qty = original_qty if original_qty is not None else quantity
+            rounded, bundles = bundle_round(check_qty, STANDARD_BUNDLE_PIECES)
+            if rounded != check_qty:
+                return f"{check_qty} pcs \u2192 {bundles} bundle{'s' if bundles != 1 else ''} = {rounded} pcs"
     if item.product_type == "bag":
         diameter = _parse_float(str(specs.get("diameter", "")))
         bag_row = _bag_pricing_row_for_diameter(diameter)
         if bag_row is not None:
             _, pcs_per_pallet = bag_row
             if pcs_per_pallet > 0:
-                rounded = int(math.ceil(quantity / pcs_per_pallet) * pcs_per_pallet)
-                if rounded != quantity:
-                    pallets = rounded // pcs_per_pallet
-                    return f"{quantity} pcs -> {pallets} pallets = {rounded} pcs"
+                check_qty = original_qty if original_qty is not None else quantity
+                rounded, pallets = pallet_round(check_qty, pcs_per_pallet)
+                if rounded != check_qty:
+                    return f"{check_qty} pcs \u2192 {pallets} pallet{'s' if pallets != 1 else ''} = {rounded} pcs"
     return None
 
 
@@ -229,11 +240,14 @@ def _line_item_view(item: QuoteLineItem) -> dict:
     quantity = Decimal(str(item.quantity))
     unit_price = Decimal(str(item.unit_price))
     line_total = Decimal(str(item.line_total))
+    original_qty = specs.get("original_qty")
+    display_qty = Decimal(str(original_qty)) if original_qty else quantity
     return {
         "id": item.id,
         "product_type": item.product_type,
         "description": item.description,
         "quantity": quantity,
+        "display_qty": display_qty,
         "unit_price": unit_price,
         "line_total": line_total,
         "part_number": item.part_number,
@@ -396,9 +410,7 @@ def quote_update_line_item(quote_id: int, item_id: int):
     item.description = (request.form.get("description") or item.description).strip() or item.description
     quantity = _parse_decimal(request.form.get("quantity"), Decimal(str(item.quantity)))
     unit_price = _parse_decimal(request.form.get("unit_price"), Decimal(str(item.unit_price)))
-    item.quantity = float(quantity)
     item.unit_price = float(_quantize_money(unit_price))
-    item.line_total = float(_quantize_money(quantity * unit_price))
 
     specs = dict(item.specs_json or {})
     for key in ("diameter", "wall_thickness", "grade", "length_ft"):
@@ -412,6 +424,30 @@ def quote_update_line_item(quote_id: int, item_id: int):
             specs[key] = raw
     specs["milling"] = request.form.get("spec_milling") == "on"
     specs["painting"] = request.form.get("spec_painting") == "on"
+
+    # Apply pallet/bundle rounding to quantity
+    requested_qty = int(math.ceil(float(quantity)))
+    rounded_qty = requested_qty
+    if item.product_type == "sleeve":
+        diameter = _parse_float(str(specs.get("diameter", "")))
+        length_ft = _parse_float(str(specs.get("length_ft", "")))
+        if diameter is not None and length_ft == 10 and diameter <= 24:
+            rounded_qty, _ = bundle_round(requested_qty, STANDARD_BUNDLE_PIECES)
+    elif item.product_type == "bag":
+        diameter = _parse_float(str(specs.get("diameter", "")))
+        bag_row = _bag_pricing_row_for_diameter(diameter)
+        if bag_row is not None:
+            _, pcs_per_pallet = bag_row
+            if pcs_per_pallet > 0:
+                rounded_qty, _ = pallet_round(requested_qty, pcs_per_pallet)
+
+    if rounded_qty != requested_qty:
+        specs["original_qty"] = str(requested_qty)
+    else:
+        specs.pop("original_qty", None)
+
+    item.quantity = float(rounded_qty)
+    item.line_total = float(_quantize_money(Decimal(str(rounded_qty)) * Decimal(str(item.unit_price))))
 
     if item.product_type == "sleeve":
         diameter = _parse_float(str(specs.get("diameter", "")))
