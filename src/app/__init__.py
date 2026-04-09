@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
-from flask import Flask, request
+from flask import Flask, Response, request, url_for
 from flask_login import current_user
 
 from . import models  # noqa: F401
@@ -47,6 +47,8 @@ def create_app() -> Flask:
             return None
         if current_user.is_authenticated:
             return None
+        if request.headers.get("HX-Request"):
+            return Response("", 200, {"HX-Redirect": url_for("auth.login")})
         return login_manager.unauthorized()
 
     @app.context_processor
