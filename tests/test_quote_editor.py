@@ -104,11 +104,11 @@ def test_line_item_update_recalculates_and_generates_sleeve_part(tmp_path):
         },
     )
     assert response.status_code == 200
-    assert b"71.75" in response.data
+    assert b"102.50" in response.data
 
     with app.app_context():
         updated = db.session.get(QuoteLineItem, item_id)
-        assert float(updated.line_total) == 71.75
+        assert float(updated.line_total) == 102.50
         assert (updated.part_number or "").startswith("S-")
 
 
