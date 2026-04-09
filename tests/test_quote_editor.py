@@ -233,3 +233,39 @@ def test_add_remove_move_and_status_transitions(tmp_path):
     detail_resp = client.get(f"/quotes/{quote_id}")
     assert detail_resp.status_code == 200
     assert b"500 pcs" not in detail_resp.data
+
+
+def test_add_custom_type_line_item_persists_and_renders(tmp_path):
+    app = _make_app(tmp_path)
+    with app.app_context():
+        db.create_all()
+        user = User(email="custom@example.com", name="Custom User", password_hash="x")
+        db.session.add(user)
+        quote = Quote(quote_number="126-203", status=QuoteStatus.NEW)
+        db.session.add(quote)
+        db.session.commit()
+        quote_id = quote.id
+        user_id = user.id
+
+    client = app.test_client()
+    _login(client, user_id)
+    response = client.post(
+        f"/quotes/{quote_id}/line-items/add",
+        data={
+            "product_type": "custom",
+            "custom_product_type": "Field Service Special",
+            "description": "Site-specific work",
+            "quantity": "2",
+            "unit_price": "0",
+        },
+    )
+    assert response.status_code == 200
+    assert b"Needs Pricing" in response.data
+    assert b"Field Service Special" in response.data
+
+    with app.app_context():
+        line_item = db.session.query(QuoteLineItem).filter_by(quote_id=quote_id).first()
+        assert line_item is not None
+        assert line_item.product_type == "Field Service Special"
+        assert float(line_item.unit_price) == 0.0
+        assert float(line_item.line_total) == 0.0
