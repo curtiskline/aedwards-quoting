@@ -112,6 +112,50 @@ def test_line_item_update_recalculates_and_generates_sleeve_part(tmp_path):
         assert (updated.part_number or "").startswith("S-")
 
 
+def test_line_item_calc_total_returns_partial_without_db_write(tmp_path):
+    app = _make_app(tmp_path)
+    with app.app_context():
+        db.create_all()
+        user = User(email="calc@example.com", name="Calc User", password_hash="x")
+        db.session.add(user)
+        quote = Quote(quote_number="126-220", status=QuoteStatus.IN_REVIEW)
+        db.session.add(quote)
+        db.session.flush()
+        li = QuoteLineItem(
+            quote_id=quote.id,
+            product_type="sleeve",
+            description="Reactive sleeve",
+            quantity=5,
+            unit_price=3,
+            line_total=15,
+            specs_json={"diameter": "24", "length_ft": "10"},
+            sort_order=1,
+        )
+        db.session.add(li)
+        db.session.commit()
+        quote_id = quote.id
+        item_id = li.id
+        user_id = user.id
+
+    client = app.test_client()
+    _login(client, user_id)
+    response = client.post(
+        f"/quotes/{quote_id}/line-items/{item_id}/calc-total",
+        data={"quantity": "7", "unit_price": "10.25"},
+    )
+    assert response.status_code == 200
+    assert b'id="line-total-' in response.data
+    assert b"$102.50" in response.data
+    assert b"editor-line-items" not in response.data
+
+    with app.app_context():
+        unchanged = db.session.get(QuoteLineItem, item_id)
+        assert unchanged is not None
+        assert float(unchanged.quantity) == 5.0
+        assert float(unchanged.unit_price) == 3.0
+        assert float(unchanged.line_total) == 15.0
+
+
 def test_add_remove_move_and_status_transitions(tmp_path):
     app = _make_app(tmp_path)
     with app.app_context():
