@@ -6,10 +6,10 @@ from decimal import Decimal
 
 # Price per pound lookup table: wall_thickness -> (GR50 price, GR65 price)
 DEFAULT_PRICE_PER_LB: dict[str, tuple[Decimal, Decimal]] = {
-    "0.25": (Decimal("2.82"), Decimal("2.92")),
-    "0.3125": (Decimal("2.69"), Decimal("2.79")),
-    "0.375": (Decimal("2.57"), Decimal("2.67")),
-    "0.5": (Decimal("2.52"), Decimal("2.62")),
+    "0.25": (Decimal("3.01"), Decimal("3.11")),
+    "0.3125": (Decimal("2.86"), Decimal("2.96")),
+    "0.375": (Decimal("2.65"), Decimal("2.75")),
+    "0.5": (Decimal("2.59"), Decimal("2.69")),
     "0.625": (Decimal("2.52"), Decimal("2.62")),
     "0.75": (Decimal("2.52"), Decimal("2.62")),
 }
@@ -33,8 +33,8 @@ DEFAULT_BAG_PRICING: list[tuple[int, int, str, int, Decimal]] = [
 # Flat and accessory/service style rates: key -> (price, unit)
 DEFAULT_OTHER_PRICING: dict[str, tuple[Decimal, str]] = {
     "bag_fill": (Decimal("0.02"), "per_lb"),
-    "omegawrap_carbon": (Decimal("650"), "per_roll"),
-    "omegawrap_eglass": (Decimal("420"), "per_roll"),
+    "omegawrap_carbon": (Decimal("680"), "per_roll"),
+    "omegawrap_eglass": (Decimal("470"), "per_roll"),
     "omegawrap_magnum": (Decimal("390"), "per_roll"),
     "isolation_wrap": (Decimal("200"), "per_roll"),
     "resin": (Decimal("125"), "per_quart"),
@@ -43,9 +43,10 @@ DEFAULT_OTHER_PRICING: dict[str, tuple[Decimal, str]] = {
     "porcupine_roller": (Decimal("210"), "each"),
     "magnet_set": (Decimal("80"), "per_set"),
     "accessory_kit": (Decimal("122"), "per_kit"),
-    "plastic_wrap_large": (Decimal("101"), "per_roll"),
+    "plastic_wrap_large": (Decimal("110"), "per_roll"),
     "pipejacks": (Decimal("1800"), "each"),
     "pipejacks_large": (Decimal("2200"), "each"),
+    "concrete_coating": (Decimal("1"), "per_inch_od_per_foot"),
     "weld_cap": (Decimal("15"), "each"),
     "backing_strip": (Decimal("10"), "each"),
     "supervisor": (Decimal("1950"), "per_day"),
@@ -55,8 +56,8 @@ DEFAULT_OTHER_PRICING: dict[str, tuple[Decimal, str]] = {
 }
 
 DEFAULT_SERVICE_PRICES: dict[str, Decimal] = {
-    "milling": Decimal("30"),
-    "painting": Decimal("40"),
+    "milling": Decimal("35"),
+    "painting": Decimal("45"),
 }
 
 

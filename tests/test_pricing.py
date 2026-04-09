@@ -45,13 +45,13 @@ def test_weight_per_ft_calculation():
 def test_price_per_lb_lookup():
     """Test price per pound lookup."""
     # GR50, 1/4" wall
-    assert get_price_per_lb(0.25, 50) == Decimal("2.82")
+    assert get_price_per_lb(0.25, 50) == Decimal("3.01")
     # GR65, 1/4" wall
-    assert get_price_per_lb(0.25, 65) == Decimal("2.92")
+    assert get_price_per_lb(0.25, 65) == Decimal("3.11")
     # GR50, 3/8" wall
-    assert get_price_per_lb(0.375, 50) == Decimal("2.57")
+    assert get_price_per_lb(0.375, 50) == Decimal("2.65")
     # GR65, 1/2" wall (tier for >= 0.5)
-    assert get_price_per_lb(0.5, 65) == Decimal("2.62")
+    assert get_price_per_lb(0.5, 65) == Decimal("2.69")
 
 
 def test_sleeve_price_calculation():
@@ -69,10 +69,10 @@ def test_sleeve_price_calculation():
     assert weight_per_ft == expected_weight.quantize(Decimal("0.01"))
 
     # Verify price per lb
-    assert price_per_lb == Decimal("2.82")
+    assert price_per_lb == Decimal("3.01")
 
     # Verify unit price = weight_per_ft * price_per_lb * length
-    expected_unit = expected_weight.quantize(Decimal("0.01")) * Decimal("2.82") * 10
+    expected_unit = expected_weight.quantize(Decimal("0.01")) * Decimal("3.01") * 10
     assert unit_price == expected_unit.quantize(Decimal("0.01"))
 
 
@@ -81,17 +81,17 @@ def test_sleeve_price_with_services():
     # Base price
     base_price, _, _ = calculate_sleeve_price(6.625, 0.25, 50, 10)
 
-    # With milling (+$30)
+    # With milling (+$35)
     with_milling, _, _ = calculate_sleeve_price(6.625, 0.25, 50, 10, milling=True)
-    assert with_milling == base_price + Decimal("30")
+    assert with_milling == base_price + Decimal("35")
 
-    # With painting (+$40)
+    # With painting (+$45)
     with_painting, _, _ = calculate_sleeve_price(6.625, 0.25, 50, 10, painting=True)
-    assert with_painting == base_price + Decimal("40")
+    assert with_painting == base_price + Decimal("45")
 
-    # With both (+$70)
+    # With both (+$80)
     with_both, _, _ = calculate_sleeve_price(6.625, 0.25, 50, 10, milling=True, painting=True)
-    assert with_both == base_price + Decimal("70")
+    assert with_both == base_price + Decimal("80")
 
 
 def test_part_number_generation():
@@ -431,8 +431,8 @@ def test_price_item_omegawrap_carbon():
     result = price_item(item, sort_order=1)
     assert result is not None
     assert result.product_type == "omegawrap"
-    assert result.unit_price == Decimal("650")
-    assert result.total == Decimal("1950.00")
+    assert result.unit_price == Decimal("680")
+    assert result.total == Decimal("2040.00")
 
 
 def test_price_item_omegawrap_eglass():
@@ -444,8 +444,8 @@ def test_price_item_omegawrap_eglass():
     )
     result = price_item(item, sort_order=1)
     assert result is not None
-    assert result.unit_price == Decimal("420")
-    assert result.total == Decimal("840.00")
+    assert result.unit_price == Decimal("470")
+    assert result.total == Decimal("940.00")
 
 
 def test_price_item_omegawrap_magnum():
@@ -470,7 +470,7 @@ def test_price_item_omegawrap_default_carbon():
     )
     result = price_item(item, sort_order=1)
     assert result is not None
-    assert result.unit_price == Decimal("650")
+    assert result.unit_price == Decimal("680")
 
 
 def test_price_item_accessory_resin():
