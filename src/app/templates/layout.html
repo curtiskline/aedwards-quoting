@@ -88,6 +88,29 @@
         opacity: 0.5;
         cursor: not-allowed;
       }
+      /* HTMX loading states */
+      .htmx-request button[type="submit"],
+      button.htmx-request {
+        opacity: 0.6;
+        cursor: wait;
+        pointer-events: none;
+      }
+      .htmx-request button[type="submit"]::after,
+      button.htmx-request::after {
+        content: "";
+        display: inline-block;
+        width: 0.75em;
+        height: 0.75em;
+        margin-left: 0.4em;
+        border: 2px solid #fff;
+        border-top-color: transparent;
+        border-radius: 50%;
+        animation: htmx-spin 0.6s linear infinite;
+        vertical-align: middle;
+      }
+      @keyframes htmx-spin {
+        to { transform: rotate(360deg); }
+      }
       table {
         width: 100%;
         border-collapse: collapse;
