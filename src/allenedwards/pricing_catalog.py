@@ -46,6 +46,8 @@ DEFAULT_OTHER_PRICING: dict[str, tuple[Decimal, str]] = {
     "plastic_wrap_large": (Decimal("101"), "per_roll"),
     "pipejacks": (Decimal("1800"), "each"),
     "pipejacks_large": (Decimal("2200"), "each"),
+    "weld_cap": (Decimal("15"), "each"),
+    "backing_strip": (Decimal("10"), "each"),
     "supervisor": (Decimal("1950"), "per_day"),
     "trainer_torch": (Decimal("6000"), "per_package"),
     "kickoff_training": (Decimal("6000"), "per_package"),

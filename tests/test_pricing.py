@@ -239,8 +239,8 @@ def test_price_item_girth_weld_different_tiers():
 
 
 def test_price_item_girth_weld_missing_data():
-    """Test girth weld returns None for missing required data."""
-    # Missing diameter
+    """Test girth weld returns None for missing diameter, but NOT for missing wall_thickness."""
+    # Missing diameter — should return None
     item = ParsedItem(
         product_type="girth_weld",
         quantity=4,
@@ -252,7 +252,7 @@ def test_price_item_girth_weld_missing_data():
     )
     assert price_item(item, sort_order=1) is None
 
-    # Diameter outside supported ranges
+    # Diameter outside supported ranges — should return None
     item_too_small = ParsedItem(
         product_type="girth_weld",
         quantity=4,
@@ -263,6 +263,25 @@ def test_price_item_girth_weld_missing_data():
         length_ft=12,
     )
     assert price_item(item_too_small, sort_order=1) is None
+
+
+def test_price_item_girth_weld_no_wall_thickness():
+    """Girth welds are priced per SET by diameter — wall_thickness is NOT required."""
+    item = ParsedItem(
+        product_type="girth_weld",
+        quantity=2,
+        description="20in Girth Weld Sleeves",
+        diameter=20,
+        wall_thickness=None,
+        grade=50,
+        length_ft=6,
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.product_type == "girth_weld"
+    assert result.unit_price == Decimal("500")  # 20-31" tier
+    assert result.total == Decimal("1000.00")
+    assert "wall thickness defaulted" in result.notes
 
 
 def test_price_item_converts_bundle_count_to_piece_count_for_standard_sleeves():
@@ -450,6 +469,34 @@ def test_price_item_accessory_putty():
     assert result is not None
     assert result.unit_price == Decimal("130")
     assert result.total == Decimal("260.00")
+
+
+def test_price_item_accessory_weld_cap():
+    """Test weld cap accessory pricing."""
+    item = ParsedItem(
+        product_type="accessory",
+        quantity=10,
+        description="12in Weld Caps",
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.product_type == "accessory"
+    assert result.unit_price == Decimal("15")
+    assert result.total == Decimal("150.00")
+
+
+def test_price_item_accessory_backing_strip():
+    """Test backing strip accessory pricing."""
+    item = ParsedItem(
+        product_type="accessory",
+        quantity=6,
+        description="6in Backing Strips",
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.product_type == "accessory"
+    assert result.unit_price == Decimal("10")
+    assert result.total == Decimal("60.00")
 
 
 def test_price_item_accessory_unknown():
