@@ -89,16 +89,27 @@
         cursor: not-allowed;
       }
       /* HTMX loading states */
+      button {
+        transition: opacity 0.15s ease;
+      }
+      button::after {
+        content: "";
+        display: inline-block;
+        width: 0;
+        overflow: hidden;
+        vertical-align: middle;
+        transition: width 0.15s ease, margin 0.15s ease;
+      }
       .htmx-request button[type="submit"],
+      .htmx-request > button,
       button.htmx-request {
         opacity: 0.6;
         cursor: wait;
         pointer-events: none;
       }
       .htmx-request button[type="submit"]::after,
+      .htmx-request > button::after,
       button.htmx-request::after {
-        content: "";
-        display: inline-block;
         width: 0.75em;
         height: 0.75em;
         margin-left: 0.4em;
@@ -106,7 +117,6 @@
         border-top-color: transparent;
         border-radius: 50%;
         animation: htmx-spin 0.6s linear infinite;
-        vertical-align: middle;
       }
       @keyframes htmx-spin {
         to { transform: rotate(360deg); }
@@ -285,5 +295,23 @@
       {% endwith %}
       {% block body %}{% endblock %}
     </main>
+    <script>
+      // Ensure loading indicator is visible for at least 300ms
+      document.body.addEventListener("htmx:beforeRequest", function(e) {
+        e.detail.elt._htmxReqStart = Date.now();
+      });
+      document.body.addEventListener("htmx:afterRequest", function(e) {
+        var start = e.detail.elt._htmxReqStart;
+        if (!start) return;
+        var elapsed = Date.now() - start;
+        var remain = 300 - elapsed;
+        if (remain > 0) {
+          e.detail.elt.classList.add("htmx-request");
+          setTimeout(function() {
+            e.detail.elt.classList.remove("htmx-request");
+          }, remain);
+        }
+      });
+    </script>
   </body>
 </html>
