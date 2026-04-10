@@ -16,5 +16,6 @@
       </label>
     </div>
     <button type="submit">Save Shipping Config</button>
+    {% if shipping_config.just_saved %}<span class="save-confirmation">Saved</span>{% endif %}
   </form>
 </section>

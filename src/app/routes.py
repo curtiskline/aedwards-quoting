@@ -1113,7 +1113,9 @@ def update_shipping_config():
     cfg.rate_overrides_json = _parse_rate_overrides(request.form.get("rate_overrides") or "")
     db.session.commit()
 
-    return render_template("partials/shipping_config_form.html", shipping_config=_shipping_config_form_data(cfg))
+    form_data = _shipping_config_form_data(cfg)
+    form_data["just_saved"] = True
+    return render_template("partials/shipping_config_form.html", shipping_config=form_data)
 
 
 def _db_quote_to_pricing_quote(quote: Quote) -> PricingQuote:
