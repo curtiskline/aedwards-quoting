@@ -8,7 +8,7 @@ import pytest
 
 from app import create_app
 from app.extensions import db as _db
-from app.models import Quote, QuoteLineItem, QuoteStatus, User
+from app.models import Contact, Customer, Quote, QuoteLineItem, QuoteStatus, ShipToAddress, User
 
 
 @pytest.fixture()
@@ -75,6 +75,46 @@ def quote_with_items(app):
         yield q.id
 
 
+@pytest.fixture()
+def linked_customer_quote(app):
+    with app.app_context():
+        customer = Customer(company_name="Kline", discount_pct=0)
+        _db.session.add(customer)
+        _db.session.flush()
+
+        _db.session.add(
+            Contact(
+                customer_id=customer.id,
+                name="Kline Buyer",
+                email="buyer@kline.com",
+                phone="555-1000",
+            )
+        )
+        _db.session.add(
+            ShipToAddress(
+                customer_id=customer.id,
+                address_line1="14831 E 38th St",
+                address_line2="Suite 200",
+                city="Tulsa",
+                state="OK",
+                postal_code="74134",
+                country="US",
+                is_default=True,
+            )
+        )
+        quote = Quote(
+            quote_number="QU-2026-9002",
+            status=QuoteStatus.NEW,
+            customer_id=customer.id,
+            customer_name_raw=customer.company_name,
+            contact_name="Kline Buyer",
+            contact_email="buyer@kline.com",
+        )
+        _db.session.add(quote)
+        _db.session.commit()
+        yield quote.id, customer.id
+
+
 # --- GET detail (main_bp route) ---
 
 def test_detail_page_renders(client, quote_with_items):
@@ -82,6 +122,18 @@ def test_detail_page_renders(client, quote_with_items):
     assert resp.status_code == 200
     assert b"QU-2026-9001" in resp.data
     assert b"Test sleeve 1" in resp.data
+
+
+def test_detail_hydrates_ship_to_from_linked_customer(client, linked_customer_quote, app):
+    quote_id, _ = linked_customer_quote
+    resp = client.get(f"/quotes/{quote_id}")
+    assert resp.status_code == 200
+    assert b'14831 E 38th St' in resp.data
+    assert b'value="Tulsa"' in resp.data
+    with app.app_context():
+        q = _db.session.get(Quote, quote_id)
+        assert q.ship_to_json is not None
+        assert q.ship_to_json["city"] == "Tulsa"
 
 
 def test_detail_404(client):
@@ -149,6 +201,35 @@ def test_update_customer(client, quote_with_items, app):
         q = _db.session.get(Quote, quote_with_items)
         assert q.customer_name_raw == "New Company"
         assert q.ship_to_json["city"] == "OKC"
+
+
+def test_update_customer_persists_back_to_linked_customer(client, linked_customer_quote, app):
+    quote_id, customer_id = linked_customer_quote
+    resp = client.post(
+        f"/quotes/{quote_id}/customer",
+        data={
+            "customer_name_raw": "Kline Energy",
+            "contact_name": "Taylor Buyer",
+            "contact_email": "buyer@kline.com",
+            "contact_phone": "555-7777",
+            "ship_to_address_line1": "15000 E 39th St",
+            "ship_to_address_line2": "",
+            "ship_to_city": "Broken Arrow",
+            "ship_to_state": "OK",
+            "ship_to_postal_code": "74012",
+            "ship_to_country": "US",
+        },
+    )
+    assert resp.status_code == 200
+    with app.app_context():
+        customer = _db.session.get(Customer, customer_id)
+        assert customer.company_name == "Kline Energy"
+        assert customer.contacts[0].name == "Taylor Buyer"
+        assert customer.contacts[0].phone == "555-7777"
+        default_addr = next(a for a in customer.ship_to_addresses if a.is_default)
+        assert default_addr.address_line1 == "15000 E 39th St"
+        assert default_addr.city == "Broken Arrow"
+        assert default_addr.postal_code == "74012"
 
 
 # --- Line items (main_bp routes) ---

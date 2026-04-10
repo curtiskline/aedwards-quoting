@@ -15,7 +15,18 @@ from flask_login import login_required
 from sqlalchemy import inspect
 
 from .extensions import db
-from .models import AuditLog, PricingTable, Quote, QuoteLineItem, QuoteStatus, QuoteVersion, User
+from .models import (
+    AuditLog,
+    Contact,
+    Customer,
+    PricingTable,
+    Quote,
+    QuoteLineItem,
+    QuoteStatus,
+    QuoteVersion,
+    ShipToAddress,
+    User,
+)
 from allenedwards.pricing import (
     STANDARD_BUNDLE_PIECES,
     bundle_round,
@@ -327,6 +338,125 @@ def _render_customer_info(quote: Quote):
     return render_template("quotes/_customer_info.html", **_quote_context(quote))
 
 
+def _default_customer_ship_to(customer: Customer) -> dict | None:
+    address = next((a for a in customer.ship_to_addresses if a.is_default), None)
+    if address is None and customer.ship_to_addresses:
+        address = customer.ship_to_addresses[0]
+    if address is None:
+        return None
+    return {
+        "address_line1": address.address_line1,
+        "address_line2": address.address_line2 or "",
+        "city": address.city,
+        "state": address.state,
+        "postal_code": address.postal_code,
+        "country": address.country,
+    }
+
+
+def _hydrate_quote_ship_to_from_customer(quote: Quote) -> bool:
+    if quote.ship_to_json or quote.customer_id is None:
+        return False
+    customer = db.session.get(Customer, quote.customer_id)
+    if customer is None:
+        return False
+    default_ship_to = _default_customer_ship_to(customer)
+    if not default_ship_to:
+        return False
+    quote.ship_to_json = default_ship_to
+    if not quote.customer_name_raw:
+        quote.customer_name_raw = customer.company_name
+    return True
+
+
+def _sync_customer_contact_from_quote(customer: Customer, quote: Quote) -> None:
+    if not (quote.contact_name or quote.contact_email or quote.contact_phone):
+        return
+
+    contact = None
+    if quote.contact_email:
+        normalized = quote.contact_email.strip().lower()
+        contact = next((c for c in customer.contacts if (c.email or "").strip().lower() == normalized), None)
+    if contact is None and customer.contacts:
+        contact = customer.contacts[0]
+
+    if contact is None:
+        if not quote.contact_email:
+            return
+        contact = Contact(
+            customer_id=customer.id,
+            name=quote.contact_name or customer.company_name or "Primary Contact",
+            email=quote.contact_email,
+            phone=quote.contact_phone or None,
+        )
+        db.session.add(contact)
+        return
+
+    if quote.contact_name:
+        contact.name = quote.contact_name
+    if quote.contact_email:
+        contact.email = quote.contact_email
+    contact.phone = quote.contact_phone or None
+
+
+def _sync_customer_ship_to_from_quote(customer: Customer, quote: Quote) -> None:
+    if not quote.ship_to_json:
+        return
+
+    incoming = {
+        "address_line1": (quote.ship_to_json.get("address_line1") or "").strip(),
+        "address_line2": (quote.ship_to_json.get("address_line2") or "").strip(),
+        "city": (quote.ship_to_json.get("city") or "").strip(),
+        "state": (quote.ship_to_json.get("state") or "").strip(),
+        "postal_code": (quote.ship_to_json.get("postal_code") or "").strip(),
+        "country": (quote.ship_to_json.get("country") or "").strip(),
+    }
+    address = next((a for a in customer.ship_to_addresses if a.is_default), None)
+    if address is None and customer.ship_to_addresses:
+        address = customer.ship_to_addresses[0]
+        address.is_default = True
+
+    if address is None:
+        if not (incoming["address_line1"] and incoming["city"] and incoming["state"] and incoming["postal_code"]):
+            return
+        address = ShipToAddress(
+            customer_id=customer.id,
+            address_line1=incoming["address_line1"],
+            address_line2=incoming["address_line2"] or None,
+            city=incoming["city"],
+            state=incoming["state"],
+            postal_code=incoming["postal_code"],
+            country=incoming["country"] or "US",
+            is_default=True,
+        )
+        db.session.add(address)
+        return
+
+    if incoming["address_line1"]:
+        address.address_line1 = incoming["address_line1"]
+    address.address_line2 = incoming["address_line2"] or None
+    if incoming["city"]:
+        address.city = incoming["city"]
+    if incoming["state"]:
+        address.state = incoming["state"]
+    if incoming["postal_code"]:
+        address.postal_code = incoming["postal_code"]
+    if incoming["country"]:
+        address.country = incoming["country"]
+
+
+def _sync_linked_customer_from_quote(quote: Quote) -> None:
+    if quote.customer_id is None:
+        return
+    customer = db.session.get(Customer, quote.customer_id)
+    if customer is None:
+        return
+    if quote.customer_name_raw:
+        customer.company_name = quote.customer_name_raw
+    _sync_customer_contact_from_quote(customer, quote)
+    _sync_customer_ship_to_from_quote(customer, quote)
+
+
 def _render_line_items(quote: Quote):
     return render_template("quotes/_line_items.html", **_quote_context(quote))
 
@@ -334,11 +464,14 @@ def _render_line_items(quote: Quote):
 @main_bp.get("/quotes/<int:quote_id>")
 def quote_detail(quote_id: int):
     quote = db.get_or_404(Quote, quote_id)
+    needs_commit = _hydrate_quote_ship_to_from_customer(quote)
     user = _current_user()
     if quote.reviewed_by is None and user is not None:
         quote.reviewed_by = user.id
         if quote.status in {QuoteStatus.NEW, QuoteStatus.NEEDS_PRICING}:
             quote.status = QuoteStatus.IN_REVIEW
+        needs_commit = True
+    if needs_commit:
         db.session.commit()
     if request.headers.get("HX-Request") == "true":
         return _render_editor(quote)
@@ -375,6 +508,7 @@ def quote_update_customer(quote_id: int):
         quote.ship_to_json = ship_to
     else:
         quote.ship_to_json = None
+    _sync_linked_customer_from_quote(quote)
     db.session.commit()
     return _render_customer_info(quote)
 
