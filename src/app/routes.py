@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import math
 import os
+import re
 import tempfile
 from datetime import datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
@@ -1208,10 +1209,12 @@ def update_shipping_config():
 @main_bp.post("/admin/product-types/add")
 @login_required
 def add_product_type():
-    name = (request.form.get("name") or "").strip().lower().replace(" ", "_")
     display_label = (request.form.get("display_label") or "").strip()
-    if not name or not display_label:
-        abort(400, description="Name and display label are required")
+    if not display_label:
+        abort(400, description="Display label is required")
+    name = re.sub(r"[^a-z0-9]+", "_", display_label.lower()).strip("_")
+    if not name:
+        abort(400, description="Display label must contain at least one letter or number")
     if db.session.query(ProductType).filter_by(name=name).first() is not None:
         abort(400, description="Product type name already exists")
 

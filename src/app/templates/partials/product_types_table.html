@@ -3,11 +3,8 @@
 
   <form method="post" action="/admin/product-types/add" hx-post="/admin/product-types/add" hx-target="#product-types-card" hx-swap="outerHTML">
     <div class="quote-editor-grid quote-editor-grid-wide">
-      <label>Name
-        <input name="name" placeholder="field_service" required />
-      </label>
-      <label>Display Label
-        <input name="display_label" placeholder="Field Service" required />
+      <label>New Product Type
+        <input name="display_label" placeholder="e.g. Field Service" required />
       </label>
     </div>
     <button type="submit">Add Type</button>
@@ -17,7 +14,6 @@
   <table class="pricing-table">
     <thead>
       <tr>
-        <th>Name</th>
         <th>Display Label</th>
         <th>Sort</th>
         <th>Active</th>
@@ -27,10 +23,10 @@
     <tbody>
       {% for row in product_types %}
         <tr>
-          <td><code>{{ row.name }}</code></td>
           <td>
             <form method="post" action="/admin/product-types/{{ row.id }}/update" hx-post="/admin/product-types/{{ row.id }}/update" hx-target="#product-types-card" hx-swap="outerHTML" class="types-inline-form">
               <input name="display_label" value="{{ row.display_label }}" required />
+              <span class="types-code-name">{{ row.name }}</span>
           </td>
           <td class="types-sort-col">{{ row.sort_order }}</td>
           <td>
@@ -60,6 +56,12 @@
 <style>
   .types-inline-form {
     margin: 0;
+  }
+  .types-code-name {
+    display: block;
+    font-size: 0.72rem;
+    color: #9ca3af;
+    font-family: monospace;
   }
   .types-sort-col {
     width: 1%;

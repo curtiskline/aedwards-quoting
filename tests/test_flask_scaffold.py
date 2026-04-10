@@ -101,7 +101,7 @@ def test_pricing_admin_page_and_inline_update(tmp_path: Path) -> None:
         page = client.get("/admin/pricing")
         assert page.status_code == 200
         assert b"Admin" in page.data
-        assert b"Shipping Configuration" in page.data
+        assert b"Auto-Ship Pricing Defaults" in page.data
         assert b"Product Types" in page.data
 
         conn = sqlite3.connect(db_path)

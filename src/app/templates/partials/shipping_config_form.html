@@ -1,21 +1,32 @@
 <section id="shipping-config-card" class="quote-editor-section">
-  <h2>Shipping Configuration</h2>
+  <h2>Auto-Ship Pricing Defaults</h2>
+  <p class="form-help">These settings control the automatic shipping &amp; handling line item added to quotes. Shipping cost is calculated as <strong>weight &times; distance &times; rate</strong>, using the quote's ship-to ZIP and the nearest origin warehouse below.</p>
+
   <form method="post" action="/admin/shipping-config" hx-post="/admin/shipping-config" hx-target="#shipping-config-card" hx-swap="outerHTML">
     <div class="quote-editor-grid quote-editor-grid-wide">
-      <label>Default Rate ($/lb/mile)
-        <input name="default_rate_per_lb_mile" type="number" min="0" step="0.000001" value="{{ '%.6f'|format(shipping_config.default_rate_per_lb_mile) }}" required />
-      </label>
-      <label>Default Length (ft)
-        <input name="default_length_ft" type="number" min="0" step="0.01" value="{{ '%.2f'|format(shipping_config.default_length_ft) }}" required />
-      </label>
-      <label>Origin ZIP(s)
+
+      <label>Warehouse Origin ZIP(s)
+        <span class="field-help">Your shipping origin(s). Distance is measured from the nearest one to the customer's ship-to ZIP. Comma-separated if multiple.</span>
         <input name="origin_zip_codes" value="{{ shipping_config.origin_zip_codes }}" placeholder="74103, 77002" required />
       </label>
-      <label>Rate Overrides (one per line: product_type=rate)
+
+      <label>Default Rate ($ per lb per mile)
+        <span class="field-help">Base freight rate applied to all product types unless overridden below.</span>
+        <input name="default_rate_per_lb_mile" type="number" min="0" step="0.000001" value="{{ '%.6f'|format(shipping_config.default_rate_per_lb_mile) }}" required />
+      </label>
+
+      <label>Default Product Length (ft)
+        <span class="field-help">Assumed length when a line item doesn't specify one. Used to calculate total weight (weight-per-foot &times; length &times; qty).</span>
+        <input name="default_length_ft" type="number" min="0" step="0.01" value="{{ '%.2f'|format(shipping_config.default_length_ft) }}" required />
+      </label>
+
+      <label>Per-Product-Type Rate Overrides
+        <span class="field-help">Override the default rate for specific product types. One per line: <code>product_type=rate</code>. Leave blank to use the default rate for all types.</span>
         <textarea name="rate_overrides" rows="4" placeholder="sleeve=0.000700&#10;oversleeve=0.000650">{{ shipping_config.rate_overrides_text }}</textarea>
       </label>
+
     </div>
-    <button type="submit">Save Shipping Config</button>
+    <button type="submit">Save</button>
     {% if shipping_config.just_saved %}<span class="save-confirmation">Saved</span>{% endif %}
   </form>
 </section>
