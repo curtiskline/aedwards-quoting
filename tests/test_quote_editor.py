@@ -5,7 +5,7 @@ import os
 from app import create_app
 from app.config import Config
 from app.extensions import db
-from app.models import PricingTable, Quote, QuoteLineItem, QuoteStatus, User
+from app.models import PricingTable, ProductType, Quote, QuoteLineItem, QuoteStatus, User
 
 
 def _make_app(tmp_path):
@@ -235,10 +235,17 @@ def test_add_remove_move_and_status_transitions(tmp_path):
     assert b"500 pcs" not in detail_resp.data
 
 
-def test_add_custom_type_line_item_persists_and_renders(tmp_path):
+def test_line_item_type_dropdown_uses_active_db_product_types(tmp_path):
     app = _make_app(tmp_path)
     with app.app_context():
         db.create_all()
+        db.session.add_all(
+            [
+                ProductType(name="sleeve", display_label="Sleeve", sort_order=1, is_active=True),
+                ProductType(name="service", display_label="Service", sort_order=2, is_active=True),
+                ProductType(name="legacy", display_label="Legacy", sort_order=3, is_active=False),
+            ]
+        )
         user = User(email="custom@example.com", name="Custom User", password_hash="x")
         db.session.add(user)
         quote = Quote(quote_number="126-203", status=QuoteStatus.NEW)
@@ -249,26 +256,12 @@ def test_add_custom_type_line_item_persists_and_renders(tmp_path):
 
     client = app.test_client()
     _login(client, user_id)
-    response = client.post(
-        f"/quotes/{quote_id}/line-items/add",
-        data={
-            "product_type": "custom",
-            "custom_product_type": "Field Service Special",
-            "description": "Site-specific work",
-            "quantity": "2",
-            "unit_price": "0",
-        },
-    )
+    response = client.get(f"/quotes/{quote_id}")
     assert response.status_code == 200
-    assert b"Needs Pricing" in response.data
-    assert b"Field Service Special" in response.data
-
-    with app.app_context():
-        line_item = db.session.query(QuoteLineItem).filter_by(quote_id=quote_id).first()
-        assert line_item is not None
-        assert line_item.product_type == "Field Service Special"
-        assert float(line_item.unit_price) == 0.0
-        assert float(line_item.line_total) == 0.0
+    assert b"Sleeve" in response.data
+    assert b"Service" in response.data
+    assert b"Legacy" not in response.data
+    assert b"Other / Custom" not in response.data
 
 
 def test_add_shipping_line_item(tmp_path):
@@ -304,6 +297,69 @@ def test_add_shipping_line_item(tmp_path):
         assert line_item.product_type == "shipping"
         assert float(line_item.unit_price) == 1250.0
         assert float(line_item.line_total) == 1250.0
+
+
+def test_add_shipping_line_item_auto_trigger_uses_calculation(tmp_path):
+    app = _make_app(tmp_path)
+    with app.app_context():
+        db.create_all()
+        user = User(email="ship-auto@example.com", name="Ship Auto", password_hash="x")
+        db.session.add(user)
+        quote = Quote(
+            quote_number="126-204A",
+            status=QuoteStatus.NEW,
+            ship_to_json={
+                "address_line1": "123 Main",
+                "city": "Oklahoma City",
+                "state": "OK",
+                "postal_code": "73102",
+                "country": "US",
+            },
+        )
+        db.session.add(quote)
+        db.session.flush()
+        db.session.add(
+            QuoteLineItem(
+                quote_id=quote.id,
+                product_type="sleeve",
+                description="Calculated Sleeve",
+                quantity=5,
+                unit_price=100,
+                line_total=500,
+                specs_json={"diameter": "24", "wall_thickness": "0.5", "length_ft": "10"},
+                sort_order=1,
+            )
+        )
+        db.session.commit()
+        quote_id = quote.id
+        user_id = user.id
+
+    client = app.test_client()
+    _login(client, user_id)
+    response = client.post(
+        f"/quotes/{quote_id}/line-items/add",
+        data={
+            "product_type": "shipping",
+            "description": "",
+            "quantity": "1",
+            "unit_price": "0",
+            "auto_shipping_trigger": "1",
+        },
+    )
+    assert response.status_code == 200
+    assert b"Shipping Calc:" in response.data
+
+    with app.app_context():
+        line_item = (
+            db.session.query(QuoteLineItem)
+            .filter_by(quote_id=quote_id, product_type="shipping")
+            .first()
+        )
+        assert line_item is not None
+        assert float(line_item.unit_price) > 0.0
+        specs = dict(line_item.specs_json or {})
+        assert specs.get("auto_calculated_shipping") is True
+        assert specs.get("manual_override") is False
 
 
 def test_auto_calculates_shipping_from_weight_and_distance(tmp_path):

@@ -1,23 +1,21 @@
 <section id="editor-line-items" class="quote-editor-section line-items-section">
-  {% set standard_product_types = ['sleeve', 'bag', 'girth_weld', 'compression', 'oversleeve', 'accessory', 'service', 'shipping'] %}
-  {% set type_labels = {'shipping': 'Shipping & Handling'} %}
   <h2>Line Items</h2>
   <div class="line-item-list">
     {% for item in line_items %}
-      {% set is_custom_type = item.product_type not in standard_product_types %}
+      {% set has_item_type = item.product_type in (product_type_choices | map(attribute='name') | list) %}
       <article class="line-item-card{% if item.needs_pricing %} needs-pricing{% endif %}">
         <form id="line-item-{{ item.id }}-form" method="post" action="/quotes/{{ quote.id }}/line-items/{{ item.id }}/update" hx-post="/quotes/{{ quote.id }}/line-items/{{ item.id }}/update" hx-target="#editor-line-items" hx-swap="outerHTML" class="line-item-form">
+          <input type="hidden" name="auto_shipping_trigger" value="0" />
           <div class="line-item-row line-item-row-top">
             <label>Type
-              <select name="product_type" class="js-product-type-select">
-                {% for pt in standard_product_types %}
-                  <option value="{{ pt }}" {% if item.product_type == pt %}selected{% endif %}>{{ type_labels[pt] if pt in type_labels else pt.replace('_', ' ').title() }}</option>
+              <select name="product_type" class="js-product-type-select" data-initial-type="{{ item.product_type }}">
+                {% for pt in product_type_choices %}
+                  <option value="{{ pt.name }}" {% if item.product_type == pt.name %}selected{% endif %}>{{ pt.label }}</option>
                 {% endfor %}
-                <option value="custom" {% if is_custom_type %}selected{% endif %}>Other / Custom</option>
+                {% if not has_item_type %}
+                  <option value="{{ item.product_type }}" selected>{{ item.product_type.replace('_', ' ').title() }}</option>
+                {% endif %}
               </select>
-            </label>
-            <label class="js-custom-product-type-field" {% if not is_custom_type %}hidden{% endif %}>Custom Type
-              <input name="custom_product_type" value="{{ item.product_type if is_custom_type else '' }}" {% if is_custom_type %}required{% endif %} />
             </label>
             <label>Description
               <input name="description" value="{{ item.description }}" />
@@ -27,6 +25,19 @@
               <strong>{{ item.part_number or 'TBD' }}</strong>
             </div>
           </div>
+
+          {% if item.shipping_breakdown %}
+            <div class="line-item-row">
+              <div class="pricing-note">
+                <strong>Shipping Calc:</strong>
+                {{ '%.2f'|format(item.shipping_breakdown.total_weight_lb) }} lbs ×
+                {{ '%.2f'|format(item.shipping_breakdown.distance_miles) }} miles ×
+                ${{ '%.6f'|format(item.shipping_breakdown.rate_per_lb_mile) }}/lb/mi
+                = <strong>${{ '%.2f'|format(item.shipping_breakdown.total_cost) }}</strong>
+                ({{ item.shipping_breakdown.origin_zip }} → {{ item.shipping_breakdown.destination_zip }})
+              </div>
+            </div>
+          {% endif %}
 
           <div class="line-item-row line-item-row-pricing">
             <label>Qty
@@ -81,19 +92,16 @@
     {% endfor %}
   </div>
 
-  <form method="post" action="/quotes/{{ quote.id }}/line-items/add" hx-post="/quotes/{{ quote.id }}/line-items/add" hx-target="#editor-line-items" hx-swap="outerHTML" class="add-line-item-card">
+  <form method="post" action="/quotes/{{ quote.id }}/line-items/add" hx-post="/quotes/{{ quote.id }}/line-items/add" hx-target="#editor-line-items" hx-swap="outerHTML" class="add-line-item-card" id="add-line-item-form">
+    <input type="hidden" name="auto_shipping_trigger" value="0" />
     <h3>Add Line Item</h3>
     <div class="add-line-item-grid">
       <label>Type
         <select name="product_type" class="js-product-type-select">
-          {% for pt in standard_product_types %}
-            <option value="{{ pt }}">{{ type_labels[pt] if pt in type_labels else pt.replace('_', ' ').title() }}</option>
+          {% for pt in product_type_choices %}
+            <option value="{{ pt.name }}">{{ pt.label }}</option>
           {% endfor %}
-          <option value="custom">Other / Custom</option>
         </select>
-      </label>
-      <label class="js-custom-product-type-field" hidden>Custom Type
-        <input name="custom_product_type" value="" />
       </label>
       <label>Description
         <input name="description" placeholder="Description" />
@@ -129,29 +137,33 @@
       const root = document.getElementById("editor-line-items");
       if (!root) return;
 
-      const syncCustomTypeField = (container) => {
-        if (!container) return;
-        const select = container.querySelector(".js-product-type-select");
-        const field = container.querySelector(".js-custom-product-type-field");
-        if (!select || !field) return;
-        const input = field.querySelector("input[name='custom_product_type']");
-        const isCustom = select.value === "custom";
-        field.hidden = !isCustom;
-        if (input) {
-          input.required = isCustom;
-          if (!isCustom) input.value = "";
-        }
+      const triggerAutoShipping = (select) => {
+        if (!select || select.value !== "shipping") return;
+        const form = select.closest("form");
+        if (!form) return;
+        const hidden = form.querySelector("input[name='auto_shipping_trigger']");
+        if (hidden) hidden.value = "1";
+        if (window.htmx) window.htmx.trigger(form, "submit");
       };
 
-      root.querySelectorAll(".line-item-row-top, .add-line-item-grid").forEach((container) => {
-        syncCustomTypeField(container);
-      });
-
-      root.querySelectorAll(".js-product-type-select").forEach((select) => {
+      root.querySelectorAll(".line-item-form .js-product-type-select").forEach((select) => {
         select.addEventListener("change", () => {
-          syncCustomTypeField(select.closest(".line-item-row-top, .add-line-item-grid"));
+          const previous = select.dataset.initialType || "";
+          if (select.value === "shipping" && previous !== "shipping") {
+            triggerAutoShipping(select);
+          }
         });
       });
+
+      const addForm = root.querySelector("#add-line-item-form");
+      const addTypeSelect = addForm ? addForm.querySelector(".js-product-type-select") : null;
+      if (addTypeSelect) {
+        addTypeSelect.addEventListener("change", () => {
+          if (addTypeSelect.value === "shipping") {
+            triggerAutoShipping(addTypeSelect);
+          }
+        });
+      }
     })();
   </script>
 </section>

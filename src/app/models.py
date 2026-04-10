@@ -190,6 +190,16 @@ class PricingTable(db.Model):
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
+class ProductType(TimestampMixin, db.Model):
+    __tablename__ = "product_type"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(unique=True, nullable=False, index=True)
+    display_label: Mapped[str] = mapped_column(nullable=False)
+    sort_order: Mapped[int] = mapped_column(default=0, nullable=False, index=True)
+    is_active: Mapped[bool] = mapped_column(default=True, nullable=False, index=True)
+
+
 class ShippingConfig(db.Model):
     __tablename__ = "shipping_config"
 

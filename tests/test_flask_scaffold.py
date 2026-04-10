@@ -50,6 +50,7 @@ def test_migrations_create_tables(tmp_path: Path) -> None:
     assert "quote_line_item" in tables
     assert "pricing_table" in tables
     assert "shipping_config" in tables
+    assert "product_type" in tables
     assert "audit_log" in tables
 
 
@@ -99,8 +100,9 @@ def test_pricing_admin_page_and_inline_update(tmp_path: Path) -> None:
 
         page = client.get("/admin/pricing")
         assert page.status_code == 200
-        assert b"Pricing Administration" in page.data
+        assert b"Admin" in page.data
         assert b"Shipping Configuration" in page.data
+        assert b"Product Types" in page.data
 
         conn = sqlite3.connect(db_path)
         try:
@@ -136,6 +138,42 @@ def test_pricing_admin_page_and_inline_update(tmp_path: Path) -> None:
         assert abs(float(row[0]) - 0.0012) < 0.000001
         assert abs(float(row[1]) - 12.5) < 0.01
         assert "74103" in str(row[2])
+
+        added_type = client.post(
+            "/admin/product-types/add",
+            data={"name": "field_service", "display_label": "Field Service"},
+        )
+        assert added_type.status_code == 200
+        assert b"Field Service" in added_type.data
+
+        conn = sqlite3.connect(db_path)
+        try:
+            type_row = conn.execute(
+                "SELECT id FROM product_type WHERE name = 'field_service'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert type_row is not None
+        field_service_id = type_row[0]
+
+        updated_type = client.post(
+            f"/admin/product-types/{field_service_id}/update",
+            data={"display_label": "Field Service Team"},
+        )
+        assert updated_type.status_code == 200
+        assert b"Field Service Team" in updated_type.data
+
+        conn = sqlite3.connect(db_path)
+        try:
+            row = conn.execute(
+                "SELECT display_label, is_active FROM product_type WHERE id = ?",
+                (field_service_id,),
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+        assert row[0] == "Field Service Team"
+        assert int(row[1]) == 0
     finally:
         Config.SQLALCHEMY_DATABASE_URI = previous_config_database_url
         if previous_database_url is None:

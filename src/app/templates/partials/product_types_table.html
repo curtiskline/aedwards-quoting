@@ -1,0 +1,76 @@
+<section id="product-types-card" class="quote-editor-section">
+  <h2>Product Types</h2>
+
+  <form method="post" action="/admin/product-types/add" hx-post="/admin/product-types/add" hx-target="#product-types-card" hx-swap="outerHTML">
+    <div class="quote-editor-grid quote-editor-grid-wide">
+      <label>Name
+        <input name="name" placeholder="field_service" required />
+      </label>
+      <label>Display Label
+        <input name="display_label" placeholder="Field Service" required />
+      </label>
+    </div>
+    <button type="submit">Add Type</button>
+    {% if types_just_saved %}<span class="save-confirmation">Saved</span>{% endif %}
+  </form>
+
+  <table class="pricing-table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Display Label</th>
+        <th>Sort</th>
+        <th>Active</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in product_types %}
+        <tr>
+          <td><code>{{ row.name }}</code></td>
+          <td>
+            <form method="post" action="/admin/product-types/{{ row.id }}/update" hx-post="/admin/product-types/{{ row.id }}/update" hx-target="#product-types-card" hx-swap="outerHTML" class="types-inline-form">
+              <input name="display_label" value="{{ row.display_label }}" required />
+          </td>
+          <td class="types-sort-col">{{ row.sort_order }}</td>
+          <td>
+              <label class="checkbox-row">
+                <input type="checkbox" name="is_active" {% if row.is_active %}checked{% endif %} />
+                <span>{{ "Yes" if row.is_active else "No" }}</span>
+              </label>
+          </td>
+          <td class="types-actions">
+              <button type="submit">Save</button>
+            </form>
+            <form method="post" action="/admin/product-types/{{ row.id }}/move" hx-post="/admin/product-types/{{ row.id }}/move" hx-target="#product-types-card" hx-swap="outerHTML">
+              <input type="hidden" name="direction" value="up" />
+              <button type="submit">Up</button>
+            </form>
+            <form method="post" action="/admin/product-types/{{ row.id }}/move" hx-post="/admin/product-types/{{ row.id }}/move" hx-target="#product-types-card" hx-swap="outerHTML">
+              <input type="hidden" name="direction" value="down" />
+              <button type="submit">Down</button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+
+<style>
+  .types-inline-form {
+    margin: 0;
+  }
+  .types-sort-col {
+    width: 1%;
+    white-space: nowrap;
+  }
+  .types-actions {
+    display: flex;
+    gap: 0.35rem;
+    justify-content: flex-end;
+  }
+  .types-actions form {
+    margin: 0;
+  }
+</style>

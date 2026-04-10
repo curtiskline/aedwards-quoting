@@ -22,6 +22,7 @@ from .models import (
     Contact,
     Customer,
     PricingTable,
+    ProductType,
     Quote,
     QuoteLineItem,
     QuoteStatus,
@@ -45,16 +46,16 @@ from allenedwards.pricing import QuoteLineItem as PricingLineItem
 
 main_bp = Blueprint("main", __name__)
 
-STANDARD_PRODUCT_TYPES = {
-    "sleeve",
-    "bag",
-    "girth_weld",
-    "compression",
-    "oversleeve",
-    "accessory",
-    "service",
-    "shipping",
-}
+DEFAULT_PRODUCT_TYPES: list[tuple[str, str]] = [
+    ("sleeve", "Sleeve"),
+    ("bag", "Bag"),
+    ("girth_weld", "Girth Weld"),
+    ("compression", "Compression"),
+    ("oversleeve", "Oversleeve"),
+    ("accessory", "Accessory"),
+    ("service", "Service"),
+    ("shipping", "Shipping & Handling"),
+]
 
 
 @main_bp.get("/")
@@ -170,16 +171,57 @@ def _parse_int(value: str | None) -> int | None:
         return None
 
 
-def _resolve_product_type(raw_product_type: str | None, raw_custom_product_type: str | None, fallback: str) -> str:
+def _ensure_product_types_seeded() -> None:
+    if not inspect(db.engine).has_table("product_type"):
+        return
+    has_rows = db.session.query(ProductType.id).first()
+    if has_rows is not None:
+        return
+    for idx, (name, label) in enumerate(DEFAULT_PRODUCT_TYPES, start=1):
+        db.session.add(
+            ProductType(
+                name=name,
+                display_label=label,
+                sort_order=idx,
+                is_active=True,
+            )
+        )
+    db.session.flush()
+
+
+def _all_product_types() -> list[ProductType]:
+    if not inspect(db.engine).has_table("product_type"):
+        return [
+            ProductType(name=name, display_label=label, sort_order=idx, is_active=True)
+            for idx, (name, label) in enumerate(DEFAULT_PRODUCT_TYPES, start=1)
+        ]
+    _ensure_product_types_seeded()
+    return (
+        db.session.query(ProductType)
+        .order_by(ProductType.sort_order.asc(), ProductType.id.asc())
+        .all()
+    )
+
+
+def _active_product_types() -> list[ProductType]:
+    return [row for row in _all_product_types() if row.is_active]
+
+
+def _product_type_choices() -> list[dict[str, str]]:
+    return [{"name": row.name, "label": row.display_label} for row in _active_product_types()]
+
+
+def _resolve_product_type(raw_product_type: str | None, fallback: str) -> str:
     selected = (raw_product_type or "").strip() or fallback
-    if selected != "custom":
+    valid_names = {row.name for row in _all_product_types()}
+    if selected in valid_names:
         return selected
-    custom = (raw_custom_product_type or "").strip()
-    if custom:
-        return custom
-    if fallback not in STANDARD_PRODUCT_TYPES:
+    if fallback in valid_names:
         return fallback
-    return "custom"
+    active = _active_product_types()
+    if active:
+        return active[0].name
+    return "sleeve"
 
 
 def _current_user() -> User | None:
@@ -470,6 +512,10 @@ def _bag_pricing_row_for_diameter(diameter: float | None) -> tuple[str, int] | N
 
 
 def _line_item_pricing_source(item: QuoteLineItem, specs: dict) -> str:
+    if item.product_type == "shipping":
+        if specs.get("auto_calculated_shipping"):
+            return "Auto shipping calculation"
+        return "Manual shipping entry"
     if item.product_type in {"sleeve", "oversleeve"}:
         weight = specs.get("weight_per_ft")
         per_lb = specs.get("price_per_lb")
@@ -539,6 +585,28 @@ def _line_item_spec_fields(product_type: str, specs: dict) -> list[dict]:
     return []
 
 
+def _shipping_breakdown_for_item(item: QuoteLineItem) -> dict | None:
+    if item.product_type != "shipping":
+        return None
+    specs = dict(item.specs_json or {})
+    if not specs.get("auto_calculated_shipping"):
+        return None
+    try:
+        distance = float(specs.get("distance_miles", "0"))
+        weight = float(specs.get("total_weight_lb", "0"))
+        rate = float(specs.get("rate_per_lb_mile", "0"))
+    except (TypeError, ValueError):
+        return None
+    return {
+        "origin_zip": str(specs.get("origin_zip") or ""),
+        "destination_zip": str(specs.get("destination_zip") or ""),
+        "distance_miles": distance,
+        "total_weight_lb": weight,
+        "rate_per_lb_mile": rate,
+        "total_cost": float(item.line_total or 0),
+    }
+
+
 def _line_item_view(item: QuoteLineItem) -> dict:
     specs = dict(item.specs_json or {})
     quantity = Decimal(str(item.quantity))
@@ -561,6 +629,7 @@ def _line_item_view(item: QuoteLineItem) -> dict:
         "rounding_indicator": _line_item_rounding(item, specs),
         "needs_pricing": unit_price <= 0 or line_total <= 0,
         "note": specs.get("notes"),
+        "shipping_breakdown": _shipping_breakdown_for_item(item),
     }
 
 
@@ -585,6 +654,7 @@ def _quote_context(quote: Quote) -> dict:
     return {
         "quote": quote,
         "line_items": [_line_item_view(li) for li in line_items],
+        "product_type_choices": _product_type_choices(),
         "totals": _quote_totals(line_items),
         "review_user": db.session.get(User, quote.reviewed_by) if quote.reviewed_by else None,
         "shipping_breakdown": shipping_breakdown,
@@ -732,6 +802,11 @@ def _render_line_items(quote: Quote):
     return render_template("quotes/_line_items.html", **_quote_context(quote))
 
 
+def _product_types_admin_data(just_saved: bool = False) -> dict:
+    rows = _all_product_types()
+    return {"product_types": rows, "types_just_saved": just_saved}
+
+
 @main_bp.get("/quotes/<int:quote_id>")
 def quote_detail(quote_id: int):
     quote = db.get_or_404(Quote, quote_id)
@@ -812,13 +887,10 @@ def quote_update_status(quote_id: int):
 def quote_add_line_item(quote_id: int):
     quote = db.get_or_404(Quote, quote_id)
     _normalize_sort_orders(quote)
-    product_type = _resolve_product_type(
-        request.form.get("product_type"),
-        request.form.get("custom_product_type"),
-        "sleeve",
-    )
+    product_type = _resolve_product_type(request.form.get("product_type"), "sleeve")
+    auto_shipping_trigger = request.form.get("auto_shipping_trigger") == "1"
     line_item = QuoteLineItem(
-        quote_id=quote.id,
+        quote=quote,
         product_type=product_type,
         description=(request.form.get("description") or "New line item").strip() or "New line item",
         quantity=float(_parse_decimal(request.form.get("quantity"), Decimal("1"))),
@@ -831,7 +903,12 @@ def quote_add_line_item(quote_id: int):
         _quantize_money(Decimal(str(line_item.quantity)) * Decimal(str(line_item.unit_price)))
     )
     if line_item.product_type == "shipping":
-        line_item.specs_json = {"manual_override": True, "auto_calculated_shipping": False}
+        line_item.specs_json = {"manual_override": not auto_shipping_trigger, "auto_calculated_shipping": False}
+        if auto_shipping_trigger:
+            line_item.description = AUTO_SHIPPING_DESCRIPTION
+            line_item.quantity = 1
+            line_item.unit_price = 0
+            line_item.line_total = 0
     db.session.add(line_item)
     _apply_auto_shipping_line_item(quote)
     db.session.commit()
@@ -895,11 +972,8 @@ def quote_update_line_item(quote_id: int, item_id: int):
     if item.quote_id != quote.id:
         abort(404)
 
-    item.product_type = _resolve_product_type(
-        request.form.get("product_type"),
-        request.form.get("custom_product_type"),
-        item.product_type,
-    )
+    item.product_type = _resolve_product_type(request.form.get("product_type"), item.product_type)
+    auto_shipping_trigger = request.form.get("auto_shipping_trigger") == "1"
     item.description = (request.form.get("description") or item.description).strip() or item.description
     quantity = _parse_decimal(request.form.get("quantity"), Decimal(str(item.quantity)))
     unit_price = _parse_decimal(request.form.get("unit_price"), Decimal(str(item.unit_price)))
@@ -1000,8 +1074,16 @@ def quote_update_line_item(quote_id: int, item_id: int):
         if bag_row is not None:
             item.part_number = bag_row[0]
     if item.product_type == "shipping":
-        specs["manual_override"] = True
-        specs["auto_calculated_shipping"] = False
+        if auto_shipping_trigger:
+            specs["manual_override"] = False
+            specs["auto_calculated_shipping"] = True
+            item.description = AUTO_SHIPPING_DESCRIPTION
+            item.quantity = 1
+            item.unit_price = 0
+            item.line_total = 0
+        else:
+            specs["manual_override"] = True
+            specs["auto_calculated_shipping"] = False
 
     item.specs_json = specs or None
     _apply_auto_shipping_line_item(quote)
@@ -1045,10 +1127,15 @@ def quote_move_line_item(quote_id: int, item_id: int):
 @login_required
 def pricing_admin():
     sections = _group_pricing_rows()
+    active_tab = (request.args.get("tab") or "shipping").strip().lower()
+    if active_tab not in {"shipping", "pricing", "types"}:
+        active_tab = "shipping"
     return render_template(
         "pricing_admin.html",
         sections=sections,
         shipping_config=_shipping_config_form_data(_shipping_config()),
+        active_tab=active_tab,
+        **_product_types_admin_data(),
     )
 
 
@@ -1116,6 +1203,65 @@ def update_shipping_config():
     form_data = _shipping_config_form_data(cfg)
     form_data["just_saved"] = True
     return render_template("partials/shipping_config_form.html", shipping_config=form_data)
+
+
+@main_bp.post("/admin/product-types/add")
+@login_required
+def add_product_type():
+    name = (request.form.get("name") or "").strip().lower().replace(" ", "_")
+    display_label = (request.form.get("display_label") or "").strip()
+    if not name or not display_label:
+        abort(400, description="Name and display label are required")
+    if db.session.query(ProductType).filter_by(name=name).first() is not None:
+        abort(400, description="Product type name already exists")
+
+    max_sort = db.session.query(db.func.max(ProductType.sort_order)).scalar() or 0
+    db.session.add(
+        ProductType(
+            name=name,
+            display_label=display_label,
+            sort_order=int(max_sort) + 1,
+            is_active=True,
+        )
+    )
+    db.session.commit()
+    return render_template("partials/product_types_table.html", **_product_types_admin_data(just_saved=True))
+
+
+@main_bp.post("/admin/product-types/<int:type_id>/update")
+@login_required
+def update_product_type(type_id: int):
+    row = db.session.get(ProductType, type_id)
+    if row is None:
+        abort(404)
+
+    display_label = (request.form.get("display_label") or "").strip()
+    if not display_label:
+        abort(400, description="Display label is required")
+    row.display_label = display_label
+    row.is_active = request.form.get("is_active") == "on"
+    db.session.commit()
+    return render_template("partials/product_types_table.html", **_product_types_admin_data(just_saved=True))
+
+
+@main_bp.post("/admin/product-types/<int:type_id>/move")
+@login_required
+def move_product_type(type_id: int):
+    row = db.session.get(ProductType, type_id)
+    if row is None:
+        abort(404)
+
+    direction = (request.form.get("direction") or "").strip().lower()
+    rows = _all_product_types()
+    idx = next((i for i, entry in enumerate(rows) if entry.id == type_id), None)
+    if idx is None:
+        abort(404)
+    if direction == "up" and idx > 0:
+        rows[idx].sort_order, rows[idx - 1].sort_order = rows[idx - 1].sort_order, rows[idx].sort_order
+    elif direction == "down" and idx < len(rows) - 1:
+        rows[idx].sort_order, rows[idx + 1].sort_order = rows[idx + 1].sort_order, rows[idx].sort_order
+    db.session.commit()
+    return render_template("partials/product_types_table.html", **_product_types_admin_data(just_saved=True))
 
 
 def _db_quote_to_pricing_quote(quote: Quote) -> PricingQuote:
