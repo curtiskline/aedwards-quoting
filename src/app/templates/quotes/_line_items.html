@@ -109,6 +109,17 @@
   </form>
 
   <div class="line-item-totals">
+    {% if shipping_breakdown %}
+      <div class="pricing-note{% if shipping_manual_override %} pricing-note-warn{% endif %}">
+        <strong>Shipping Calc:</strong>
+        {{ '%.2f'|format(shipping_breakdown.total_weight_lb) }} lbs ×
+        {{ '%.2f'|format(shipping_breakdown.distance_miles) }} miles ×
+        ${{ '%.6f'|format(shipping_breakdown.rate_per_lb_mile) }}/lb/mi
+        = <strong>${{ '%.2f'|format(shipping_breakdown.total_cost) }}</strong>
+        ({{ shipping_breakdown.origin_zip }} → {{ shipping_breakdown.destination_zip }})
+        {% if shipping_manual_override %}• Manual shipping override is active{% else %}• Auto-updates as line items or ship-to change{% endif %}
+      </div>
+    {% endif %}
     <div><strong>Subtotal:</strong> ${{ '%.2f'|format(totals.subtotal) }}</div>
     <div><strong>Total:</strong> ${{ '%.2f'|format(totals.total) }}</div>
   </div>

@@ -304,3 +304,154 @@ def test_add_shipping_line_item(tmp_path):
         assert line_item.product_type == "shipping"
         assert float(line_item.unit_price) == 1250.0
         assert float(line_item.line_total) == 1250.0
+
+
+def test_auto_calculates_shipping_from_weight_and_distance(tmp_path):
+    app = _make_app(tmp_path)
+    with app.app_context():
+        db.create_all()
+        user = User(email="auto-ship@example.com", name="Auto Ship", password_hash="x")
+        db.session.add(user)
+        quote = Quote(quote_number="126-205", status=QuoteStatus.NEW)
+        db.session.add(quote)
+        db.session.flush()
+        db.session.add(
+            QuoteLineItem(
+                quote_id=quote.id,
+                product_type="sleeve",
+                description="Calculated Sleeve",
+                quantity=5,
+                unit_price=100,
+                line_total=500,
+                specs_json={"diameter": "24", "wall_thickness": "0.5", "length_ft": "10"},
+                sort_order=1,
+            )
+        )
+        db.session.commit()
+        quote_id = quote.id
+        user_id = user.id
+
+    client = app.test_client()
+    _login(client, user_id)
+
+    response = client.post(
+        f"/quotes/{quote_id}/customer",
+        data={
+            "customer_name_raw": "Acme",
+            "ship_to_address_line1": "123 Main",
+            "ship_to_city": "Oklahoma City",
+            "ship_to_state": "OK",
+            "ship_to_postal_code": "73102",
+            "ship_to_country": "US",
+        },
+    )
+    assert response.status_code == 200
+    assert b"Shipping Calc:" in response.data
+
+    with app.app_context():
+        shipping_item = (
+            db.session.query(QuoteLineItem)
+            .filter_by(quote_id=quote_id, product_type="shipping")
+            .first()
+        )
+        assert shipping_item is not None
+        assert float(shipping_item.unit_price) > 0
+        specs = dict(shipping_item.specs_json or {})
+        assert specs.get("auto_calculated_shipping") is True
+        assert specs.get("manual_override") is False
+
+
+def test_manual_shipping_override_is_preserved(tmp_path):
+    app = _make_app(tmp_path)
+    with app.app_context():
+        db.create_all()
+        user = User(email="manual-ship@example.com", name="Manual Ship", password_hash="x")
+        db.session.add(user)
+        quote = Quote(
+            quote_number="126-206",
+            status=QuoteStatus.NEW,
+            ship_to_json={
+                "address_line1": "Ship Dock",
+                "city": "Oklahoma City",
+                "state": "OK",
+                "postal_code": "73102",
+                "country": "US",
+            },
+        )
+        db.session.add(quote)
+        db.session.flush()
+        sleeve_item = QuoteLineItem(
+            quote_id=quote.id,
+            product_type="sleeve",
+            description="Calculated Sleeve",
+            quantity=5,
+            unit_price=100,
+            line_total=500,
+            specs_json={"diameter": "24", "wall_thickness": "0.5", "length_ft": "10"},
+            sort_order=1,
+        )
+        db.session.add(sleeve_item)
+        db.session.commit()
+        quote_id = quote.id
+        sleeve_id = sleeve_item.id
+        user_id = user.id
+
+    client = app.test_client()
+    _login(client, user_id)
+
+    first_resp = client.post(
+        f"/quotes/{quote_id}/line-items/{sleeve_id}/update",
+        data={
+            "product_type": "sleeve",
+            "description": "Calculated Sleeve",
+            "quantity": "5",
+            "unit_price": "100.00",
+            "spec_diameter": "24",
+            "spec_wall_thickness": "0.5",
+            "spec_grade": "50",
+            "spec_length_ft": "10",
+        },
+    )
+    assert first_resp.status_code == 200
+
+    with app.app_context():
+        shipping_item = (
+            db.session.query(QuoteLineItem)
+            .filter_by(quote_id=quote_id, product_type="shipping")
+            .first()
+        )
+        assert shipping_item is not None
+        shipping_id = shipping_item.id
+
+    override_resp = client.post(
+        f"/quotes/{quote_id}/line-items/{shipping_id}/update",
+        data={
+            "product_type": "shipping",
+            "description": "Manual freight quote",
+            "quantity": "1",
+            "unit_price": "500.00",
+        },
+    )
+    assert override_resp.status_code == 200
+
+    second_resp = client.post(
+        f"/quotes/{quote_id}/line-items/{sleeve_id}/update",
+        data={
+            "product_type": "sleeve",
+            "description": "Calculated Sleeve Updated",
+            "quantity": "8",
+            "unit_price": "100.00",
+            "spec_diameter": "24",
+            "spec_wall_thickness": "0.5",
+            "spec_grade": "50",
+            "spec_length_ft": "10",
+        },
+    )
+    assert second_resp.status_code == 200
+
+    with app.app_context():
+        updated_shipping = db.session.get(QuoteLineItem, shipping_id)
+        assert updated_shipping is not None
+        assert float(updated_shipping.unit_price) == 500.0
+        specs = dict(updated_shipping.specs_json or {})
+        assert specs.get("manual_override") is True

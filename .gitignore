@@ -26,6 +26,8 @@ tests/test_data/
 
 # Raw PST dumps and generated test corpus
 data/
+!src/allenedwards/data/
+!src/allenedwards/data/*.csv
 
 # Generated test corpus (from PST dump processing)
 data/test-corpus/

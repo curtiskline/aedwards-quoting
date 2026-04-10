@@ -43,7 +43,7 @@ allenedwards-web = "app.wsgi:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-allenedwards = ["assets/*.jpg"]
+allenedwards = ["assets/*.jpg", "data/*.csv"]
 app = ["templates/*.html", "templates/*/*.html", "templates/*/*/*.html"]
 
 [tool.ruff]

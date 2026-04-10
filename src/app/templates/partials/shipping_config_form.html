@@ -1,0 +1,20 @@
+<section class="quote-editor-section">
+  <h2>Shipping Configuration</h2>
+  <form method="post" action="/admin/shipping-config" hx-post="/admin/shipping-config" hx-target="#shipping-config-card" hx-swap="outerHTML">
+    <div class="quote-editor-grid quote-editor-grid-wide">
+      <label>Default Rate ($/lb/mile)
+        <input name="default_rate_per_lb_mile" type="number" min="0" step="0.000001" value="{{ '%.6f'|format(shipping_config.default_rate_per_lb_mile) }}" required />
+      </label>
+      <label>Default Length (ft)
+        <input name="default_length_ft" type="number" min="0" step="0.01" value="{{ '%.2f'|format(shipping_config.default_length_ft) }}" required />
+      </label>
+      <label>Origin ZIP(s)
+        <input name="origin_zip_codes" value="{{ shipping_config.origin_zip_codes }}" placeholder="74103, 77002" required />
+      </label>
+      <label>Rate Overrides (one per line: product_type=rate)
+        <textarea name="rate_overrides" rows="4" placeholder="sleeve=0.000700&#10;oversleeve=0.000650">{{ shipping_config.rate_overrides_text }}</textarea>
+      </label>
+    </div>
+    <button type="submit">Save Shipping Config</button>
+  </form>
+</section>

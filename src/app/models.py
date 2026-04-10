@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import secrets
 from datetime import datetime
 from enum import Enum
-import secrets
 
 from flask_login import UserMixin
 from sqlalchemy import Enum as SAEnum
@@ -187,6 +187,17 @@ class PricingTable(db.Model):
     product_type: Mapped[str] = mapped_column(nullable=False, index=True)
     key_fields: Mapped[dict] = mapped_column(db.JSON, nullable=False)
     price: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class ShippingConfig(db.Model):
+    __tablename__ = "shipping_config"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    default_rate_per_lb_mile: Mapped[float] = mapped_column(Numeric(12, 6), nullable=False, default=0.0006)
+    default_length_ft: Mapped[float] = mapped_column(Numeric(8, 2), nullable=False, default=10.0)
+    origin_zip_codes_json: Mapped[list[str]] = mapped_column(db.JSON, nullable=False, default=lambda: ["74103"])
+    rate_overrides_json: Mapped[dict | None] = mapped_column(db.JSON)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 

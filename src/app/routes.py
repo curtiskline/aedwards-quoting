@@ -2,20 +2,20 @@
 
 from __future__ import annotations
 
-import io
+import csv
 import math
 import os
 import tempfile
-from datetime import date, datetime, timedelta
-from decimal import ROUND_HALF_UP
-from decimal import Decimal, InvalidOperation
+from datetime import datetime
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from functools import lru_cache
+from pathlib import Path
 
-from flask import Blueprint, Response, abort, jsonify, redirect, render_template, request
+from flask import Blueprint, Response, abort, redirect, render_template, request
 from flask_login import login_required
 from sqlalchemy import inspect
 
-from .extensions import db
-from .models import AuditLog, PricingTable, Quote, QuoteLineItem, QuoteStatus, QuoteVersion, User
+from allenedwards.pdf_generator import generate_quote_pdf
 from allenedwards.pricing import (
     STANDARD_BUNDLE_PIECES,
     bundle_round,
@@ -26,8 +26,20 @@ from allenedwards.pricing import (
     normalize_nominal_od,
     pallet_round,
 )
-from allenedwards.pricing import Quote as PricingQuote, QuoteLineItem as PricingLineItem
-from allenedwards.pdf_generator import generate_quote_pdf
+from allenedwards.pricing import Quote as PricingQuote
+from allenedwards.pricing import QuoteLineItem as PricingLineItem
+
+from .extensions import db
+from .models import (
+    AuditLog,
+    PricingTable,
+    Quote,
+    QuoteLineItem,
+    QuoteStatus,
+    QuoteVersion,
+    ShippingConfig,
+    User,
+)
 
 main_bp = Blueprint("main", __name__)
 
@@ -52,6 +64,8 @@ def dashboard():
 _PRODUCT_TYPE_LABELS = {
     "shipping": "Shipping & Handling",
 }
+
+AUTO_SHIPPING_DESCRIPTION = "Auto-calculated shipping & handling"
 
 
 def _format_product_label(product_type: str) -> str:
@@ -120,6 +134,10 @@ def _quantize_money(value: Decimal) -> Decimal:
     return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
+def _quantize_rate(value: Decimal) -> Decimal:
+    return value.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
+
+
 def _parse_decimal(value: str | None, default: Decimal = Decimal("0")) -> Decimal:
     raw = (value or "").strip()
     if not raw:
@@ -178,6 +196,258 @@ def _sorted_line_items(quote: Quote) -> list[QuoteLineItem]:
 def _normalize_sort_orders(quote: Quote) -> None:
     for idx, item in enumerate(_sorted_line_items(quote), start=1):
         item.sort_order = idx
+
+
+def _normalize_zip(raw_zip: str | None) -> str | None:
+    digits = "".join(ch for ch in (raw_zip or "") if ch.isdigit())
+    if len(digits) < 5:
+        return None
+    return digits[:5]
+
+
+@lru_cache(maxsize=1)
+def _zip_centroid_map() -> dict[str, tuple[float, float]]:
+    zip_path = Path(__file__).resolve().parents[1] / "allenedwards" / "data" / "us_zip_lat_lon.csv"
+    if not zip_path.exists():
+        return {}
+
+    mapping: dict[str, tuple[float, float]] = {}
+    with zip_path.open("r", encoding="utf-8") as csv_file:
+        reader = csv.DictReader(csv_file)
+        for row in reader:
+            postal = _normalize_zip(row.get("zip"))
+            if postal is None:
+                continue
+            try:
+                lat = float(row.get("lat") or "")
+                lon = float(row.get("lon") or "")
+            except ValueError:
+                continue
+            mapping[postal] = (lat, lon)
+    return mapping
+
+
+def _haversine_miles(a: tuple[float, float], b: tuple[float, float]) -> float:
+    lat1, lon1 = a
+    lat2, lon2 = b
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    d_phi = math.radians(lat2 - lat1)
+    d_lambda = math.radians(lon2 - lon1)
+    x = math.sin(d_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(d_lambda / 2) ** 2
+    return 3958.7613 * (2 * math.atan2(math.sqrt(x), math.sqrt(1 - x)))
+
+
+def _decimal_from_raw(value: object) -> Decimal | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        return Decimal(raw)
+    except InvalidOperation:
+        return None
+
+
+def _shipping_config() -> ShippingConfig:
+    cfg = db.session.get(ShippingConfig, 1)
+    if cfg is None:
+        cfg = ShippingConfig(
+            id=1,
+            default_rate_per_lb_mile=0.0006,
+            default_length_ft=10.0,
+            origin_zip_codes_json=["74103"],
+            rate_overrides_json={},
+        )
+        db.session.add(cfg)
+        db.session.flush()
+    return cfg
+
+
+def _shipping_rates(cfg: ShippingConfig) -> tuple[Decimal, dict[str, Decimal]]:
+    default_rate = _quantize_rate(_decimal_from_raw(cfg.default_rate_per_lb_mile) or Decimal("0.0006"))
+    overrides: dict[str, Decimal] = {}
+    for key, value in dict(cfg.rate_overrides_json or {}).items():
+        rate = _decimal_from_raw(value)
+        if rate is None or rate <= 0:
+            continue
+        overrides[str(key)] = _quantize_rate(rate)
+    return default_rate, overrides
+
+
+def _shipping_origin_zips(cfg: ShippingConfig) -> list[str]:
+    origins: list[str] = []
+    for raw in list(cfg.origin_zip_codes_json or []):
+        normalized = _normalize_zip(str(raw))
+        if normalized and normalized not in origins:
+            origins.append(normalized)
+    return origins or ["74103"]
+
+
+def _shipping_line_item(quote: Quote) -> QuoteLineItem | None:
+    for item in _sorted_line_items(quote):
+        if item.product_type == "shipping":
+            return item
+    return None
+
+
+def _is_manual_shipping_override(item: QuoteLineItem | None) -> bool:
+    if item is None:
+        return False
+    return bool(dict(item.specs_json or {}).get("manual_override"))
+
+
+def _steel_weight_for_item(item: QuoteLineItem, default_length_ft: Decimal) -> Decimal:
+    if item.product_type == "shipping":
+        return Decimal("0")
+    specs = dict(item.specs_json or {})
+    od = _decimal_from_raw(specs.get("diameter"))
+    wall = _decimal_from_raw(specs.get("wall_thickness"))
+    if od is None or wall is None or od <= 0 or wall <= 0 or od <= wall:
+        return Decimal("0")
+    length_ft = _decimal_from_raw(specs.get("length_ft")) or default_length_ft
+    qty = _decimal_from_raw(item.quantity) or Decimal("0")
+    if qty <= 0 or length_ft <= 0:
+        return Decimal("0")
+    weight_per_ft = Decimal("10.69") * (od - wall) * wall
+    if weight_per_ft <= 0:
+        return Decimal("0")
+    return weight_per_ft * length_ft * qty
+
+
+def _shipping_breakdown(quote: Quote) -> dict | None:
+    ship_to_zip = _normalize_zip((quote.ship_to_json or {}).get("postal_code"))
+    if ship_to_zip is None:
+        return None
+
+    centroids = _zip_centroid_map()
+    destination = centroids.get(ship_to_zip)
+    if destination is None:
+        return None
+
+    cfg = _shipping_config()
+    origins = [zip_code for zip_code in _shipping_origin_zips(cfg) if zip_code in centroids]
+    if not origins:
+        return None
+
+    closest_origin = min(origins, key=lambda z: _haversine_miles(centroids[z], destination))
+    distance_miles = _haversine_miles(centroids[closest_origin], destination)
+    distance = _quantize_money(Decimal(str(distance_miles)))
+    if distance <= 0:
+        return None
+
+    default_rate, overrides = _shipping_rates(cfg)
+    default_length_ft = _decimal_from_raw(cfg.default_length_ft) or Decimal("10")
+
+    total_weight = Decimal("0")
+    weighted_rate_total = Decimal("0")
+    priced_item_count = 0
+    for item in _sorted_line_items(quote):
+        if item.product_type == "shipping":
+            continue
+        item_weight = _steel_weight_for_item(item, default_length_ft)
+        if item_weight <= 0:
+            continue
+        rate = overrides.get(item.product_type, default_rate)
+        total_weight += item_weight
+        weighted_rate_total += item_weight * rate
+        priced_item_count += 1
+
+    if total_weight <= 0 or weighted_rate_total <= 0:
+        return None
+
+    total_weight = _quantize_money(total_weight)
+    effective_rate = _quantize_rate(weighted_rate_total / total_weight)
+    total_cost = _quantize_money(total_weight * distance * effective_rate)
+    if total_cost <= 0:
+        return None
+
+    return {
+        "origin_zip": closest_origin,
+        "destination_zip": ship_to_zip,
+        "distance_miles": distance,
+        "total_weight_lb": total_weight,
+        "rate_per_lb_mile": effective_rate,
+        "total_cost": total_cost,
+        "priced_item_count": priced_item_count,
+    }
+
+
+def _apply_auto_shipping_line_item(quote: Quote) -> dict | None:
+    breakdown = _shipping_breakdown(quote)
+    shipping_item = _shipping_line_item(quote)
+    if _is_manual_shipping_override(shipping_item):
+        return breakdown
+    if breakdown is None:
+        return None
+
+    if shipping_item is None:
+        _normalize_sort_orders(quote)
+        shipping_item = QuoteLineItem(
+            quote_id=quote.id,
+            product_type="shipping",
+            description=AUTO_SHIPPING_DESCRIPTION,
+            quantity=1,
+            unit_price=float(breakdown["total_cost"]),
+            line_total=float(breakdown["total_cost"]),
+            specs_json={},
+            sort_order=len(quote.line_items) + 1,
+        )
+        db.session.add(shipping_item)
+    else:
+        current_specs = dict(shipping_item.specs_json or {})
+        if current_specs.get("auto_calculated_shipping") or not (shipping_item.description or "").strip():
+            shipping_item.description = AUTO_SHIPPING_DESCRIPTION
+        shipping_item.quantity = 1
+        shipping_item.unit_price = float(breakdown["total_cost"])
+        shipping_item.line_total = float(breakdown["total_cost"])
+
+    shipping_item.specs_json = {
+        "auto_calculated_shipping": True,
+        "manual_override": False,
+        "origin_zip": breakdown["origin_zip"],
+        "destination_zip": breakdown["destination_zip"],
+        "distance_miles": str(breakdown["distance_miles"]),
+        "total_weight_lb": str(breakdown["total_weight_lb"]),
+        "rate_per_lb_mile": str(breakdown["rate_per_lb_mile"]),
+    }
+    return breakdown
+
+
+def _shipping_config_form_data(cfg: ShippingConfig) -> dict:
+    default_rate = _quantize_rate(_decimal_from_raw(cfg.default_rate_per_lb_mile) or Decimal("0.0006"))
+    default_length = _quantize_money(_decimal_from_raw(cfg.default_length_ft) or Decimal("10"))
+    origins = _shipping_origin_zips(cfg)
+    overrides = dict(cfg.rate_overrides_json or {})
+    override_lines = []
+    for key in sorted(overrides.keys()):
+        rate = _decimal_from_raw(overrides.get(key))
+        if rate is None or rate <= 0:
+            continue
+        override_lines.append(f"{key}={_quantize_rate(rate)}")
+    return {
+        "default_rate_per_lb_mile": default_rate,
+        "default_length_ft": default_length,
+        "origin_zip_codes": ", ".join(origins),
+        "rate_overrides_text": "\n".join(override_lines),
+    }
+
+
+def _parse_rate_overrides(raw_value: str) -> dict[str, str]:
+    overrides: dict[str, str] = {}
+    for idx, raw_line in enumerate(raw_value.splitlines(), start=1):
+        line = raw_line.strip()
+        if not line:
+            continue
+        if "=" not in line:
+            abort(400, description=f"Invalid override format on line {idx}")
+        key, value = [part.strip() for part in line.split("=", 1)]
+        if not key:
+            abort(400, description=f"Missing product type on line {idx}")
+        rate = _decimal_from_raw(value)
+        if rate is None or rate <= 0:
+            abort(400, description=f"Invalid rate on line {idx}")
+        overrides[key] = str(_quantize_rate(rate))
+    return overrides
 
 
 def _bag_pricing_row_for_diameter(diameter: float | None) -> tuple[str, int] | None:
@@ -308,11 +578,15 @@ def _quote_totals(line_items: list[Quote] | list[QuoteLineItem]) -> dict:
 
 def _quote_context(quote: Quote) -> dict:
     line_items = _sorted_line_items(quote)
+    shipping_line = _shipping_line_item(quote)
+    shipping_breakdown = _shipping_breakdown(quote)
     return {
         "quote": quote,
         "line_items": [_line_item_view(li) for li in line_items],
         "totals": _quote_totals(line_items),
         "review_user": db.session.get(User, quote.reviewed_by) if quote.reviewed_by else None,
+        "shipping_breakdown": shipping_breakdown,
+        "shipping_manual_override": _is_manual_shipping_override(shipping_line),
     }
 
 
@@ -381,8 +655,9 @@ def quote_update_customer(quote_id: int):
         quote.ship_to_json = ship_to
     else:
         quote.ship_to_json = None
+    _apply_auto_shipping_line_item(quote)
     db.session.commit()
-    return _render_customer_info(quote)
+    return _render_editor(quote)
 
 
 @main_bp.post("/quotes/<int:quote_id>/status")
@@ -430,7 +705,10 @@ def quote_add_line_item(quote_id: int):
     line_item.line_total = float(
         _quantize_money(Decimal(str(line_item.quantity)) * Decimal(str(line_item.unit_price)))
     )
+    if line_item.product_type == "shipping":
+        line_item.specs_json = {"manual_override": True, "auto_calculated_shipping": False}
     db.session.add(line_item)
+    _apply_auto_shipping_line_item(quote)
     db.session.commit()
     return _render_line_items(quote)
 
@@ -596,7 +874,12 @@ def quote_update_line_item(quote_id: int, item_id: int):
         bag_row = _bag_pricing_row_for_diameter(diameter)
         if bag_row is not None:
             item.part_number = bag_row[0]
+    if item.product_type == "shipping":
+        specs["manual_override"] = True
+        specs["auto_calculated_shipping"] = False
+
     item.specs_json = specs or None
+    _apply_auto_shipping_line_item(quote)
 
     db.session.commit()
     return _render_line_items(quote)
@@ -610,6 +893,7 @@ def quote_delete_line_item(quote_id: int, item_id: int):
         abort(404)
     db.session.delete(item)
     _normalize_sort_orders(quote)
+    _apply_auto_shipping_line_item(quote)
     db.session.commit()
     return _render_line_items(quote)
 
@@ -627,6 +911,7 @@ def quote_move_line_item(quote_id: int, item_id: int):
         items[idx].sort_order, items[idx - 1].sort_order = items[idx - 1].sort_order, items[idx].sort_order
     elif direction == "down" and idx < len(items) - 1:
         items[idx].sort_order, items[idx + 1].sort_order = items[idx + 1].sort_order, items[idx].sort_order
+    _apply_auto_shipping_line_item(quote)
     db.session.commit()
     return _render_line_items(quote)
 
@@ -635,7 +920,11 @@ def quote_move_line_item(quote_id: int, item_id: int):
 @login_required
 def pricing_admin():
     sections = _group_pricing_rows()
-    return render_template("pricing_admin.html", sections=sections)
+    return render_template(
+        "pricing_admin.html",
+        sections=sections,
+        shipping_config=_shipping_config_form_data(_shipping_config()),
+    )
 
 
 @main_bp.post("/admin/pricing/<int:row_id>")
@@ -670,6 +959,36 @@ def update_pricing_row(row_id: int):
             "label": _describe_key_fields(row.product_type, row.key_fields or {}),
         },
     )
+
+
+@main_bp.post("/admin/shipping-config")
+@login_required
+def update_shipping_config():
+    cfg = _shipping_config()
+
+    default_rate = _decimal_from_raw(request.form.get("default_rate_per_lb_mile"))
+    default_length_ft = _decimal_from_raw(request.form.get("default_length_ft"))
+    if default_rate is None or default_rate <= 0:
+        abort(400, description="Invalid default shipping rate")
+    if default_length_ft is None or default_length_ft <= 0:
+        abort(400, description="Invalid default product length")
+
+    raw_origins = request.form.get("origin_zip_codes") or ""
+    parsed_origins = []
+    for token in raw_origins.replace("\n", ",").split(","):
+        normalized = _normalize_zip(token.strip())
+        if normalized and normalized not in parsed_origins:
+            parsed_origins.append(normalized)
+    if not parsed_origins:
+        abort(400, description="At least one origin ZIP is required")
+
+    cfg.default_rate_per_lb_mile = float(_quantize_rate(default_rate))
+    cfg.default_length_ft = float(_quantize_money(default_length_ft))
+    cfg.origin_zip_codes_json = parsed_origins
+    cfg.rate_overrides_json = _parse_rate_overrides(request.form.get("rate_overrides") or "")
+    db.session.commit()
+
+    return render_template("partials/shipping_config_form.html", shipping_config=_shipping_config_form_data(cfg))
 
 
 def _db_quote_to_pricing_quote(quote: Quote) -> PricingQuote:
@@ -789,7 +1108,7 @@ def quote_send(quote_id: int):
     pdf_bytes, filename = _generate_pdf_bytes(quote)
 
     # Send via OutlookClient
-    from allenedwards.outlook import OutlookClient, OutlookAuthError
+    from allenedwards.outlook import OutlookAuthError, OutlookClient
     sender_email = os.getenv("O365_EMAIL")
     sender_password = os.getenv("O365_PASSWORD")
     scopes_raw = os.getenv("O365_SCOPES", "")

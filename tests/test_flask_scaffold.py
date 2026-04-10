@@ -49,6 +49,7 @@ def test_migrations_create_tables(tmp_path: Path) -> None:
     assert "quote" in tables
     assert "quote_line_item" in tables
     assert "pricing_table" in tables
+    assert "shipping_config" in tables
     assert "audit_log" in tables
 
 
@@ -99,6 +100,7 @@ def test_pricing_admin_page_and_inline_update(tmp_path: Path) -> None:
         page = client.get("/admin/pricing")
         assert page.status_code == 200
         assert b"Pricing Administration" in page.data
+        assert b"Shipping Configuration" in page.data
 
         conn = sqlite3.connect(db_path)
         try:
@@ -109,6 +111,31 @@ def test_pricing_admin_page_and_inline_update(tmp_path: Path) -> None:
         updated = client.post(f"/admin/pricing/{row_id}", data={"price": "999.99"})
         assert updated.status_code == 200
         assert b"999.99" in updated.data
+
+        shipping_updated = client.post(
+            "/admin/shipping-config",
+            data={
+                "default_rate_per_lb_mile": "0.001200",
+                "default_length_ft": "12.50",
+                "origin_zip_codes": "74103, 77002",
+                "rate_overrides": "sleeve=0.001300\noversleeve=0.001150",
+            },
+        )
+        assert shipping_updated.status_code == 200
+        assert b"0.001200" in shipping_updated.data
+        assert b"74103, 77002" in shipping_updated.data
+
+        conn = sqlite3.connect(db_path)
+        try:
+            row = conn.execute(
+                "SELECT default_rate_per_lb_mile, default_length_ft, origin_zip_codes_json FROM shipping_config WHERE id = 1"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert row is not None
+        assert abs(float(row[0]) - 0.0012) < 0.000001
+        assert abs(float(row[1]) - 12.5) < 0.01
+        assert "74103" in str(row[2])
     finally:
         Config.SQLALCHEMY_DATABASE_URI = previous_config_database_url
         if previous_database_url is None:
