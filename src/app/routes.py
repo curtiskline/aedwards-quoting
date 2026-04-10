@@ -50,6 +50,7 @@ STANDARD_PRODUCT_TYPES = {
     "oversleeve",
     "accessory",
     "service",
+    "shipping",
 }
 
 
@@ -59,8 +60,13 @@ def dashboard():
     return redirect("/quotes/")
 
 
+_PRODUCT_TYPE_LABELS = {
+    "shipping": "Shipping & Handling",
+}
+
+
 def _format_product_label(product_type: str) -> str:
-    return product_type.replace("_", " ").title()
+    return _PRODUCT_TYPE_LABELS.get(product_type, product_type.replace("_", " ").title())
 
 
 def _describe_key_fields(product_type: str, key_fields: dict) -> str:

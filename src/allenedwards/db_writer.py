@@ -15,6 +15,7 @@ from flask import Flask
 from sqlalchemy import func
 
 import re
+from difflib import SequenceMatcher
 
 from app.extensions import db
 from app.models import (
@@ -88,23 +89,137 @@ def _generate_fiscal_quote_number() -> str:
     return f"{prefix}-{seq:03d}"
 
 
-def _match_customer(rfq: ParsedRFQ) -> Customer | None:
-    """Attempt to auto-match an existing Customer by normalized company name or contact email."""
-    if rfq.customer_name:
-        norm_name = _normalize_company_name(rfq.customer_name)
-        # Check all customers with normalized comparison
-        for customer in Customer.query.all():
-            if _normalize_company_name(customer.company_name) == norm_name:
-                logger.info("Matched customer %s by normalized company name %r", customer.id, rfq.customer_name)
-                return customer
+# Minimum similarity ratio for fuzzy company name matching.
+# Set high to avoid false positives (better to leave unmatched than match wrong).
+_NAME_MATCH_THRESHOLD = 0.85
 
+# Very short normalized names need an exact match — too easy to false-match.
+_SHORT_NAME_MAX_LEN = 5
+
+
+def _name_similarity(a: str, b: str) -> float:
+    """Token-sorted similarity between two normalized company names.
+
+    Splits each name into sorted tokens before comparing, so
+    "Pipeline Acme" matches "Acme Pipeline" equally well.
+    """
+    tokens_a = " ".join(sorted(a.split()))
+    tokens_b = " ".join(sorted(b.split()))
+    return SequenceMatcher(None, tokens_a, tokens_b).ratio()
+
+
+def _extract_email_domain(email: str) -> str | None:
+    """Return the domain portion of an email, lowercased, or None."""
+    if not email or "@" not in email:
+        return None
+    return email.rsplit("@", 1)[1].lower()
+
+
+_GENERIC_DOMAINS = frozenset({
+    "gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "aol.com",
+    "icloud.com", "mail.com", "protonmail.com", "live.com", "msn.com",
+    "comcast.net", "att.net", "sbcglobal.net", "verizon.net",
+})
+
+
+def _match_customer(rfq: ParsedRFQ) -> Customer | None:
+    """Auto-match an existing Customer using a multi-signal scoring approach.
+
+    Signals (in priority order):
+    1. Exact contact email match (highest confidence)
+    2. Email domain match (strong signal for corporate domains)
+    3. Fuzzy company name match with confidence threshold
+
+    Returns None when confidence is too low — better to leave unmatched
+    than assign the wrong customer (which creates downstream data problems).
+    """
+    # --- Signal 1: Exact contact email match (most reliable) ---
     if rfq.contact_email:
         contact = Contact.query.filter(
             func.lower(Contact.email) == rfq.contact_email.lower()
         ).first()
         if contact:
-            logger.info("Matched customer %s via contact email %r", contact.customer_id, rfq.contact_email)
+            logger.info(
+                "Matched customer %s via exact contact email %r",
+                contact.customer_id, rfq.contact_email,
+            )
             return contact.customer
+
+    customers = Customer.query.all()
+    if not customers:
+        return None
+
+    # --- Signal 2: Email domain match (corporate domains only) ---
+    rfq_domain = _extract_email_domain(rfq.contact_email or "")
+    if rfq_domain and rfq_domain not in _GENERIC_DOMAINS:
+        # Build a map of domain → customer from existing contacts
+        domain_customers: dict[str, list[Customer]] = {}
+        for customer in customers:
+            for contact in customer.contacts:
+                d = _extract_email_domain(contact.email)
+                if d and d not in _GENERIC_DOMAINS:
+                    domain_customers.setdefault(d, []).append(customer)
+
+        matches = domain_customers.get(rfq_domain, [])
+        # Only use domain match if it uniquely identifies one customer
+        unique_ids = {c.id for c in matches}
+        if len(unique_ids) == 1:
+            customer = matches[0]
+            logger.info(
+                "Matched customer %s via email domain %r",
+                customer.id, rfq_domain,
+            )
+            return customer
+
+    # --- Signal 3: Fuzzy company name match ---
+    if rfq.customer_name:
+        norm_rfq = _normalize_company_name(rfq.customer_name)
+        if not norm_rfq:
+            return None
+
+        best_score = 0.0
+        best_customer: Customer | None = None
+
+        for customer in customers:
+            norm_db = _normalize_company_name(customer.company_name)
+            if not norm_db:
+                continue
+
+            # Exact normalized match — always accept
+            if norm_rfq == norm_db:
+                logger.info(
+                    "Matched customer %s by exact normalized name %r",
+                    customer.id, rfq.customer_name,
+                )
+                return customer
+
+            score = _name_similarity(norm_rfq, norm_db)
+            if score > best_score:
+                best_score = score
+                best_customer = customer
+
+        # For very short names, require exact match only (already handled above)
+        if len(norm_rfq) <= _SHORT_NAME_MAX_LEN:
+            logger.debug(
+                "Short name %r — skipping fuzzy match (best score %.2f)",
+                norm_rfq, best_score,
+            )
+            return None
+
+        if best_customer and best_score >= _NAME_MATCH_THRESHOLD:
+            logger.info(
+                "Fuzzy-matched customer %s (score=%.2f) for %r → %r",
+                best_customer.id, best_score,
+                rfq.customer_name, best_customer.company_name,
+            )
+            return best_customer
+
+        if best_customer and best_score > 0.5:
+            logger.info(
+                "Customer name %r is similar to %r (score=%.2f) but below threshold %.2f — leaving unmatched",
+                rfq.customer_name, best_customer.company_name,
+                best_score, _NAME_MATCH_THRESHOLD,
+            )
 
     return None
 

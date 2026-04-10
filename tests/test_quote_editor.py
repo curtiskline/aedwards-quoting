@@ -269,3 +269,38 @@ def test_add_custom_type_line_item_persists_and_renders(tmp_path):
         assert line_item.product_type == "Field Service Special"
         assert float(line_item.unit_price) == 0.0
         assert float(line_item.line_total) == 0.0
+
+
+def test_add_shipping_line_item(tmp_path):
+    app = _make_app(tmp_path)
+    with app.app_context():
+        db.create_all()
+        user = User(email="ship@example.com", name="Ship User", password_hash="x")
+        db.session.add(user)
+        quote = Quote(quote_number="126-204", status=QuoteStatus.NEW)
+        db.session.add(quote)
+        db.session.commit()
+        quote_id = quote.id
+        user_id = user.id
+
+    client = app.test_client()
+    _login(client, user_id)
+    response = client.post(
+        f"/quotes/{quote_id}/line-items/add",
+        data={
+            "product_type": "shipping",
+            "description": "Freight to job site",
+            "quantity": "1",
+            "unit_price": "1250.00",
+        },
+    )
+    assert response.status_code == 200
+    assert b"Shipping &amp; Handling" in response.data
+    assert b"Freight to job site" in response.data
+
+    with app.app_context():
+        line_item = db.session.query(QuoteLineItem).filter_by(quote_id=quote_id).first()
+        assert line_item is not None
+        assert line_item.product_type == "shipping"
+        assert float(line_item.unit_price) == 1250.0
+        assert float(line_item.line_total) == 1250.0

@@ -11,7 +11,14 @@ from app import create_app
 from app.config import Config
 from app.extensions import db
 from app.models import AuditLog, Customer, Contact, Quote as DBQuote, QuoteLineItem as DBQuoteLineItem, QuoteStatus, ShipToAddress
-from allenedwards.db_writer import write_quote_to_db, _generate_fiscal_quote_number, _normalize_company_name
+from allenedwards.db_writer import (
+    write_quote_to_db,
+    _generate_fiscal_quote_number,
+    _normalize_company_name,
+    _match_customer,
+    _name_similarity,
+    _extract_email_domain,
+)
 from allenedwards.outlook import OutlookMessage
 from allenedwards.parser import ParsedRFQ, ShipTo
 from allenedwards.pricing import Quote as PricingQuote, QuoteLineItem as PricingLineItem
@@ -314,3 +321,166 @@ def test_no_customer_created_without_name(app, msg, rfq, priced_quote):
         db_quote = write_quote_to_db(msg, rfq, priced_quote, "126-014")
         assert db_quote.customer_id is None
         assert Customer.query.count() == 0
+
+
+# --- Fuzzy name matching tests ---
+
+def test_fuzzy_match_minor_typo(app, msg, rfq, priced_quote):
+    """Slight spelling variation should still match (above threshold)."""
+    with app.app_context():
+        cust = Customer(company_name="Acme Pipline Co", discount_pct=0)  # typo: Pipline
+        db.session.add(cust)
+        db.session.commit()
+        cust_id = cust.id
+
+        rfq.customer_name = "Acme Pipeline Co"
+        db_quote = write_quote_to_db(msg, rfq, priced_quote, "126-020")
+        assert db_quote.customer_id == cust_id
+
+
+def test_fuzzy_no_match_different_company(app, msg, rfq, priced_quote):
+    """Completely different company name should NOT match — leave unmatched."""
+    with app.app_context():
+        cust = Customer(company_name="Baker Hughes Corporation", discount_pct=0)
+        db.session.add(cust)
+        db.session.commit()
+
+        rfq.customer_name = "Acme Pipeline Co"
+        rfq.contact_email = None
+        db_quote = write_quote_to_db(msg, rfq, priced_quote, "126-021")
+        # Should create a new customer, not match Baker Hughes
+        assert db_quote.customer_id is not None
+        new_cust = Customer.query.get(db_quote.customer_id)
+        assert new_cust.company_name == "Acme Pipeline Co"
+
+
+def test_short_name_requires_exact_match(app, msg, rfq, priced_quote):
+    """Very short company names should require exact normalized match."""
+    with app.app_context():
+        cust = Customer(company_name="Apex", discount_pct=0)
+        db.session.add(cust)
+        db.session.commit()
+
+        rfq.customer_name = "Ajax"
+        rfq.contact_email = None
+        db_quote = write_quote_to_db(msg, rfq, priced_quote, "126-022")
+        # Should NOT match Apex — short names need exact match
+        new_cust = Customer.query.get(db_quote.customer_id)
+        assert new_cust.company_name == "Ajax"
+
+
+def test_short_name_exact_match_works(app, msg, rfq, priced_quote):
+    """Short name that exactly matches (after normalization) should still work."""
+    with app.app_context():
+        cust = Customer(company_name="Apex Inc.", discount_pct=0)
+        db.session.add(cust)
+        db.session.commit()
+        cust_id = cust.id
+
+        rfq.customer_name = "Apex"
+        db_quote = write_quote_to_db(msg, rfq, priced_quote, "126-023")
+        assert db_quote.customer_id == cust_id
+
+
+# --- Email domain matching tests ---
+
+def test_match_by_email_domain(app, msg, rfq, priced_quote):
+    """Corporate email domain should match when it uniquely identifies a customer."""
+    with app.app_context():
+        cust = Customer(company_name="Acme Pipeline Co", discount_pct=0)
+        db.session.add(cust)
+        db.session.flush()
+        contact = Contact(customer_id=cust.id, name="Jane", email="jane@acmepipeline.com")
+        db.session.add(contact)
+        db.session.commit()
+        cust_id = cust.id
+
+        rfq.customer_name = None  # no name to match on
+        rfq.contact_email = "bob@acmepipeline.com"
+        db_quote = write_quote_to_db(msg, rfq, priced_quote, "126-024")
+        assert db_quote.customer_id == cust_id
+
+
+def test_no_match_generic_email_domain(app, msg, rfq, priced_quote):
+    """Gmail/Yahoo/etc domains should NOT trigger domain matching."""
+    with app.app_context():
+        cust = Customer(company_name="Some Company", discount_pct=0)
+        db.session.add(cust)
+        db.session.flush()
+        contact = Contact(customer_id=cust.id, name="Jane", email="jane@gmail.com")
+        db.session.add(contact)
+        db.session.commit()
+
+        rfq.customer_name = None
+        rfq.contact_email = "bob@gmail.com"
+        db_quote = write_quote_to_db(msg, rfq, priced_quote, "126-025")
+        # Should NOT match — gmail is a generic domain
+        assert db_quote.customer_id is None
+
+
+def test_no_domain_match_when_ambiguous(app, msg, rfq, priced_quote):
+    """When two customers share the same email domain, don't match either."""
+    with app.app_context():
+        cust1 = Customer(company_name="Acme Houston", discount_pct=0)
+        db.session.add(cust1)
+        db.session.flush()
+        Contact(customer_id=cust1.id, name="A", email="a@acme.com")
+        db.session.add(Contact(customer_id=cust1.id, name="A", email="a@acme.com"))
+
+        cust2 = Customer(company_name="Acme Dallas", discount_pct=0)
+        db.session.add(cust2)
+        db.session.flush()
+        db.session.add(Contact(customer_id=cust2.id, name="B", email="b@acme.com"))
+        db.session.commit()
+
+        rfq.customer_name = None
+        rfq.contact_email = "c@acme.com"
+        db_quote = write_quote_to_db(msg, rfq, priced_quote, "126-026")
+        # Ambiguous domain — should not match
+        assert db_quote.customer_id is None
+
+
+# --- Priority / signal ordering tests ---
+
+def test_exact_email_beats_fuzzy_name(app, msg, rfq, priced_quote):
+    """Exact email match should win over fuzzy company name match."""
+    with app.app_context():
+        cust_name = Customer(company_name="Acme Pipeline Co", discount_pct=0)
+        db.session.add(cust_name)
+        db.session.flush()
+
+        cust_email = Customer(company_name="Totally Different Corp", discount_pct=0)
+        db.session.add(cust_email)
+        db.session.flush()
+        db.session.add(Contact(customer_id=cust_email.id, name="John", email="buyer@example.com"))
+        db.session.commit()
+        email_cust_id = cust_email.id
+
+        rfq.customer_name = "Acme Pipeline Co"
+        rfq.contact_email = "buyer@example.com"
+        db_quote = write_quote_to_db(msg, rfq, priced_quote, "126-027")
+        # Email match should take priority
+        assert db_quote.customer_id == email_cust_id
+
+
+# --- Helper function unit tests ---
+
+def test_name_similarity_identical():
+    assert _name_similarity("acme pipeline", "acme pipeline") == 1.0
+
+
+def test_name_similarity_reordered_tokens():
+    score = _name_similarity("pipeline acme", "acme pipeline")
+    assert score == 1.0
+
+
+def test_name_similarity_very_different():
+    score = _name_similarity("acme pipeline", "baker hughes")
+    assert score < 0.5
+
+
+def test_extract_email_domain():
+    assert _extract_email_domain("bob@acme.com") == "acme.com"
+    assert _extract_email_domain("BOB@ACME.COM") == "acme.com"
+    assert _extract_email_domain("") is None
+    assert _extract_email_domain("nope") is None
