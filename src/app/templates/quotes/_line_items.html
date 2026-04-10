@@ -1,5 +1,6 @@
 <section id="editor-line-items" class="quote-editor-section line-items-section">
-  {% set standard_product_types = ['sleeve', 'bag', 'girth_weld', 'compression', 'oversleeve', 'accessory', 'service'] %}
+  {% set standard_product_types = ['sleeve', 'bag', 'girth_weld', 'compression', 'oversleeve', 'accessory', 'service', 'shipping'] %}
+  {% set type_labels = {'shipping': 'Shipping & Handling'} %}
   <h2>Line Items</h2>
   <div class="line-item-list">
     {% for item in line_items %}
@@ -10,7 +11,7 @@
             <label>Type
               <select name="product_type" class="js-product-type-select">
                 {% for pt in standard_product_types %}
-                  <option value="{{ pt }}" {% if item.product_type == pt %}selected{% endif %}>{{ pt.replace('_', ' ').title() }}</option>
+                  <option value="{{ pt }}" {% if item.product_type == pt %}selected{% endif %}>{{ type_labels[pt] if pt in type_labels else pt.replace('_', ' ').title() }}</option>
                 {% endfor %}
                 <option value="custom" {% if is_custom_type %}selected{% endif %}>Other / Custom</option>
               </select>
@@ -86,7 +87,7 @@
       <label>Type
         <select name="product_type" class="js-product-type-select">
           {% for pt in standard_product_types %}
-            <option value="{{ pt }}">{{ pt.replace('_', ' ').title() }}</option>
+            <option value="{{ pt }}">{{ type_labels[pt] if pt in type_labels else pt.replace('_', ' ').title() }}</option>
           {% endfor %}
           <option value="custom">Other / Custom</option>
         </select>
