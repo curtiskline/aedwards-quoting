@@ -3,9 +3,7 @@
 {% block body %}
   <h1>Pricing Administration</h1>
 
-  <section id="shipping-config-card">
-    {% include "partials/shipping_config_form.html" %}
-  </section>
+  {% include "partials/shipping_config_form.html" %}
 
   {% if not sections %}
     <p>No pricing rows found.</p>
