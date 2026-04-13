@@ -45,9 +45,6 @@ MINIMAX_BASE_URL="${MINIMAX_BASE_URL:-$(read_from_dotenv MINIMAX_BASE_URL || tru
 APP_URL="${APP_URL:-$(read_from_dotenv APP_URL || true)}"
 
 DATABASE_URL="${DATABASE_URL:-sqlite:////opt/aedwards/instance/allenedwards.db}"
-if [[ -z "${SECRET_KEY}" ]]; then
-  SECRET_KEY="$(openssl rand -hex 32)"
-fi
 O365_CLIENT_ID="${O365_CLIENT_ID:-d3590ed6-52b3-4102-aeff-aad2292ab01c}"
 O365_SCOPES="${O365_SCOPES:-https://graph.microsoft.com/.default}"
 LLM_PROVIDER="${LLM_PROVIDER:-claude}"
@@ -80,12 +77,26 @@ tar \
   --exclude='*.pyc' \
   --exclude='worktrees' \
   --exclude='.agent-*' \
+  --exclude='data' \
+  --exclude='logs' \
+  --exclude='drafts' \
+  --exclude='examples' \
+  --exclude='dist' \
+  --exclude='work' \
+  --exclude='canon' \
+  --exclude='monitor_output' \
+  --exclude='*.mkv' \
+  --exclude='*.mp3' \
+  --exclude='*.xcf' \
+  --exclude='.monitor_state.json' \
   -czf "${SRC_TARBALL}" \
   -C "${ROOT_DIR}" .
 
 {
   echo "DATABASE_URL=${DATABASE_URL}"
-  echo "SECRET_KEY=${SECRET_KEY}"
+  if [[ -n "${SECRET_KEY}" ]]; then
+    echo "SECRET_KEY=${SECRET_KEY}"
+  fi
   echo "O365_CLIENT_ID=${O365_CLIENT_ID}"
   echo "O365_SCOPES=${O365_SCOPES}"
   echo "LLM_PROVIDER=${LLM_PROVIDER}"
@@ -193,6 +204,12 @@ while IFS= read -r line || [[ -n "${line}" ]]; do
   printf '%s=%s\n' "${key}" "${value}" | sudo tee -a /tmp/aedwards-existing.env >/dev/null
 done < /tmp/aedwards-web.env
 
+# Generate SECRET_KEY on server if not already set
+if ! grep -q '^SECRET_KEY=' /tmp/aedwards-existing.env || [[ -z "$(sed -n 's/^SECRET_KEY=//p' /tmp/aedwards-existing.env)" ]]; then
+  sudo sed -i '/^SECRET_KEY=/d' /tmp/aedwards-existing.env
+  printf 'SECRET_KEY=%s\n' "$(openssl rand -hex 32)" | sudo tee -a /tmp/aedwards-existing.env >/dev/null
+fi
+
 sudo install -m 600 -o "${APP_USER}" -g "${APP_USER}" /tmp/aedwards-existing.env "${APP_DIR}/.env"
 sudo install -m 644 /tmp/${SERVICE_NAME}.service /etc/systemd/system/${SERVICE_NAME}.service
 if grep -q ssl_certificate /etc/nginx/sites-enabled/${SERVICE_NAME} 2>/dev/null; then
@@ -209,6 +226,10 @@ sudo -u "${APP_USER}" bash -c "set -a; source ${APP_DIR}/.env; set +a; cd ${APP_
 sudo systemctl daemon-reload
 sudo systemctl enable "${SERVICE_NAME}"
 sudo systemctl restart "${SERVICE_NAME}"
+if systemctl is-enabled aedwards-monitor >/dev/null 2>&1; then
+  sudo systemctl restart aedwards-monitor
+  echo "Restarted aedwards-monitor"
+fi
 sudo nginx -t
 sudo systemctl enable nginx
 sudo systemctl restart nginx
