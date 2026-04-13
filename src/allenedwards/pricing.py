@@ -576,7 +576,7 @@ def generate_sleeve_description(
     else:
         len_str = f"{length_ft:.1f}".rstrip("0").rstrip(".")
 
-    desc = f'reg half sole, {dia_str}" ID, {wt_str} w/t, A572 GR{grade}, {len_str}\' long'
+    desc = f'Half Sole, {dia_str}" ID, {wt_str} w/t, A572 GR{grade}, {len_str}\' long'
 
     services = []
     if milling:

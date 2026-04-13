@@ -127,13 +127,13 @@ def test_description_generation():
     """Test sleeve description generation."""
     # Basic sleeve
     desc = generate_sleeve_description(6.625, 0.25, 50, 10)
-    assert desc == 'reg half sole, 6-5/8" ID, 1/4" w/t, A572 GR50, 10\' long. Backing Strip Included.'
+    assert desc == 'Half Sole, 6-5/8" ID, 1/4" w/t, A572 GR50, 10\' long. Backing Strip Included.'
 
     # With services
     desc = generate_sleeve_description(6.625, 0.25, 50, 10, milling=True, painting=True)
     assert (
         desc
-        == 'reg half sole, 6-5/8" ID, 1/4" w/t, A572 GR50, 10\' long (Milled, Painted). Backing Strip Included.'
+        == 'Half Sole, 6-5/8" ID, 1/4" w/t, A572 GR50, 10\' long (Milled, Painted). Backing Strip Included.'
     )
 
 
