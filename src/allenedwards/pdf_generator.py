@@ -389,6 +389,29 @@ class QuotePDFBuilder:
 
         return elements
 
+    def _build_notes(self) -> list:
+        """Build optional customer notes section below line items."""
+        if not self.quote.notes:
+            return []
+
+        # Skip notes that were used as the quote title (first line contains ':')
+        notes_text = self.quote.notes
+        if ":" in notes_text.split("\n")[0]:
+            # First line was used as title; render remaining lines if any
+            remaining = "\n".join(notes_text.split("\n")[1:]).strip()
+            if not remaining:
+                return []
+            notes_text = remaining
+
+        elements = []
+        elements.append(Spacer(1, 10))
+        elements.append(Paragraph("<b>Notes:</b>", self.styles["bold"]))
+        elements.append(Spacer(1, 4))
+        for line in notes_text.split("\n"):
+            elements.append(Paragraph(line, self.styles["normal_small"]))
+
+        return elements
+
     def _build_totals(self) -> list:
         """Build Template A totals section: Subtotal, Shipping and Handling, TOTAL."""
         elements = []
@@ -480,6 +503,7 @@ class QuotePDFBuilder:
         elements.extend(self._build_bill_ship_to())
         # Template A: No details grid (reserved for Template B concrete coating quotes)
         elements.extend(self._build_line_items_table())
+        elements.extend(self._build_notes())
         elements.extend(self._build_totals())
 
         # Build with footer

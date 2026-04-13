@@ -239,3 +239,92 @@ def test_bill_to_does_not_include_shipping_address():
     assert "Cottage Grove, MN, 55016" not in bill_to_text
     assert "6483 85th St S" in ship_to_text
     assert "Cottage Grove, MN, 55016" in ship_to_text
+
+
+def _make_quote(**overrides):
+    """Helper to build a Quote with sensible defaults."""
+    defaults = dict(
+        quote_number="126-200",
+        customer_name="Test Co",
+        contact_name="Jane",
+        contact_email="jane@test.com",
+        contact_phone="555-0100",
+        ship_to={"company": "Site A", "city": "Tulsa", "state": "OK"},
+        line_items=[
+            QuoteLineItem(
+                sort_order=1,
+                product_type="sleeve",
+                part_number="S-TEST",
+                description="Test sleeve",
+                quantity=1,
+                unit_price=Decimal("100.00"),
+                total=Decimal("100.00"),
+            )
+        ],
+        subtotal=Decimal("100.00"),
+        shipping_amount=None,
+        tax_amount=Decimal("0"),
+        total=Decimal("100.00"),
+        notes=None,
+    )
+    defaults.update(overrides)
+    return Quote(**defaults)
+
+
+def test_notes_rendered_when_present():
+    """Notes section appears in PDF elements when notes is set."""
+    quote = _make_quote(notes="Ship before Friday.\nCall on arrival.")
+    builder = QuotePDFBuilder(quote=quote, output_path=Path("/tmp/test.pdf"))
+    notes_elements = builder._build_notes()
+
+    assert len(notes_elements) > 0
+    texts = [el.text for el in notes_elements if hasattr(el, "text")]
+    assert any("Notes:" in t for t in texts)
+    assert any("Ship before Friday." in t for t in texts)
+    assert any("Call on arrival." in t for t in texts)
+
+
+def test_notes_empty_when_none():
+    """No notes section when notes is None."""
+    quote = _make_quote(notes=None)
+    builder = QuotePDFBuilder(quote=quote, output_path=Path("/tmp/test.pdf"))
+    assert builder._build_notes() == []
+
+
+def test_notes_empty_when_blank():
+    """No notes section when notes is empty string."""
+    quote = _make_quote(notes="")
+    builder = QuotePDFBuilder(quote=quote, output_path=Path("/tmp/test.pdf"))
+    assert builder._build_notes() == []
+
+
+def test_notes_title_line_skipped():
+    """If first line looks like a title (contains ':'), only remaining lines render."""
+    quote = _make_quote(notes="Project: HM999\nDeliver ASAP")
+    builder = QuotePDFBuilder(quote=quote, output_path=Path("/tmp/test.pdf"))
+    notes_elements = builder._build_notes()
+
+    texts = [el.text for el in notes_elements if hasattr(el, "text")]
+    assert not any("Project: HM999" in t for t in texts)
+    assert any("Deliver ASAP" in t for t in texts)
+
+
+def test_notes_title_only_returns_empty():
+    """If notes is just a title line with no remaining text, return empty."""
+    quote = _make_quote(notes="Project: HM999")
+    builder = QuotePDFBuilder(quote=quote, output_path=Path("/tmp/test.pdf"))
+    assert builder._build_notes() == []
+
+
+def test_notes_in_full_pdf():
+    """Notes text appears in a fully-built PDF file."""
+    quote = _make_quote(notes="Handle with care")
+    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+        output_path = Path(f.name)
+    try:
+        result = generate_quote_pdf(quote, output_path, quote_date=date(2026, 4, 1))
+        assert result.exists()
+        assert result.stat().st_size > 0
+    finally:
+        if output_path.exists():
+            output_path.unlink()
