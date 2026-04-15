@@ -76,6 +76,18 @@ tar \
   --exclude='monitor_output' \
   --exclude='.agent-*' \
   --exclude='*.db' \
+  --exclude='*.mkv' \
+  --exclude='*.mp4' \
+  --exclude='*.mp3' \
+  --exclude='*.xcf' \
+  --exclude='*.png' \
+  --exclude='*.jpg' \
+  --exclude='*.jpeg' \
+  --exclude='*.pdf' \
+  --exclude='.monitor_state.json' \
+  --exclude='drafts' \
+  --exclude='node_modules' \
+  --exclude='.env' \
   -czf "${SRC_TARBALL}" \
   -C "${ROOT_DIR}" .
 
