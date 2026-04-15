@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 from app import create_app
@@ -106,6 +107,44 @@ def test_preview_pdf_regenerates_on_each_call(tmp_path):
         # Both should be valid PDFs
         assert resp1.data[:4] == b"%PDF"
         assert resp2.data[:4] == b"%PDF"
+
+
+@patch("app.routes.generate_quote_pdf")
+def test_preview_pdf_uses_shipping_summary_field_not_line_item(mock_generate_quote_pdf, tmp_path):
+    app = _make_app(tmp_path)
+    quote_id, user_id = _seed_quote(app)
+    with app.app_context():
+        db.session.add(
+            QuoteLineItem(
+                quote_id=quote_id,
+                product_type="shipping",
+                description="Auto-calculated shipping & handling",
+                quantity=1,
+                unit_price=1000.00,
+                line_total=1000.00,
+                specs_json={"auto_calculated_shipping": True, "manual_override": False},
+                sort_order=3,
+            )
+        )
+        db.session.commit()
+
+    def _fake_generate(pricing_quote, output_path):
+        output_path.write_bytes(b"%PDF-1.4\n")
+
+    mock_generate_quote_pdf.side_effect = _fake_generate
+
+    with app.test_client() as client:
+        _login(client, user_id)
+        resp = client.get(f"/quotes/{quote_id}/preview-pdf")
+
+    assert resp.status_code == 200
+    assert resp.data[:4] == b"%PDF"
+    mock_generate_quote_pdf.assert_called_once()
+    pricing_quote = mock_generate_quote_pdf.call_args.args[0]
+    assert pricing_quote.shipping_amount == Decimal("1000.00")
+    assert pricing_quote.subtotal == Decimal("1550.00")
+    assert pricing_quote.total == Decimal("2550.00")
+    assert all(item.product_type != "shipping" for item in pricing_quote.line_items)
 
 
 def test_send_form_returns_html(tmp_path):

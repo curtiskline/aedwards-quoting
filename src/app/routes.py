@@ -1270,10 +1270,14 @@ def move_product_type(type_id: int):
 def _db_quote_to_pricing_quote(quote: Quote) -> PricingQuote:
     """Convert a DB Quote model to the pricing.Quote dataclass for PDF generation."""
     line_items = _sorted_line_items(quote)
-    pricing_items = []
-    for idx, li in enumerate(line_items, start=1):
+    shipping_amount = Decimal("0.00")
+    pricing_items: list[PricingLineItem] = []
+    for li in line_items:
+        if li.product_type == "shipping":
+            shipping_amount += Decimal(str(li.line_total))
+            continue
         pricing_items.append(PricingLineItem(
-            sort_order=idx,
+            sort_order=len(pricing_items) + 1,
             product_type=li.product_type,
             part_number=li.part_number or "",
             description=li.description,
@@ -1281,7 +1285,10 @@ def _db_quote_to_pricing_quote(quote: Quote) -> PricingQuote:
             unit_price=Decimal(str(li.unit_price)),
             total=Decimal(str(li.line_total)),
         ))
-    totals = _quote_totals(line_items)
+    subtotal = _quantize_money(sum((item.total for item in pricing_items), Decimal("0.00")))
+    shipping_value = _quantize_money(shipping_amount)
+    shipping_total = shipping_value if shipping_value > 0 else None
+    total = _quantize_money(subtotal + (shipping_total or Decimal("0.00")))
     ship_to = None
     if quote.ship_to_json:
         st = quote.ship_to_json
@@ -1301,10 +1308,10 @@ def _db_quote_to_pricing_quote(quote: Quote) -> PricingQuote:
         contact_phone=quote.contact_phone,
         ship_to=ship_to,
         line_items=pricing_items,
-        subtotal=totals["subtotal"],
-        shipping_amount=None,
+        subtotal=subtotal,
+        shipping_amount=shipping_total,
         tax_amount=Decimal("0.00"),
-        total=totals["total"],
+        total=total,
         notes=quote.notes_customer,
         po_number=quote.po_number,
         project_line=quote.project_name,
