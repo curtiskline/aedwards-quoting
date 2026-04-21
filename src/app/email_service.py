@@ -28,9 +28,9 @@ def send_magic_link_email(*, to_email: str, magic_link: str) -> None:
         scopes=scopes,
     )
 
-    subject = "Your Allen Edwards sign-in link"
+    subject = "Your Allan Edwards sign-in link"
     body = (
-        "Use this link to sign in to Allen Edwards Quote Manager:\n\n"
+        "Use this link to sign in to Allan Edwards Quote Manager:\n\n"
         f"{magic_link}\n\n"
         "If you did not request this, you can ignore this email."
     )
