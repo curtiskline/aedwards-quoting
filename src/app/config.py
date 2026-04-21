@@ -1,4 +1,4 @@
-"""Application configuration for the Allen Edwards Flask app."""
+"""Application configuration for the Allan Edwards Flask app."""
 
 from __future__ import annotations
 

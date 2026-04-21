@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{% block title %}Allen Edwards Quotes{% endblock %}</title>
+    <title>{% block title %}Allan Edwards Quotes{% endblock %}</title>
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
     <style>
       :root {
@@ -287,7 +287,7 @@
   </head>
   <body>
     <nav>
-      <strong>Allen Edwards Quote Manager</strong>
+      <strong>Allan Edwards Quote Manager</strong>
       <div class="nav-links">
         {% if is_authenticated %}
           <a href="{{ url_for('quotes.queue') }}">Quotes <span id="nav-badge" hx-get="{{ url_for('quotes.badge') }}" hx-trigger="load, every 30s" hx-swap="innerHTML"></span></a>

@@ -58,6 +58,8 @@ DEFAULT_PRODUCT_TYPES: list[tuple[str, str]] = [
     ("shipping", "Shipping & Handling"),
 ]
 
+QUOTE_EDITOR_HIDDEN_PRODUCT_TYPES = {"oversleeve", "shipping"}
+
 
 @main_bp.get("/")
 @login_required
@@ -209,7 +211,11 @@ def _active_product_types() -> list[ProductType]:
 
 
 def _product_type_choices() -> list[dict[str, str]]:
-    return [{"name": row.name, "label": row.display_label} for row in _active_product_types()]
+    return [
+        {"name": row.name, "label": row.display_label}
+        for row in _active_product_types()
+        if row.name not in QUOTE_EDITOR_HIDDEN_PRODUCT_TYPES
+    ]
 
 
 def _resolve_product_type(raw_product_type: str | None, fallback: str) -> str:
