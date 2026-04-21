@@ -463,6 +463,33 @@ def calculate_sleeve_price(
     )
 
 
+def _get_bundle_pricing_info(item: ParsedItem) -> tuple[int, int] | None:
+    """Get bundle pricing information for standard bundle sleeves.
+    
+    Returns (bundle_count, pieces_per_bundle) or None if not a standard bundle sleeve.
+    """
+    if not _is_standard_bundle_sleeve(item):
+        return None
+    
+    # Calculate bundle count
+    bundle_count = _extract_bundle_count(item.description)
+    if bundle_count is not None:
+        # Description explicitly mentions bundles
+        pieces_per_bundle = STANDARD_BUNDLE_PIECES
+        if item.quantity == bundle_count:
+            # Quantity is already in bundles
+            actual_bundle_count = bundle_count
+        else:
+            # Quantity is in pieces, round up to bundles
+            rounded_pieces, actual_bundle_count = bundle_round(item.quantity, STANDARD_BUNDLE_PIECES)
+    else:
+        # Quantity is in pieces, round up to bundles
+        rounded_pieces, actual_bundle_count = bundle_round(item.quantity, STANDARD_BUNDLE_PIECES)
+        pieces_per_bundle = STANDARD_BUNDLE_PIECES
+    
+    return actual_bundle_count, pieces_per_bundle
+
+
 def get_girth_weld_price(diameter: float) -> Decimal | None:
     """Get girth weld sleeve price based on diameter tier.
 
@@ -855,47 +882,117 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
             return None
 
         item, default_notes = _apply_item_defaults(item)
-        quote_quantity, _ = _quote_quantity_and_warning(item)
         actual_od = normalize_nominal_od(item.diameter)
-
-        unit_price, weight_per_ft, price_per_lb = calculate_sleeve_price(
-            actual_od,
-            item.wall_thickness,
-            item.grade,
-            item.length_ft,
-            item.milling,
-            item.painting,
-        )
-
-        total = unit_price * Decimal(str(quote_quantity))
-
-        notes = "; ".join(default_notes) if default_notes else None
-        return QuoteLineItem(
-            sort_order=sort_order,
-            product_type="sleeve",
-            part_number=generate_sleeve_part_number(
+        
+        # Check if this is a standard bundle sleeve
+        bundle_info = _get_bundle_pricing_info(item)
+        if bundle_info:
+            # Use bundle pricing
+            bundle_count, pieces_per_bundle = bundle_info
+            
+            # Calculate price per piece, then per bundle
+            unit_price, weight_per_ft, price_per_lb = calculate_sleeve_price(
                 actual_od,
                 item.wall_thickness,
                 item.grade,
                 item.length_ft,
                 item.milling,
                 item.painting,
-            ),
-            description=generate_sleeve_description(
+            )
+            price_per_bundle = unit_price * Decimal(str(pieces_per_bundle))
+            
+            total = price_per_bundle * Decimal(str(bundle_count))
+            
+            # Create description that includes requested quantity
+            # Try to preserve the customer's description if it mentions quantity
+            if item.description and any(word in item.description.lower() for word in ["ft", "feet", "foot", "piece", "pc", "pcs"]):
+                # Use customer's description
+                description = item.description
+                # Ensure it ends with period
+                if not description.endswith("."):
+                    description += "."
+            else:
+                # Generate technical description but prefix with requested quantity
+                requested_ft = item.quantity * item.length_ft
+                # Get the base description without "Half Sole, " prefix
+                base_desc = generate_sleeve_description(
+                    actual_od,
+                    item.wall_thickness,
+                    item.grade,
+                    item.length_ft,
+                    item.milling,
+                    item.painting,
+                )
+                # Remove "Half Sole, " prefix if present
+                if base_desc.startswith("Half Sole, "):
+                    base_desc = base_desc[11:]  # Remove "Half Sole, "
+                description = f"{requested_ft:.0f} ft of sleeve, {base_desc}"
+            
+            notes = "; ".join(default_notes) if default_notes else None
+            if bundle_count * pieces_per_bundle > item.quantity:
+                bundle_note = f"Priced as {bundle_count} bundle{'s' if bundle_count != 1 else ''} ({bundle_count * pieces_per_bundle} pcs / {bundle_count * pieces_per_bundle * item.length_ft:.0f} ft)"
+                notes = f"{bundle_note}; {notes}" if notes else bundle_note
+            
+            return QuoteLineItem(
+                sort_order=sort_order,
+                product_type="sleeve",
+                part_number=generate_sleeve_part_number(
+                    actual_od,
+                    item.wall_thickness,
+                    item.grade,
+                    item.length_ft,
+                    item.milling,
+                    item.painting,
+                ),
+                description=description,
+                quantity=bundle_count,  # Show bundle count, not piece count
+                unit_price=price_per_bundle,
+                total=total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+                weight_per_ft=weight_per_ft,
+                price_per_lb=price_per_lb,
+                notes=notes,
+            )
+        else:
+            # Non-bundle sleeve pricing (existing logic)
+            quote_quantity, _ = _quote_quantity_and_warning(item)
+            unit_price, weight_per_ft, price_per_lb = calculate_sleeve_price(
                 actual_od,
                 item.wall_thickness,
                 item.grade,
                 item.length_ft,
                 item.milling,
                 item.painting,
-            ),
-            quantity=quote_quantity,
-            unit_price=unit_price,
-            total=total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
-            weight_per_ft=weight_per_ft,
-            price_per_lb=price_per_lb,
-            notes=notes,
-        )
+            )
+
+            total = unit_price * Decimal(str(quote_quantity))
+
+            notes = "; ".join(default_notes) if default_notes else None
+            return QuoteLineItem(
+                sort_order=sort_order,
+                product_type="sleeve",
+                part_number=generate_sleeve_part_number(
+                    actual_od,
+                    item.wall_thickness,
+                    item.grade,
+                    item.length_ft,
+                    item.milling,
+                    item.painting,
+                ),
+                description=generate_sleeve_description(
+                    actual_od,
+                    item.wall_thickness,
+                    item.grade,
+                    item.length_ft,
+                    item.milling,
+                    item.painting,
+                ),
+                quantity=quote_quantity,
+                unit_price=unit_price,
+                total=total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+                weight_per_ft=weight_per_ft,
+                price_per_lb=price_per_lb,
+                notes=notes,
+            )
 
     if item.product_type == "oversleeve":
         if not all([item.diameter, item.wall_thickness]):

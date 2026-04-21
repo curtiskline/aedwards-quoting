@@ -295,7 +295,7 @@ def test_price_item_girth_weld_no_wall_thickness():
 
 
 def test_price_item_converts_bundle_count_to_piece_count_for_standard_sleeves():
-    """Standard sleeves should convert explicit bundle counts to piece counts."""
+    """Standard sleeves should show bundle count, not piece count, for bundle pricing."""
     item = ParsedItem(
         product_type="sleeve",
         quantity=2,
@@ -309,7 +309,8 @@ def test_price_item_converts_bundle_count_to_piece_count_for_standard_sleeves():
     result = price_item(item, sort_order=1)
 
     assert result is not None
-    assert result.quantity == 10
+    assert result.quantity == 2  # 2 bundles, not 10 pieces
+    assert "bundle" in result.notes.lower()
 
 
 def test_price_item_bag():
@@ -663,7 +664,7 @@ def test_bag_pricing_gap_diameter_39():
 
 
 def test_generate_quote_rounds_up_standard_bundle_sleeve():
-    """Standard sleeve quantities up to 24in should round up to bundle of 5 and note rounding."""
+    """Standard sleeve quantities up to 24in should use bundle pricing."""
     rfq = ParsedRFQ(
         customer_name="Test Co",
         contact_name=None,
@@ -688,14 +689,13 @@ def test_generate_quote_rounds_up_standard_bundle_sleeve():
 
     quote = generate_quote(rfq, "126-ROUND")
 
-    # Quantity should be rounded up to 10 (2 bundles of 5)
+    # Quantity should be 2 (bundles), not 10 (pieces)
     sleeve_items = [item for item in quote.line_items if item.product_type == "sleeve"]
     assert len(sleeve_items) == 1
-    assert sleeve_items[0].quantity == 10
+    assert sleeve_items[0].quantity == 2  # 2 bundles
 
-    # Rounding note should mention bundles
-    rounding_notes = [item for item in quote.line_items if item.is_note and "bundle" in item.description]
-    assert len(rounding_notes) == 1
+    # Bundle pricing note should be in the sleeve item notes, not a separate note
+    assert "bundle" in sleeve_items[0].notes.lower()
 
 
 def test_price_lookup_uses_db_override_in_app_context(tmp_path: Path):
