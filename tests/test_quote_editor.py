@@ -243,6 +243,8 @@ def test_line_item_type_dropdown_uses_active_db_product_types(tmp_path):
             [
                 ProductType(name="sleeve", display_label="Sleeve", sort_order=1, is_active=True),
                 ProductType(name="service", display_label="Service", sort_order=2, is_active=True),
+                ProductType(name="oversleeve", display_label="Oversleeve", sort_order=3, is_active=True),
+                ProductType(name="shipping", display_label="Shipping & Handling", sort_order=4, is_active=True),
                 ProductType(name="legacy", display_label="Legacy", sort_order=3, is_active=False),
             ]
         )
@@ -260,6 +262,8 @@ def test_line_item_type_dropdown_uses_active_db_product_types(tmp_path):
     assert response.status_code == 200
     assert b"Sleeve" in response.data
     assert b"Service" in response.data
+    assert b"Oversleeve" not in response.data
+    assert b"Shipping &amp; Handling" not in response.data
     assert b"Legacy" not in response.data
     assert b"Other / Custom" not in response.data
 
@@ -288,7 +292,7 @@ def test_add_shipping_line_item(tmp_path):
         },
     )
     assert response.status_code == 200
-    assert b"Shipping &amp; Handling" in response.data
+    assert b"<option value=\"shipping\" selected>Shipping</option>" in response.data
     assert b"Freight to job site" in response.data
 
     with app.app_context():
