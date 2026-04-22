@@ -33,6 +33,7 @@ from .models import (
     User,
 )
 from allenedwards.pricing import (
+    DEFAULT_LENGTH_SLEEVE,
     STANDARD_BUNDLE_PIECES,
     bundle_round,
     generate_girth_weld_part_number,
@@ -581,7 +582,7 @@ def _line_item_spec_fields(product_type: str, specs: dict) -> list[dict]:
                 "value": specs.get("wall_thickness", ""),
             },
             {"key": "grade", "label": "Grade", "type": "number", "step": "1", "value": specs.get("grade", "")},
-            {"key": "length_ft", "label": "Length (ft)", "type": "number", "step": "0.5", "value": specs.get("length_ft", "")},
+            {"key": "length_ft", "label": "Length (ft)", "type": "number", "step": "0.5", "value": specs.get("length_ft", DEFAULT_LENGTH_SLEEVE)},
             {"key": "milling", "label": "Milling", "type": "checkbox", "checked": bool(specs.get("milling"))},
             {"key": "painting", "label": "Painting", "type": "checkbox", "checked": bool(specs.get("painting"))},
         ]
