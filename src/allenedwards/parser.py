@@ -111,9 +111,9 @@ If no grade is specified at all, default to "50" (A572 GR50 is the most common).
 IMPORTANT: grade and length_ft must ALWAYS be provided for each item — never return null.
 - If grade is not explicitly stated, infer it from context or default to "50".
 - If length is not stated, infer from context:
-  - "bundle" of sleeves typically means standard lengths; use 40 for sleeves.
+  - "bundle" of sleeves typically means standard lengths; use 10 for sleeves.
   - If a total footage is given (e.g., "10 FT"), that IS the length_ft.
-  - If truly unknown, default to 40 for sleeves/oversleeves, 6 for girth welds.
+  - If truly unknown, default to 10 for sleeves/oversleeves, 6 for girth welds.
 
 The confidence score (0-1) should reflect how certain you are about the parsing.
 Lower confidence if specifications are ambiguous or missing critical details.

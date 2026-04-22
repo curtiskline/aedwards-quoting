@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 # Default values for missing item fields
 DEFAULT_GRADE = 50
-DEFAULT_LENGTH_SLEEVE = 40.0
+DEFAULT_LENGTH_SLEEVE = 10.0
 DEFAULT_LENGTH_GIRTH_WELD = 6.0
 
 # Price per pound lookup table
@@ -508,7 +508,7 @@ def generate_girth_weld_part_number(
     diameter: float,
     wall_thickness: float,
     grade: int,
-    length_ft: float,
+    length_ft: float | None = None,
 ) -> str:
     """Generate a part number for a girth weld sleeve.
 
@@ -526,6 +526,7 @@ def generate_girth_weld_description(
     length_ft: float,
 ) -> str:
     """Generate a description for a girth weld sleeve."""
+    del length_ft
     # Format wall thickness as fraction
     wt_fractions = {
         0.25: '1/4"',
@@ -538,7 +539,7 @@ def generate_girth_weld_description(
     wt_str = wt_fractions.get(wall_thickness, f'{wall_thickness}"')
 
     actual_od = normalize_nominal_od(diameter)
-    return f'Girth Weld Sleeve, {actual_od}" ID, {wt_str} w/t, A572 GR{grade}, {length_ft}\' long'
+    return f'Girth Weld Sleeve, {actual_od}" ID, {wt_str} w/t, A572 GR{grade}'
 
 
 def generate_sleeve_part_number(
@@ -551,11 +552,10 @@ def generate_sleeve_part_number(
 ) -> str:
     """Generate a part number for a sleeve.
 
-    Format: S-{sleeve_id}-{wt_code}-{grade}[-M][-P]
+    Format: S-{sleeve_id}-{wt_code}-{grade}[-M][-P]-{length_ft}
     """
-    del length_ft
     actual_od = normalize_nominal_od(diameter)
-    return generate_part_number(
+    part_number = generate_part_number(
         "sleeve",
         actual_od,
         wall_thickness,
@@ -563,6 +563,11 @@ def generate_sleeve_part_number(
         milling=milling,
         painting=painting,
     )
+    if length_ft == int(length_ft):
+        length_code = str(int(length_ft))
+    else:
+        length_code = f"{length_ft:.1f}".rstrip("0").rstrip(".")
+    return f"{part_number}-{length_code}"
 
 
 def generate_sleeve_description(
