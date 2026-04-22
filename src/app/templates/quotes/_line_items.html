@@ -4,7 +4,7 @@
     {% for item in line_items %}
       {% set has_item_type = item.product_type in (product_type_choices | map(attribute='name') | list) %}
       <article class="line-item-card{% if item.needs_pricing %} needs-pricing{% endif %}">
-        <form id="line-item-{{ item.id }}-form" method="post" action="/quotes/{{ quote.id }}/line-items/{{ item.id }}/update" hx-post="/quotes/{{ quote.id }}/line-items/{{ item.id }}/update" hx-target="#editor-line-items" hx-swap="outerHTML" hx-trigger="submit, blur from:input delay:100ms, change from:input[type=checkbox]" class="line-item-form">
+        <form id="line-item-{{ item.id }}-form" method="post" action="/quotes/{{ quote.id }}/line-items/{{ item.id }}/update" hx-post="/quotes/{{ quote.id }}/line-items/{{ item.id }}/update" hx-target="#editor-line-items" hx-swap="outerHTML" hx-trigger="submit, change from:input[type=checkbox]" class="line-item-form">
           <input type="hidden" name="auto_shipping_trigger" value="0" />
           <div class="line-item-row line-item-row-top">
             <label>Type
@@ -135,6 +135,46 @@
     (() => {
       const root = document.getElementById("editor-line-items");
       if (!root) return;
+
+      // Track which line item forms have unsaved changes.
+      const dirtyForms = new Set();
+
+      // Flush all dirty forms using sendBeacon (guaranteed delivery on unload).
+      function flushDirtyForms() {
+        dirtyForms.forEach((form) => {
+          navigator.sendBeacon(form.action, new FormData(form));
+        });
+        dirtyForms.clear();
+      }
+
+      // Save dirty forms when user switches tabs or navigates away.
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) flushDirtyForms();
+      });
+      window.addEventListener("pagehide", flushDirtyForms);
+
+      // Auto-save when focus leaves the entire card (not on every field blur).
+      // Uses focusin to cancel the timer if focus returns to the same form,
+      // which handles Chrome's transient BODY focus state on number input tab.
+      root.querySelectorAll(".line-item-form").forEach((form) => {
+        // Mark dirty on any input change.
+        form.addEventListener("input", () => dirtyForms.add(form));
+        form.addEventListener("change", () => dirtyForms.add(form));
+        // Clear dirty flag when HTMX submits (card-level save fired).
+        form.addEventListener("htmx:beforeRequest", () => dirtyForms.delete(form));
+
+        let leaveTimer = null;
+        form.addEventListener("focusout", () => {
+          clearTimeout(leaveTimer);
+          leaveTimer = setTimeout(() => {
+            if (form.contains(document.activeElement)) return;
+            if (window.htmx) window.htmx.trigger(form, "submit");
+          }, 200);
+        });
+        form.addEventListener("focusin", () => {
+          clearTimeout(leaveTimer);
+        });
+      });
 
       root.querySelectorAll(".line-item-form .js-product-type-select").forEach((select) => {
         select.addEventListener("change", () => {
