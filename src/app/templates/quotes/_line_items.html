@@ -4,7 +4,7 @@
     {% for item in line_items %}
       {% set has_item_type = item.product_type in (product_type_choices | map(attribute='name') | list) %}
       <article class="line-item-card{% if item.needs_pricing %} needs-pricing{% endif %}">
-        <form id="line-item-{{ item.id }}-form" method="post" action="/quotes/{{ quote.id }}/line-items/{{ item.id }}/update" hx-post="/quotes/{{ quote.id }}/line-items/{{ item.id }}/update" hx-target="#editor-line-items" hx-swap="outerHTML" class="line-item-form">
+        <form id="line-item-{{ item.id }}-form" method="post" action="/quotes/{{ quote.id }}/line-items/{{ item.id }}/update" hx-post="/quotes/{{ quote.id }}/line-items/{{ item.id }}/update" hx-target="#editor-line-items" hx-swap="outerHTML" hx-trigger="submit, blur from:input delay:100ms, change from:input[type=checkbox]" class="line-item-form">
           <input type="hidden" name="auto_shipping_trigger" value="0" />
           <div class="line-item-row line-item-row-top">
             <label>Type
@@ -75,7 +75,6 @@
         </form>
 
         <div class="line-item-actions">
-          <button type="submit" form="line-item-{{ item.id }}-form">Save</button>
           <form method="post" action="/quotes/{{ quote.id }}/line-items/{{ item.id }}/move" hx-post="/quotes/{{ quote.id }}/line-items/{{ item.id }}/move" hx-target="#editor-line-items" hx-swap="outerHTML">
             <input type="hidden" name="direction" value="up" />
             <button type="submit">Up</button>
@@ -137,21 +136,15 @@
       const root = document.getElementById("editor-line-items");
       if (!root) return;
 
-      const triggerAutoShipping = (select) => {
-        if (!select || select.value !== "shipping") return;
-        const form = select.closest("form");
-        if (!form) return;
-        const hidden = form.querySelector("input[name='auto_shipping_trigger']");
-        if (hidden) hidden.value = "1";
-        if (window.htmx) window.htmx.trigger(form, "submit");
-      };
-
       root.querySelectorAll(".line-item-form .js-product-type-select").forEach((select) => {
         select.addEventListener("change", () => {
-          const previous = select.dataset.initialType || "";
-          if (select.value === "shipping" && previous !== "shipping") {
-            triggerAutoShipping(select);
+          const form = select.closest("form");
+          if (!form) return;
+          if (select.value === "shipping") {
+            const hidden = form.querySelector("input[name='auto_shipping_trigger']");
+            if (hidden) hidden.value = "1";
           }
+          if (window.htmx) window.htmx.trigger(form, "submit");
         });
       });
 
@@ -160,7 +153,9 @@
       if (addTypeSelect) {
         addTypeSelect.addEventListener("change", () => {
           if (addTypeSelect.value === "shipping") {
-            triggerAutoShipping(addTypeSelect);
+            const hidden = addForm.querySelector("input[name='auto_shipping_trigger']");
+            if (hidden) hidden.value = "1";
+            if (window.htmx) window.htmx.trigger(addForm, "submit");
           }
         });
       }
