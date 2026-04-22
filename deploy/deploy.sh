@@ -175,6 +175,10 @@ sudo systemctl daemon-reload
 sudo systemctl enable "${SERVICE_NAME}"
 sudo systemctl restart "${SERVICE_NAME}"
 sudo systemctl --no-pager status "${SERVICE_NAME}" || true
+if sudo systemctl is-enabled aedwards-web >/dev/null 2>&1; then
+  sudo systemctl restart aedwards-web
+  sudo systemctl --no-pager status aedwards-web || true
+fi
 REMOTE
 
 echo "Deploy complete to ${HOST}."
