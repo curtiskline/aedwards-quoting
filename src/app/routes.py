@@ -1056,13 +1056,11 @@ def quote_update_line_item(quote_id: int, item_id: int):
         diameter = _parse_float(str(specs.get("diameter", "")))
         wall_thickness = _parse_float(str(specs.get("wall_thickness", "")))
         grade = _parse_int(str(specs.get("grade", "")))
-        length_ft = _parse_float(str(specs.get("length_ft", "")))
-        if all(v is not None for v in (diameter, wall_thickness, grade, length_ft)):
+        if all(v is not None for v in (diameter, wall_thickness, grade)):
             item.part_number = generate_girth_weld_part_number(
                 diameter=diameter,  # type: ignore[arg-type]
                 wall_thickness=wall_thickness,  # type: ignore[arg-type]
                 grade=grade,  # type: ignore[arg-type]
-                length_ft=length_ft,  # type: ignore[arg-type]
             )
     elif item.product_type == "compression":
         diameter = _parse_float(str(specs.get("diameter", "")))

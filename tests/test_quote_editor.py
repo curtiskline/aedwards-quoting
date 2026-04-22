@@ -112,6 +112,52 @@ def test_line_item_update_recalculates_and_generates_sleeve_part(tmp_path):
         assert (updated.part_number or "").startswith("S-")
 
 
+def test_girth_weld_update_preserves_part_number_without_length_spec(tmp_path):
+    app = _make_app(tmp_path)
+    with app.app_context():
+        db.create_all()
+        user = User(email="girth@example.com", name="Girth User", password_hash="x")
+        db.session.add(user)
+        quote = Quote(quote_number="126-201A", status=QuoteStatus.IN_REVIEW)
+        db.session.add(quote)
+        db.session.flush()
+        li = QuoteLineItem(
+            quote_id=quote.id,
+            product_type="girth_weld",
+            description="Original GTW",
+            part_number="G-12.34-14-50",
+            quantity=1,
+            unit_price=300,
+            line_total=300,
+            specs_json={"diameter": "12.75", "wall_thickness": "0.25", "grade": "50"},
+            sort_order=1,
+        )
+        db.session.add(li)
+        db.session.commit()
+        quote_id = quote.id
+        item_id = li.id
+        user_id = user.id
+
+    client = app.test_client()
+    _login(client, user_id)
+    response = client.post(
+        f"/quotes/{quote_id}/line-items/{item_id}/update",
+        data={
+            "product_type": "girth_weld",
+            "description": "Updated GTW description",
+            "quantity": "1",
+            "unit_price": "300",
+        },
+    )
+    assert response.status_code == 200
+
+    with app.app_context():
+        updated = db.session.get(QuoteLineItem, item_id)
+        assert updated is not None
+        assert updated.part_number == "G-12.34-14-50"
+        assert updated.description == "Updated GTW description"
+
+
 def test_line_item_calc_total_returns_partial_without_db_write(tmp_path):
     app = _make_app(tmp_path)
     with app.app_context():

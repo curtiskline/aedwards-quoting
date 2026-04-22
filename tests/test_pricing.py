@@ -98,23 +98,23 @@ def test_part_number_generation():
     """Test sleeve part number generation."""
     # Basic sleeve
     pn = generate_sleeve_part_number(6.625, 0.25, 50, 10)
-    assert pn == "S-6.58-14-50"
+    assert pn == "S-6.58-14-50-10"
 
     # With milling
     pn = generate_sleeve_part_number(6.625, 0.25, 50, 10, milling=True)
-    assert pn == "S-6.58-14-50-M"
+    assert pn == "S-6.58-14-50-M-10"
 
     # With painting
     pn = generate_sleeve_part_number(6.625, 0.25, 50, 10, painting=True)
-    assert pn == "S-6.58-14-50-P"
+    assert pn == "S-6.58-14-50-P-10"
 
     # With both
     pn = generate_sleeve_part_number(6.625, 0.25, 50, 10, milling=True, painting=True)
-    assert pn == "S-6.58-14-50-M-P"
+    assert pn == "S-6.58-14-50-M-P-10"
 
     # Different wall thickness
     pn = generate_sleeve_part_number(12.75, 0.375, 65, 12)
-    assert pn == "S-12.34-38-65"
+    assert pn == "S-12.34-38-65-12"
 
 
 def test_nominal_od_mapping_and_oversleeve_od():
@@ -185,11 +185,11 @@ def test_girth_weld_description():
     """Test girth weld description generation."""
     # Basic girth weld sleeve
     desc = generate_girth_weld_description(8.625, 0.375, 50, 12)
-    assert desc == 'Girth Weld Sleeve, 8.625" ID, 3/8" w/t, A572 GR50, 12\' long'
+    assert desc == 'Girth Weld Sleeve, 8.625" ID, 3/8" w/t, A572 GR50'
 
     # Different specs
     desc = generate_girth_weld_description(6.625, 0.25, 65, 10)
-    assert desc == 'Girth Weld Sleeve, 6.625" ID, 1/4" w/t, A572 GR65, 10\' long'
+    assert desc == 'Girth Weld Sleeve, 6.625" ID, 1/4" w/t, A572 GR65'
 
 
 def test_price_item_girth_weld():
@@ -311,6 +311,24 @@ def test_price_item_converts_bundle_count_to_piece_count_for_standard_sleeves():
     assert result is not None
     assert result.quantity == 2  # 2 bundles, not 10 pieces
     assert "bundle" in result.notes.lower()
+
+
+def test_price_item_defaults_sleeve_length_to_10ft():
+    item = ParsedItem(
+        product_type="sleeve",
+        quantity=1,
+        description="12-3/4 sleeve",
+        diameter=12.75,
+        wall_thickness=0.375,
+        grade=50,
+        length_ft=None,
+    )
+
+    result = price_item(item, sort_order=1)
+
+    assert result is not None
+    assert result.part_number == "S-12.34-38-50-10"
+    assert "length defaulted to 10.0ft" in result.notes
 
 
 def test_price_item_bag():
