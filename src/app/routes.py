@@ -556,7 +556,7 @@ def _line_item_rounding(item: QuoteLineItem, specs: dict) -> str | None:
             check_qty = original_qty if original_qty is not None else quantity
             rounded, bundles = bundle_round(check_qty, STANDARD_BUNDLE_PIECES)
             if rounded != check_qty:
-                return f"{check_qty} pcs \u2192 {bundles} bundle{'s' if bundles != 1 else ''} = {rounded} pcs"
+                return f"Priced as {bundles} bundle{'s' if bundles != 1 else ''} ({rounded} pcs)"
     if item.product_type == "bag":
         diameter = _parse_float(str(specs.get("diameter", "")))
         bag_row = _bag_pricing_row_for_diameter(diameter)
@@ -566,7 +566,7 @@ def _line_item_rounding(item: QuoteLineItem, specs: dict) -> str | None:
                 check_qty = original_qty if original_qty is not None else quantity
                 rounded, pallets = pallet_round(check_qty, pcs_per_pallet)
                 if rounded != check_qty:
-                    return f"{check_qty} pcs \u2192 {pallets} pallet{'s' if pallets != 1 else ''} = {rounded} pcs"
+                    return f"Priced as {pallets} pallet{'s' if pallets != 1 else ''} ({rounded} pcs)"
     return None
 
 
@@ -589,6 +589,12 @@ def _line_item_spec_fields(product_type: str, specs: dict) -> list[dict]:
     if product_type == "bag":
         return [
             {"key": "diameter", "label": "GTW Size", "type": "number", "step": "0.125", "value": specs.get("diameter", "")}
+        ]
+    if product_type == "girth_weld":
+        return [
+            {"key": "diameter", "label": "GTW Size", "type": "number", "step": "0.125", "value": specs.get("diameter", "")},
+            {"key": "wall_thickness", "label": "Wall", "type": "number", "step": "0.0625", "value": specs.get("wall_thickness", "")},
+            {"key": "grade", "label": "Grade", "type": "number", "step": "1", "value": specs.get("grade", "")},
         ]
     return []
 

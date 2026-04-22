@@ -1,8 +1,4 @@
 <div id="line-total-{{ item.id if item is defined else item_id }}" class="line-item-total">
   <span>Line Total</span>
   <strong>${{ '%.2f'|format(line_total if line_total is defined else item.line_total) }}</strong>
-  {% set indicator = rounding_indicator if rounding_indicator is defined else item.rounding_indicator %}
-  {% if indicator %}
-    <span class="line-item-rounded-qty">({{ (quantity if quantity is defined else item.quantity)|int }} pcs)</span>
-  {% endif %}
 </div>
