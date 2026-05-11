@@ -24,6 +24,17 @@ class QuoteStatus(str, Enum):
     ARCHIVED = "archived"
 
 
+class ProductFamily(str, Enum):
+    SLEEVE = "sleeve"
+    GIRTH_WELD = "girth_weld"
+    BAG = "bag"
+    OMEGAWRAP = "omegawrap"
+    PIPE_JACK = "pipe_jack"
+    BACKING_STRIP = "backing_strip"
+    COMPRESSION_SLEEVE = "compression_sleeve"
+    OTHER = "other"
+
+
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
 
@@ -198,6 +209,20 @@ class ProductType(TimestampMixin, db.Model):
     display_label: Mapped[str] = mapped_column(nullable=False)
     sort_order: Mapped[int] = mapped_column(default=0, nullable=False, index=True)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False, index=True)
+
+
+class ProductCatalog(db.Model):
+    __tablename__ = "product_catalog"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sku: Mapped[str] = mapped_column(unique=True, nullable=False, index=True)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    product_family: Mapped[ProductFamily] = mapped_column(
+        SAEnum(ProductFamily, name="product_family"), nullable=False, index=True
+    )
+    is_active: Mapped[bool] = mapped_column(default=True, nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
 class ShippingConfig(db.Model):
