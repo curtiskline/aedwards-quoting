@@ -272,6 +272,45 @@ def test_parse_rfq_returns_first_quote_from_multi():
         if eml_path.exists():
             eml_path.unlink()
 
+
+def test_parse_rfq_extracts_item_sku():
+    email_content = (
+        "From: buyer@example.com\n"
+        "Subject: SKU quote\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "\n"
+        "Please quote one sleeve."
+    )
+    with tempfile.NamedTemporaryFile(suffix=".eml", mode="w", delete=False) as f:
+        f.write(email_content)
+        eml_path = Path(f.name)
+
+    try:
+        provider = MockProvider(
+            {
+                "customer_name": "ACME Corp",
+                "contact_name": "Buyer",
+                "contact_email": "buyer@example.com",
+                "ship_to": None,
+                "items": [
+                    {
+                        "product_type": "sleeve",
+                        "quantity": 1,
+                        "description": "Half Sole 6-5/8",
+                        "sku": "S-6.58-38-50-10",
+                    }
+                ],
+                "urgency": "normal",
+                "confidence": 0.95,
+            }
+        )
+        rfq = parse_rfq(eml_path, provider)
+        assert len(rfq.items) == 1
+        assert rfq.items[0].sku == "S-6.58-38-50-10"
+    finally:
+        if eml_path.exists():
+            eml_path.unlink()
+
 def test_parse_rfq_filters_type_leak_po_number():
     """LLM returning 'int' or other type names should be filtered out."""
     email_content = (

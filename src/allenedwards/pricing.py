@@ -8,7 +8,7 @@ from time import monotonic
 from typing import Any
 
 from flask import has_app_context
-from sqlalchemy import inspect
+from sqlalchemy import func, inspect
 
 from .parser import ParsedItem, ParsedRFQ
 from .pricing_catalog import (
@@ -231,6 +231,7 @@ class QuoteLineItem:
     weight_per_ft: Decimal | None = None
     price_per_lb: Decimal | None = None
     notes: str | None = None
+    sku: str | None = None
 
 
 @dataclass
@@ -1264,6 +1265,11 @@ def generate_quote(rfq: ParsedRFQ, quote_number: str) -> Quote:
             quantity_warnings.append(warning)
         priced = price_item(item, i)
         if priced:
+            if item.sku:
+                priced.sku = item.sku
+                catalog_desc = _catalog_description_for_sku(item.sku)
+                if catalog_desc:
+                    priced.description = catalog_desc
             line_items.append(priced)
             if priced.notes:
                 default_notes.append(f"Item {i}: {priced.notes}")
@@ -1359,3 +1365,19 @@ def generate_quote(rfq: ParsedRFQ, quote_number: str) -> Quote:
         total=subtotal,
         notes=rfq.notes,
     )
+
+
+def _catalog_description_for_sku(sku: str) -> str | None:
+    if not sku or not has_app_context():
+        return None
+    try:
+        from app.extensions import db
+        from app.models import ProductCatalog
+
+        if not inspect(db.engine).has_table("product_catalog"):
+            return None
+
+        row = db.session.query(ProductCatalog).filter(func.lower(ProductCatalog.sku) == sku.lower()).one_or_none()
+        return row.description if row else None
+    except Exception:
+        return None

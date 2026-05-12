@@ -12,9 +12,9 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from functools import lru_cache
 from pathlib import Path
 
-from flask import Blueprint, Response, abort, redirect, render_template, request
+from flask import Blueprint, Response, abort, jsonify, redirect, render_template, request
 from flask_login import login_required
-from sqlalchemy import inspect
+from sqlalchemy import func, inspect, or_
 
 from allenedwards.pdf_generator import generate_quote_pdf
 from .extensions import db
@@ -24,6 +24,7 @@ from .models import (
     Customer,
     PricingTable,
     ProductType,
+    ProductCatalog,
     Quote,
     QuoteLineItem,
     QuoteStatus,
@@ -631,6 +632,7 @@ def _line_item_view(item: QuoteLineItem) -> dict:
     return {
         "id": item.id,
         "product_type": item.product_type,
+        "sku": item.sku,
         "description": item.description,
         "quantity": quantity,
         "display_qty": display_qty,
@@ -906,6 +908,7 @@ def quote_add_line_item(quote_id: int):
     line_item = QuoteLineItem(
         quote=quote,
         product_type=product_type,
+        sku=(request.form.get("sku") or "").strip() or None,
         description=(request.form.get("description") or "New line item").strip() or "New line item",
         quantity=float(_parse_decimal(request.form.get("quantity"), Decimal("1"))),
         unit_price=float(_parse_decimal(request.form.get("unit_price"), Decimal("0"))),
@@ -988,6 +991,7 @@ def quote_update_line_item(quote_id: int, item_id: int):
 
     item.product_type = _resolve_product_type(request.form.get("product_type"), item.product_type)
     auto_shipping_trigger = request.form.get("auto_shipping_trigger") == "1"
+    item.sku = (request.form.get("sku") or "").strip() or None
     item.description = (request.form.get("description") or item.description).strip() or item.description
     quantity = _parse_decimal(request.form.get("quantity"), Decimal(str(item.quantity)))
     unit_price = _parse_decimal(request.form.get("unit_price"), Decimal(str(item.unit_price)))
@@ -1102,6 +1106,35 @@ def quote_update_line_item(quote_id: int, item_id: int):
 
     db.session.commit()
     return _render_line_items(quote)
+
+
+@main_bp.get("/api/product-catalog/search")
+def product_catalog_search():
+    query = (request.args.get("q") or "").strip()
+    if not query:
+        return jsonify([])
+    like = f"%{query.lower()}%"
+    rows = (
+        db.session.query(ProductCatalog)
+        .filter(or_(func.lower(ProductCatalog.sku).like(like), func.lower(ProductCatalog.description).like(like)))
+        .order_by(ProductCatalog.sku.asc())
+        .limit(10)
+        .all()
+    )
+    return jsonify(
+        [
+            {"sku": row.sku, "description": row.description, "product_family": row.product_family.value}
+            for row in rows
+        ]
+    )
+
+
+@main_bp.get("/api/product-catalog/lookup/<string:sku>")
+def product_catalog_lookup(sku: str):
+    row = db.session.query(ProductCatalog).filter(func.lower(ProductCatalog.sku) == sku.lower()).one_or_none()
+    if row is None:
+        abort(404)
+    return jsonify({"sku": row.sku, "description": row.description, "product_family": row.product_family.value})
 
 
 @main_bp.post("/quotes/<int:quote_id>/line-items/<int:item_id>/delete")
