@@ -7,6 +7,9 @@ from email.message import Message
 from pathlib import Path
 from typing import Any
 
+from flask import has_app_context
+from sqlalchemy import inspect
+
 from .providers.base import LLMProvider
 
 QUOTE_NUMBER_PATTERN = re.compile(r"\b(?:QUO|SO|INV)-\d+-\d+\b", re.IGNORECASE)
@@ -169,6 +172,7 @@ class ParsedItem:
     milling: bool = False
     painting: bool = False
     notes: str | None = None
+    sku: str | None = None
 
 
 @dataclass
@@ -345,9 +349,49 @@ def _parse_items(items_data: list) -> list[ParsedItem]:
             milling=bool(item_data.get("milling", False)),
             painting=bool(item_data.get("painting", False)),
             notes=item_data.get("notes"),
+            sku=(str(item_data.get("sku")).strip() or None) if item_data.get("sku") is not None else None,
         )
         items.append(item)
     return items
+
+
+def _load_active_sku_prompt_block() -> str:
+    """Build prompt context for active catalog SKUs when app/DB context is available."""
+    if not has_app_context():
+        return ""
+    try:
+        from app.extensions import db
+        from app.models import ProductCatalog
+
+        if not inspect(db.engine).has_table("product_catalog"):
+            return ""
+
+        rows = (
+            db.session.query(ProductCatalog)
+            .filter(ProductCatalog.is_active.is_(True))
+            .order_by(ProductCatalog.sku.asc())
+            .all()
+        )
+        if not rows:
+            return ""
+
+        lines = "\n".join(f"- {row.sku}: {row.description}" for row in rows)
+        return (
+            "\n\nCANONICAL SKU LIST (active catalog entries):\n"
+            f"{lines}\n"
+            'If a line item clearly matches a SKU, include "sku": "<sku>" in its JSON item.\n'
+            'If uncertain, set "sku" to null.'
+        )
+    except Exception:
+        return ""
+
+
+def _parse_system_prompt() -> str:
+    return (
+        PARSE_SYSTEM_PROMPT
+        + '\n\nEach line item may include optional field "sku": string|null.'
+        + _load_active_sku_prompt_block()
+    )
 
 
 def _parse_ship_to(ship_to_data: dict | None) -> ShipTo | None:
@@ -421,7 +465,7 @@ Return the parsed data as JSON. If the email contains multiple separate quote re
 in the "quotes" array."""
 
     # Call LLM
-    result = provider.complete_json(prompt, system=PARSE_SYSTEM_PROMPT)
+    result = provider.complete_json(prompt, system=_parse_system_prompt())
 
     # Extract common fields
     customer_name = result.get("customer_name")

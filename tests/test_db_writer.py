@@ -90,6 +90,7 @@ def priced_quote():
         PricingLineItem(
             sort_order=1,
             product_type="sleeve",
+            sku="S-12.34-38-50-10",
             part_number="SLV-12-375",
             description='12" x 0.375 w/t Full Encirclement Sleeve',
             quantity=100,
@@ -173,6 +174,7 @@ def test_write_quote_creates_records(app, msg, rfq, priced_quote):
         assert float(li1.unit_price) == 45.50
         assert float(li1.line_total) == 4550.00
         assert li1.specs_json["weight_per_ft"] == "12.5"
+        assert li1.sku == "S-12.34-38-50-10"
 
         # Audit log
         audits = AuditLog.query.filter_by(quote_id=db_quote.id).all()

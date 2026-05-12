@@ -8,7 +8,7 @@ from enum import Enum
 
 from flask_login import UserMixin
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import ForeignKey, Numeric, Text
+from sqlalchemy import ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -166,6 +166,7 @@ class QuoteLineItem(db.Model):
     id: Mapped[int] = mapped_column(primary_key=True)
     quote_id: Mapped[int] = mapped_column(ForeignKey("quote.id"), nullable=False, index=True)
     product_type: Mapped[str] = mapped_column(nullable=False, index=True)
+    sku: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     description: Mapped[str] = mapped_column(nullable=False)
     quantity: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
     unit_price: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
