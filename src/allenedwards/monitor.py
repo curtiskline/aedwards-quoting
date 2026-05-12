@@ -164,6 +164,12 @@ class InboxMonitor:
         return processed_count
 
     def _process_message(self, msg: EmailMessage) -> bool:
+        if self._flask_app:
+            with self._flask_app.app_context():
+                return self._process_message_inner(msg)
+        return self._process_message_inner(msg)
+
+    def _process_message_inner(self, msg: EmailMessage) -> bool:
         body_text = _normalize_body(msg.body_content, msg.body_preview)
         if not classify_rfq(msg.subject, body_text, self.provider):
             logger.info("Message %s classified as non-RFQ", msg.id)

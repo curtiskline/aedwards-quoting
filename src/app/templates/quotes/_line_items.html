@@ -23,13 +23,12 @@
             <label>Description
               <input name="description" value="{{ item.description }}" />
             </label>
-            {% if item.sku %}
-              <div class="line-item-static"><span>Catalog</span><strong>Matched</strong></div>
-            {% endif %}
+            {% if not item.sku %}
             <div class="line-item-static">
               <span>Part #</span>
               <strong>{{ item.part_number or 'TBD' }}</strong>
             </div>
+            {% endif %}
           </div>
 
           {% if item.shipping_breakdown %}

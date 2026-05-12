@@ -54,6 +54,7 @@ if [[ ! -f "${KEY_PATH}" ]]; then
   exit 1
 fi
 
+
 REMOTE_GMAIL_SERVICE_ACCOUNT_FILE=""
 if [[ -n "${LOCAL_GMAIL_SERVICE_ACCOUNT_FILE}" ]]; then
   if [[ ! -f "${LOCAL_GMAIL_SERVICE_ACCOUNT_FILE}" ]]; then
