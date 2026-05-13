@@ -909,30 +909,18 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
             
             total = price_per_bundle * Decimal(str(bundle_count))
             
-            # Create description that includes requested quantity
-            # Try to preserve the customer's description if it mentions quantity
-            if item.description and any(word in item.description.lower() for word in ["ft", "feet", "foot", "piece", "pc", "pcs"]):
-                # Use customer's description
-                description = item.description
-                # Ensure it ends with period
-                if not description.endswith("."):
-                    description += "."
-            else:
-                # Generate technical description but prefix with requested quantity
-                requested_ft = item.quantity * item.length_ft
-                # Get the base description without "Half Sole, " prefix
-                base_desc = generate_sleeve_description(
-                    actual_od,
-                    item.wall_thickness,
-                    item.grade,
-                    item.length_ft,
-                    item.milling,
-                    item.painting,
-                )
-                # Remove "Half Sole, " prefix if present
-                if base_desc.startswith("Half Sole, "):
-                    base_desc = base_desc[11:]  # Remove "Half Sole, "
-                description = f"{requested_ft:.0f} ft of sleeve, {base_desc}"
+            requested_ft = item.quantity * item.length_ft
+            base_desc = generate_sleeve_description(
+                actual_od,
+                item.wall_thickness,
+                item.grade,
+                item.length_ft,
+                item.milling,
+                item.painting,
+            )
+            if base_desc.startswith("Half Sole, "):
+                base_desc = base_desc[11:]
+            description = f"{requested_ft:.0f} ft of sleeve, {base_desc}"
             
             notes = "; ".join(default_notes) if default_notes else None
             if bundle_count * pieces_per_bundle > item.quantity:
