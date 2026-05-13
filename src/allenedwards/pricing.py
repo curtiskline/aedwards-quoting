@@ -909,8 +909,7 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
             
             total = price_per_bundle * Decimal(str(bundle_count))
             
-            requested_ft = item.quantity * item.length_ft
-            base_desc = generate_sleeve_description(
+            description = generate_sleeve_description(
                 actual_od,
                 item.wall_thickness,
                 item.grade,
@@ -918,9 +917,6 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
                 item.milling,
                 item.painting,
             )
-            if base_desc.startswith("Half Sole, "):
-                base_desc = base_desc[11:]
-            description = f"{requested_ft:.0f} ft of sleeve, {base_desc}"
             
             notes = "; ".join(default_notes) if default_notes else None
             if bundle_count * pieces_per_bundle > item.quantity:
