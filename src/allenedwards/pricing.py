@@ -935,8 +935,8 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
                     item.painting,
                 ),
                 description=description,
-                quantity=bundle_count,  # Show bundle count, not piece count
-                unit_price=price_per_bundle,
+                quantity=bundle_count * pieces_per_bundle,
+                unit_price=unit_price,
                 total=total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
                 weight_per_ft=weight_per_ft,
                 price_per_lb=price_per_lb,

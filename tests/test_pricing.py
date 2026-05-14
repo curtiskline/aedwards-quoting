@@ -295,7 +295,7 @@ def test_price_item_girth_weld_no_wall_thickness():
 
 
 def test_price_item_converts_bundle_count_to_piece_count_for_standard_sleeves():
-    """Standard sleeves should show bundle count, not piece count, for bundle pricing."""
+    """Bundle sleeves show piece count (not bundle count) with per-piece pricing."""
     item = ParsedItem(
         product_type="sleeve",
         quantity=2,
@@ -309,7 +309,7 @@ def test_price_item_converts_bundle_count_to_piece_count_for_standard_sleeves():
     result = price_item(item, sort_order=1)
 
     assert result is not None
-    assert result.quantity == 2  # 2 bundles, not 10 pieces
+    assert result.quantity == 10  # 10 pieces (2 bundles × 5), not 2 bundles
     assert "bundle" in result.notes.lower()
 
 
@@ -707,10 +707,10 @@ def test_generate_quote_rounds_up_standard_bundle_sleeve():
 
     quote = generate_quote(rfq, "126-ROUND")
 
-    # Quantity should be 2 (bundles), not 10 (pieces)
+    # Quantity should be 10 pieces (2 bundles × 5), not 2 bundles
     sleeve_items = [item for item in quote.line_items if item.product_type == "sleeve"]
     assert len(sleeve_items) == 1
-    assert sleeve_items[0].quantity == 2  # 2 bundles
+    assert sleeve_items[0].quantity == 10  # 10 pieces, not 2 bundles
 
     # Bundle pricing note should be in the sleeve item notes, not a separate note
     assert "bundle" in sleeve_items[0].notes.lower()
