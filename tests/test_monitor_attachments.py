@@ -126,7 +126,7 @@ class TestGetAttachments:
         assert result[0].content_type == "message/rfc822"
         assert result[0].content_bytes == mime_bytes
         client._request_raw.assert_called_once_with(
-            "GET", "/me/messages/msg-001/attachments/att-2/$value"
+            "GET", f"{client._mailbox}/messages/msg-001/attachments/att-2/$value"
         )
 
     def test_empty_attachments(self):

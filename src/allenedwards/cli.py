@@ -508,8 +508,13 @@ def monitor(
 
             email_addr = os.environ.get("O365_EMAIL")
             password = os.environ.get("O365_PASSWORD")
-            if not email_addr or not password:
-                raise ValueError("Missing O365 credentials. Set O365_EMAIL and O365_PASSWORD.")
+            client_secret = os.environ.get("O365_CLIENT_SECRET")
+            tenant_id = os.environ.get("O365_TENANT_ID")
+            if not email_addr or (not password and not client_secret):
+                raise ValueError(
+                    "Missing O365 credentials. Set O365_EMAIL and either "
+                    "O365_CLIENT_SECRET+O365_TENANT_ID (preferred) or O365_PASSWORD."
+                )
 
             client_id = os.environ.get("O365_CLIENT_ID", "04b07795-8ddb-461a-bbee-02f9e1bf7b46")
             scopes = os.environ.get("O365_SCOPES")
@@ -519,6 +524,8 @@ def monitor(
                 password=password,
                 client_id=client_id,
                 scopes=parsed_scopes,
+                client_secret=client_secret,
+                tenant_id=tenant_id,
             )
         elif email_provider == "gmail":
             from .gmail import GmailClient

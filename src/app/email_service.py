@@ -15,9 +15,11 @@ def send_magic_link_email(*, to_email: str, magic_link: str) -> None:
     """Send a sign-in link through O365 Graph."""
     sender_email = os.getenv("O365_EMAIL")
     sender_password = os.getenv("O365_PASSWORD")
+    client_secret = os.getenv("O365_CLIENT_SECRET")
+    tenant_id = os.getenv("O365_TENANT_ID")
     scopes_raw = os.getenv("O365_SCOPES", "")
 
-    if not sender_email or not sender_password:
+    if not sender_email or (not sender_password and not client_secret):
         raise EmailDeliveryError("O365 credentials are not configured")
 
     scopes = [scope.strip() for scope in scopes_raw.split(",") if scope.strip()] or None
@@ -26,6 +28,8 @@ def send_magic_link_email(*, to_email: str, magic_link: str) -> None:
         email_address=sender_email,
         password=sender_password,
         scopes=scopes,
+        client_secret=client_secret,
+        tenant_id=tenant_id,
     )
 
     subject = "Your Allan Edwards sign-in link"

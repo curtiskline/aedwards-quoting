@@ -40,17 +40,26 @@ class OutlookClient(EmailProvider):
     def __init__(
         self,
         email_address: str,
-        password: str,
+        password: str | None = None,
         client_id: str = DEFAULT_CLIENT_ID,
         scopes: list[str] | None = None,
         timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+        client_secret: str | None = None,
+        tenant_id: str | None = None,
     ):
         self.email_address = email_address
         self.password = password
         self.client_id = client_id
         self.scopes = scopes or ["https://graph.microsoft.com/.default"]
         self.timeout_seconds = timeout_seconds
+        self.client_secret = client_secret
+        self.tenant_id = tenant_id
         self._token: str | None = None
+
+    @property
+    def _mailbox(self) -> str:
+        """Graph path prefix for this mailbox — works for both delegated and app-only auth."""
+        return f"/users/{self.email_address}"
 
     @property
     def _domain(self) -> str:
@@ -76,6 +85,29 @@ class OutlookClient(EmailProvider):
         return "organizations"
 
     def _acquire_token(self) -> str:
+        if self.client_secret:
+            return self._acquire_token_client_credentials()
+        return self._acquire_token_ropc()
+
+    def _acquire_token_client_credentials(self) -> str:
+        """App-only auth via client credentials — never breaks when user accounts change."""
+        tenant = self.tenant_id or self._discover_tenant()
+        authority = f"https://login.microsoftonline.com/{tenant}"
+        app = msal.ConfidentialClientApplication(
+            client_id=self.client_id,
+            client_credential=self.client_secret,
+            authority=authority,
+        )
+        result = app.acquire_token_for_client(scopes=self.scopes)
+        token = result.get("access_token")
+        if token:
+            return token
+        err = result.get("error_description") or result.get("error") or "unknown auth error"
+        raise OutlookAuthError(f"O365 client credentials auth failed: {err}")
+
+    def _acquire_token_ropc(self) -> str:
+        if not self.password:
+            raise OutlookAuthError("O365 auth requires either client_secret or password.")
         tenant = self._discover_tenant()
         authority = f"https://login.microsoftonline.com/{tenant}"
         app = msal.PublicClientApplication(client_id=self.client_id, authority=authority)
@@ -133,7 +165,7 @@ class OutlookClient(EmailProvider):
         }
         if since:
             params["$filter"] = f"receivedDateTime gt {since}"
-        data = self._request("GET", "/me/mailFolders/inbox/messages", params=params)
+        data = self._request("GET", f"{self._mailbox}/mailFolders/inbox/messages", params=params)
         messages: list[EmailMessage] = []
 
         for item in data.get("value", []):
@@ -162,7 +194,7 @@ class OutlookClient(EmailProvider):
 
     def get_attachments(self, message_id: str) -> list[OutlookAttachment]:
         """Fetch attachments for a message via GET /me/messages/{id}/attachments."""
-        data = self._request("GET", f"/me/messages/{message_id}/attachments")
+        data = self._request("GET", f"{self._mailbox}/messages/{message_id}/attachments")
         attachments: list[OutlookAttachment] = []
 
         for item in data.get("value", []):
@@ -184,7 +216,7 @@ class OutlookClient(EmailProvider):
                     att_id = item["id"]
                     mime_data = self._request_raw(
                         "GET",
-                        f"/me/messages/{message_id}/attachments/{att_id}/$value",
+                        f"{self._mailbox}/messages/{message_id}/attachments/{att_id}/$value",
                     )
                     attachments.append(OutlookAttachment(
                         filename=name,
@@ -213,7 +245,7 @@ class OutlookClient(EmailProvider):
         return response.content
 
     def mark_read(self, message_id: str) -> None:
-        self._request("PATCH", f"/me/messages/{message_id}", json={"isRead": True})
+        self._request("PATCH", f"{self._mailbox}/messages/{message_id}", json={"isRead": True})
 
     def mark_as_read(self, message_id: str) -> None:
         """Backward-compatible alias for mark_read()."""
@@ -221,7 +253,7 @@ class OutlookClient(EmailProvider):
 
     def move_message(self, message_id: str, destination_folder_id: str) -> str:
         payload = {"destinationId": destination_folder_id}
-        data = self._request("POST", f"/me/messages/{message_id}/move", json=payload)
+        data = self._request("POST", f"{self._mailbox}/messages/{message_id}/move", json=payload)
         return data.get("id", "")
 
     def create_draft(
@@ -257,7 +289,7 @@ class OutlookClient(EmailProvider):
         if cc_recipients:
             payload["ccRecipients"] = cc_recipients
 
-        data = self._request("POST", "/me/messages", json=payload)
+        data = self._request("POST", f"{self._mailbox}/messages", json=payload)
         return data.get("id", "")
 
     def send_mail(
@@ -295,18 +327,18 @@ class OutlookClient(EmailProvider):
             message["attachments"] = graph_attachments
 
         payload = {"message": message, "saveToSentItems": "true"}
-        self._request("POST", "/me/sendMail", json=payload)
+        self._request("POST", f"{self._mailbox}/sendMail", json=payload)
 
     def get_or_create_folder(self, display_name: str) -> str:
         """Return a mail folder id by display name, creating it under Inbox when missing."""
-        data = self._request("GET", "/me/mailFolders/inbox/childFolders", params={"$top": "100"})
+        data = self._request("GET", f"{self._mailbox}/mailFolders/inbox/childFolders", params={"$top": "100"})
         for folder in data.get("value", []):
             if folder.get("displayName", "").lower() == display_name.lower():
                 return folder["id"]
 
         created = self._request(
             "POST",
-            "/me/mailFolders/inbox/childFolders",
+            f"{self._mailbox}/mailFolders/inbox/childFolders",
             json={"displayName": display_name},
         )
         return created["id"]
