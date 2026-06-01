@@ -1438,6 +1438,7 @@ def quote_send(quote_id: int):
     from allenedwards.outlook import OutlookAuthError, OutlookClient
     sender_email = os.getenv("O365_EMAIL")
     sender_password = os.getenv("O365_PASSWORD")
+    client_id = os.getenv("O365_CLIENT_ID")
     client_secret = os.getenv("O365_CLIENT_SECRET")
     tenant_id = os.getenv("O365_TENANT_ID")
     scopes_raw = os.getenv("O365_SCOPES", "")
@@ -1454,6 +1455,7 @@ def quote_send(quote_id: int):
     client = OutlookClient(
         email_address=sender_email,
         password=sender_password,
+        client_id=client_id,
         scopes=scopes,
         client_secret=client_secret,
         tenant_id=tenant_id,

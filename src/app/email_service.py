@@ -15,6 +15,7 @@ def send_magic_link_email(*, to_email: str, magic_link: str) -> None:
     """Send a sign-in link through O365 Graph."""
     sender_email = os.getenv("O365_EMAIL")
     sender_password = os.getenv("O365_PASSWORD")
+    client_id = os.getenv("O365_CLIENT_ID")
     client_secret = os.getenv("O365_CLIENT_SECRET")
     tenant_id = os.getenv("O365_TENANT_ID")
     scopes_raw = os.getenv("O365_SCOPES", "")
@@ -27,6 +28,7 @@ def send_magic_link_email(*, to_email: str, magic_link: str) -> None:
     client = OutlookClient(
         email_address=sender_email,
         password=sender_password,
+        client_id=client_id,
         scopes=scopes,
         client_secret=client_secret,
         tenant_id=tenant_id,
