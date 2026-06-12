@@ -4,6 +4,7 @@ import tempfile
 from pathlib import Path
 
 from allenedwards.parser import (
+    CLASSIFY_SYSTEM_PROMPT,
     classify_rfq,
     extract_email_text,
     parse_rfq,
@@ -592,11 +593,39 @@ def test_classify_rfq_biases_true_when_provider_fails():
     assert classify_rfq("status update", "this is probably not rfq", provider) is True
 
 
-def test_classify_rfq_flips_low_confidence_false_to_true():
-    provider = _ClassifierProvider({"is_rfq": False, "confidence": 0.4, "reason": "maybe not rfq"})
+def test_classify_rfq_only_flips_near_random_false_to_true():
+    provider = _ClassifierProvider(
+        {"is_rfq": False, "confidence": 0.1, "reason": "too little context"}
+    )
     assert classify_rfq("check pricing", "unclear request", provider) is True
+
+
+def test_classify_rfq_trusts_low_confidence_non_rfq_above_random():
+    provider = _ClassifierProvider(
+        {"is_rfq": False, "confidence": 0.4, "reason": "maybe not a quote request"}
+    )
+    assert classify_rfq("check pricing", "unclear request", provider) is False
 
 
 def test_classify_rfq_trusts_medium_confidence_non_rfq():
     provider = _ClassifierProvider({"is_rfq": False, "confidence": 0.6, "reason": "not a quote request"})
     assert classify_rfq("status update", "this is not an rfq", provider) is False
+
+
+def test_classify_rfq_returns_false_for_personal_email_pattern():
+    provider = _ClassifierProvider(
+        {
+            "is_rfq": False,
+            "confidence": 0.83,
+            "reason": "personal schedule message with no product request",
+        }
+    )
+    assert classify_rfq("Dinner plans", "Can you make it to dinner Saturday?", provider) is False
+
+
+def test_classify_prompt_does_not_instruct_false_positive_bias():
+    prompt = CLASSIFY_SYSTEM_PROMPT.lower()
+
+    assert "prefer false positives" not in prompt
+    assert "lean true" not in prompt
+    assert "personal emails" in prompt
