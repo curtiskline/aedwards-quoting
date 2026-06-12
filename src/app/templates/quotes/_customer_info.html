@@ -15,4 +15,47 @@
     </div>
     <button type="submit">Save Customer Info</button>
   </form>
+  <script>
+    (() => {
+      const section = document.getElementById("editor-customer-info");
+      if (!section) return;
+      const form = section.querySelector("form");
+      if (!form) return;
+
+      let idleTimer = null;
+      let leaveTimer = null;
+
+      function triggerSave() {
+        clearTimeout(idleTimer);
+        clearTimeout(leaveTimer);
+        if (window.htmx) window.htmx.trigger(form, "submit");
+      }
+
+      // Save 5s after last keystroke, even without tabbing off.
+      form.addEventListener("input", () => {
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(triggerSave, 5000);
+      });
+      form.addEventListener("change", () => {
+        clearTimeout(idleTimer);
+        idleTimer = setTimeout(triggerSave, 5000);
+      });
+
+      // Also save promptly when focus leaves the form.
+      form.addEventListener("focusout", () => {
+        clearTimeout(leaveTimer);
+        leaveTimer = setTimeout(() => {
+          if (form.contains(document.activeElement)) return;
+          triggerSave();
+        }, 200);
+      });
+      form.addEventListener("focusin", () => clearTimeout(leaveTimer));
+
+      // Cancel pending timers once htmx fires so we don't double-submit.
+      form.addEventListener("htmx:beforeRequest", () => {
+        clearTimeout(idleTimer);
+        clearTimeout(leaveTimer);
+      });
+    })();
+  </script>
 </section>
