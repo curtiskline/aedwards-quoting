@@ -26,10 +26,10 @@ Return JSON:
 }
 
 Classification guidance:
-- Prefer false positives over false negatives.
 - Messages asking for quote/pricing/lead time on steel pipe products are RFQs.
 - Internal status updates, invoices, shipping updates, signatures-only, or unrelated topics are not RFQs.
-- If uncertain, lean true.
+- Personal emails, meeting notes, appointment reminders, greetings, or thank-you messages with no product request are not RFQs.
+- Classify honestly from the message content. If the message does not ask Allan Edwards for pipe/sleeve/girth-weld product pricing or availability, return false.
 """
 
 PARSE_SYSTEM_PROMPT = """You are an expert at parsing Request for Quote (RFQ) emails for Allan Edwards Inc.,
@@ -564,15 +564,12 @@ def classify_rfq(subject: str, body: str, provider: LLMProvider) -> bool:
 
     is_rfq = bool(result.get("is_rfq", False))
     confidence = _parse_float(result.get("confidence")) or 0.0
-    reason = str(result.get("reason", "")).lower()
 
     if is_rfq:
         return True
 
-    # Uncertain "not RFQ" classifications get flipped to RFQ.
-    if confidence < 0.5:
-        return True
-    if any(token in reason for token in ("uncertain", "maybe", "possibly", "unclear")):
+    # Only override a negative classification when confidence is near-random.
+    if confidence < 0.2:
         return True
 
     return False
