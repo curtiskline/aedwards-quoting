@@ -260,6 +260,51 @@ class TestMonitorAttachmentWiring:
         outlook.mark_read.assert_called_once_with("msg-001")
         assert monitor.state.contains("msg-001")
 
+    def test_failed_message_is_logged_and_quarantined(self, tmp_path, caplog):
+        """A poison message should not be retried forever."""
+        outlook = MagicMock(spec=OutlookClient)
+        outlook.fetch_messages.return_value = [_make_msg()]
+        monitor = InboxMonitor(
+            outlook=outlook,
+            provider=FakeProvider(),
+            poll_interval_seconds=60,
+            state_path=tmp_path / "state.json",
+            output_dir=tmp_path / "quotes",
+        )
+
+        with patch.object(monitor, "_process_message", side_effect=RuntimeError("boom")):
+            with caplog.at_level("ERROR", logger="allenedwards.monitor"):
+                processed = monitor.run_once()
+
+        assert processed == 0
+        assert monitor.state.contains("msg-001")
+        assert monitor.state.last_seen_datetime == "2026-03-13T12:00:00Z"
+        assert "quarantining to avoid retry loop" in caplog.text
+
+        saved_state = json.loads((tmp_path / "state.json").read_text())
+        assert saved_state["processed_ids"] == ["msg-001"]
+        assert saved_state["last_seen_datetime"] == "2026-03-13T12:00:00Z"
+
+    def test_failed_message_with_invalid_timestamp_is_quarantined(self, tmp_path):
+        """Processed IDs still prevent repeat loops when a timestamp cannot advance."""
+        outlook = MagicMock(spec=OutlookClient)
+        outlook.fetch_messages.return_value = [_make_msg()]
+        outlook.fetch_messages.return_value[0].received_datetime = "not-a-date"
+        monitor = InboxMonitor(
+            outlook=outlook,
+            provider=FakeProvider(),
+            poll_interval_seconds=60,
+            state_path=tmp_path / "state.json",
+            output_dir=tmp_path / "quotes",
+        )
+
+        with patch.object(monitor, "_process_message", side_effect=RuntimeError("boom")):
+            processed = monitor.run_once()
+
+        assert processed == 0
+        assert monitor.state.contains("msg-001")
+        assert monitor.state.last_seen_datetime is None
+
 
 # ---------- _parse_message_to_rfqs attachment integration ----------
 

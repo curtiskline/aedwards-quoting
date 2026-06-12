@@ -144,19 +144,29 @@ class InboxMonitor:
         processed_count = 0
 
         for msg in messages:
+            message_id = getattr(msg, "id", "<missing-id>") or "<missing-id>"
             try:
                 if msg.received_datetime:
                     self.state.advance_watermark(msg.received_datetime)
 
-                if self.state.contains(msg.id):
-                    logger.debug("Skipping already processed message %s", msg.id)
+                if self.state.contains(message_id):
+                    logger.debug("Skipping already processed message %s", message_id)
                     continue
 
                 handled = self._process_message(msg)
                 if handled:
                     processed_count += 1
             except Exception:
-                logger.exception("Failed processing message %s", msg.id)
+                logger.exception(
+                    "Failed processing message %s; quarantining to avoid retry loop "
+                    "(subject=%r, sender=%r, received=%r)",
+                    message_id,
+                    getattr(msg, "subject", None),
+                    getattr(msg, "sender_email", None),
+                    getattr(msg, "received_datetime", None),
+                )
+                if message_id != "<missing-id>":
+                    self.state.add(message_id)
 
         if messages:
             self.state.save()
