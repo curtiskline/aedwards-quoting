@@ -873,7 +873,7 @@ def quote_update_customer(quote_id: int):
     _sync_linked_customer_from_quote(quote)
     _apply_auto_shipping_line_item(quote)
     db.session.commit()
-    return _render_editor(quote)
+    return _render_customer_info(quote)
 
 
 @main_bp.post("/quotes/<int:quote_id>/status")
