@@ -71,6 +71,18 @@ class FakeProvider:
         }
 
 
+class NoItemProvider(FakeProvider):
+    """Stub LLM provider that classifies as RFQ but extracts no line items."""
+
+    def complete_json(self, prompt: str, system: str = "") -> dict:
+        result = super().complete_json(prompt, system)
+        if "Classify" in system or "classifier" in system:
+            return result
+        result["quotes"][0]["items"] = []
+        result["notes"] = "This does not appear to be a quote request."
+        return result
+
+
 # ---------- OutlookClient.get_attachments ----------
 
 
@@ -225,6 +237,28 @@ class TestMonitorAttachmentWiring:
                 monitor.run_once()
 
         outlook.get_attachments.assert_not_called()
+
+    def test_no_line_items_skips_db_write_and_finalizes_message(self, tmp_path):
+        """Parsed RFQs with no line items are treated as non-actionable."""
+        outlook = MagicMock(spec=OutlookClient)
+        msg = _make_msg(body="Please review this update; no quote needed.")
+        monitor = InboxMonitor(
+            outlook=outlook,
+            provider=NoItemProvider(),
+            poll_interval_seconds=60,
+            state_path=tmp_path / "state.json",
+            output_dir=tmp_path / "quotes",
+            enable_db_writes=True,
+            enable_outlook_drafts=False,
+        )
+
+        with patch.object(monitor, "_write_to_db") as write_to_db:
+            handled = monitor._process_message_inner(msg)
+
+        assert handled is False
+        write_to_db.assert_not_called()
+        outlook.mark_read.assert_called_once_with("msg-001")
+        assert monitor.state.contains("msg-001")
 
 
 # ---------- _parse_message_to_rfqs attachment integration ----------

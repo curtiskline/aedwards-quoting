@@ -570,7 +570,7 @@ def classify_rfq(subject: str, body: str, provider: LLMProvider) -> bool:
         return True
 
     # Uncertain "not RFQ" classifications get flipped to RFQ.
-    if confidence < 0.75:
+    if confidence < 0.5:
         return True
     if any(token in reason for token in ("uncertain", "maybe", "possibly", "unclear")):
         return True

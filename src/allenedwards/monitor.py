@@ -185,8 +185,9 @@ class InboxMonitor:
                 logger.exception("Failed fetching attachments for message %s", msg.id)
 
         rfqs = _parse_message_to_rfqs(msg, body_text, self.provider, attachments)
+        rfqs = [rfq for rfq in rfqs if rfq.items]
         if not rfqs:
-            logger.warning("Message %s produced no parsed RFQs", msg.id)
+            logger.info("Message %s parsed but produced no line items; skipping", msg.id)
             self._finalize_message(msg.id)
             return False
 
