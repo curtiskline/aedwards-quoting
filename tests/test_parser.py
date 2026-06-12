@@ -595,3 +595,8 @@ def test_classify_rfq_biases_true_when_provider_fails():
 def test_classify_rfq_flips_low_confidence_false_to_true():
     provider = _ClassifierProvider({"is_rfq": False, "confidence": 0.4, "reason": "maybe not rfq"})
     assert classify_rfq("check pricing", "unclear request", provider) is True
+
+
+def test_classify_rfq_trusts_medium_confidence_non_rfq():
+    provider = _ClassifierProvider({"is_rfq": False, "confidence": 0.6, "reason": "not a quote request"})
+    assert classify_rfq("status update", "this is not an rfq", provider) is False
