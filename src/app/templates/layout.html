@@ -312,23 +312,5 @@
       {% endwith %}
       {% block body %}{% endblock %}
     </main>
-    <script>
-      // Ensure loading indicator is visible for at least 300ms
-      document.body.addEventListener("htmx:beforeRequest", function(e) {
-        e.detail.elt._htmxReqStart = Date.now();
-      });
-      document.body.addEventListener("htmx:afterRequest", function(e) {
-        var start = e.detail.elt._htmxReqStart;
-        if (!start) return;
-        var elapsed = Date.now() - start;
-        var remain = 300 - elapsed;
-        if (remain > 0) {
-          e.detail.elt.classList.add("htmx-request");
-          setTimeout(function() {
-            e.detail.elt.classList.remove("htmx-request");
-          }, remain);
-        }
-      });
-    </script>
   </body>
 </html>
