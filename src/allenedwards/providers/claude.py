@@ -36,16 +36,22 @@ class ClaudeProvider(LLMProvider):
         # Add instruction for JSON output
         json_prompt = f"{prompt}\n\nRespond with valid JSON only, no markdown code blocks."
 
-        response = self.complete(json_prompt, system)
+        for attempt in range(2):
+            response = self.complete(json_prompt, system)
 
-        # Strip any markdown code blocks if present
-        text = response.strip()
-        if text.startswith("```json"):
-            text = text[7:]
-        if text.startswith("```"):
-            text = text[3:]
-        if text.endswith("```"):
-            text = text[:-3]
-        text = text.strip()
+            # Strip any markdown code blocks if present
+            text = response.strip()
+            if text.startswith("```json"):
+                text = text[7:]
+            if text.startswith("```"):
+                text = text[3:]
+            if text.endswith("```"):
+                text = text[:-3]
+            text = text.strip()
 
-        return json.loads(text)
+            try:
+                return json.loads(text)
+            except json.JSONDecodeError:
+                if attempt == 0:
+                    continue
+                raise

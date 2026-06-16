@@ -86,8 +86,14 @@ class MiniMaxProvider(LLMProvider):
         return self._call_api(prompt, system, json_mode=False)
 
     def complete_json(self, prompt: str, system: str | None = None) -> dict[str, Any]:
-        response = self._call_api(prompt, system, json_mode=True)
-        return json.loads(self._extract_json(response))
+        for attempt in range(2):
+            response = self._call_api(prompt, system, json_mode=True)
+            try:
+                return json.loads(self._extract_json(response))
+            except json.JSONDecodeError:
+                if attempt == 0:
+                    continue
+                raise
 
     def _extract_json(self, text: str) -> str:
         """Extract JSON from response, stripping <think> tags if present."""
