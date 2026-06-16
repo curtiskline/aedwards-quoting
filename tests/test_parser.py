@@ -145,6 +145,108 @@ def test_parse_rfq_extracts_po_number_from_body():
             eml_path.unlink()
 
 
+def test_parse_rfq_fills_missing_contact_from_external_from_header():
+    """External From header should fill blanks left by the model."""
+    email_content = (
+        'From: "Rick Jackson" <rick.jackson@blackhillscorp.com>\n'
+        "Subject: Quote request\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "\n"
+        "Please quote 2 sleeves."
+    )
+    with tempfile.NamedTemporaryFile(suffix=".eml", mode="w", delete=False) as f:
+        f.write(email_content)
+        eml_path = Path(f.name)
+
+    try:
+        provider = MockProvider(
+            {
+                "customer_name": None,
+                "contact_name": None,
+                "contact_email": None,
+                "ship_to": None,
+                "items": [],
+                "urgency": "normal",
+                "confidence": 0.9,
+            }
+        )
+        rfq = parse_rfq(eml_path, provider)
+        assert rfq.customer_name == "Black Hills Corp."
+        assert rfq.contact_name == "Rick Jackson"
+        assert rfq.contact_email == "rick.jackson@blackhillscorp.com"
+    finally:
+        if eml_path.exists():
+            eml_path.unlink()
+
+
+def test_parse_rfq_expands_first_name_from_matching_from_header():
+    """First-name-only model output should be expanded from sender display name."""
+    email_content = (
+        'From: "Michael Connolly" <michael.connolly@atmosenergy.com>\n'
+        "Subject: Quote request\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "\n"
+        "Please quote 2 sleeves."
+    )
+    with tempfile.NamedTemporaryFile(suffix=".eml", mode="w", delete=False) as f:
+        f.write(email_content)
+        eml_path = Path(f.name)
+
+    try:
+        provider = MockProvider(
+            {
+                "customer_name": None,
+                "contact_name": "Michael",
+                "contact_email": None,
+                "ship_to": None,
+                "items": [],
+                "urgency": "normal",
+                "confidence": 0.9,
+            }
+        )
+        rfq = parse_rfq(eml_path, provider)
+        assert rfq.customer_name == "Atmos Energy"
+        assert rfq.contact_name == "Michael Connolly"
+        assert rfq.contact_email == "michael.connolly@atmosenergy.com"
+    finally:
+        if eml_path.exists():
+            eml_path.unlink()
+
+
+def test_parse_rfq_does_not_fill_contact_from_internal_from_header():
+    """Allan Edwards senders should not become customer contacts."""
+    email_content = (
+        'From: "Kent Webber" <kwebber@allanedwards.com>\n'
+        "Subject: Quote request\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "\n"
+        "Please quote 2 sleeves."
+    )
+    with tempfile.NamedTemporaryFile(suffix=".eml", mode="w", delete=False) as f:
+        f.write(email_content)
+        eml_path = Path(f.name)
+
+    try:
+        provider = MockProvider(
+            {
+                "customer_name": None,
+                "contact_name": None,
+                "contact_email": None,
+                "ship_to": None,
+                "items": [],
+                "urgency": "normal",
+                "confidence": 0.9,
+            }
+        )
+        rfq = parse_rfq(eml_path, provider)
+        assert rfq.customer_name is None
+        assert rfq.contact_name is None
+        assert rfq.contact_email is None
+    finally:
+        if eml_path.exists():
+            eml_path.unlink()
+
+
 def test_parse_rfq_multi_returns_multiple_quotes():
     """Test that parse_rfq_multi returns multiple ParsedRFQ objects for multi-quote emails."""
     email_content = (
