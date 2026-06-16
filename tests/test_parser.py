@@ -629,3 +629,47 @@ def test_classify_prompt_does_not_instruct_false_positive_bias():
     assert "prefer false positives" not in prompt
     assert "lean true" not in prompt
     assert "personal emails" in prompt
+
+
+def test_claude_provider_retries_on_json_decode_error(monkeypatch):
+    """complete_json should retry once when Claude returns malformed JSON."""
+    import json
+    from unittest.mock import patch, MagicMock
+    from allenedwards.providers.claude import ClaudeProvider
+
+    call_count = [0]
+    good_response = '{"is_rfq": true}'
+    bad_response = '{"is_rfq": true,}'  # trailing comma — invalid JSON
+
+    def fake_complete(self, prompt, system=None):
+        call_count[0] += 1
+        if call_count[0] == 1:
+            return bad_response
+        return good_response
+
+    with patch.object(ClaudeProvider, "complete", fake_complete):
+        provider = ClaudeProvider.__new__(ClaudeProvider)
+        result = provider.complete_json("test prompt")
+
+    assert call_count[0] == 2
+    assert result == {"is_rfq": True}
+
+
+def test_claude_provider_raises_on_repeated_json_decode_error(monkeypatch):
+    """complete_json should raise JSONDecodeError if both attempts return bad JSON."""
+    import json
+    from unittest.mock import patch
+    from allenedwards.providers.claude import ClaudeProvider
+
+    bad_response = '{"broken": ,}'
+
+    def fake_complete(self, prompt, system=None):
+        return bad_response
+
+    with patch.object(ClaudeProvider, "complete", fake_complete):
+        provider = ClaudeProvider.__new__(ClaudeProvider)
+        try:
+            provider.complete_json("test prompt")
+            assert False, "Expected JSONDecodeError"
+        except json.JSONDecodeError:
+            pass
