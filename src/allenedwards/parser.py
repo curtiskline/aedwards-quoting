@@ -4,6 +4,7 @@ import email
 import re
 from dataclasses import dataclass
 from email.message import Message
+from email.utils import parseaddr
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +15,26 @@ from .providers.base import LLMProvider
 
 QUOTE_NUMBER_PATTERN = re.compile(r"\b(?:QUO|SO|INV)-\d+-\d+\b", re.IGNORECASE)
 DEFAULT_RFQ_CLASSIFY_BODY_CHARS = 500
+INTERNAL_EMAIL_DOMAINS = {"allanedwards.com"}
+GENERIC_EMAIL_DOMAINS = {
+    "aol.com",
+    "gmail.com",
+    "hotmail.com",
+    "icloud.com",
+    "live.com",
+    "outlook.com",
+    "yahoo.com",
+}
+DOMAIN_COMPANY_OVERRIDES = {
+    "atmosenergy.com": "Atmos Energy",
+    "blackhillscorp.com": "Black Hills Corp.",
+    "buckeye.com": "Buckeye Partners",
+    "centerpointenergy.com": "CenterPoint Energy",
+    "dnow.com": "DNOW",
+    "duke-energy.com": "Duke Energy",
+    "kindermorgan.com": "Kinder Morgan",
+    "mrcglobal.com": "MRC Global",
+}
 
 CLASSIFY_SYSTEM_PROMPT = """You are a strict binary classifier for Allan Edwards sales operations.
 Classify whether an incoming message is likely an RFQ for pipe/sleeve/girth-weld products.
@@ -394,6 +415,92 @@ def _parse_system_prompt() -> str:
     )
 
 
+def _clean_header_name(name: str | None) -> str | None:
+    """Return a readable display name from an email header."""
+    if not name:
+        return None
+    cleaned = re.sub(r"\([^)]*\)", " ", name)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip().strip('"')
+    if not cleaned or "@" in cleaned:
+        return None
+    return cleaned
+
+
+def _email_domain(address: str | None) -> str | None:
+    if not address or "@" not in address:
+        return None
+    return address.rsplit("@", 1)[1].strip().lower()
+
+
+def _is_internal_email(address: str | None) -> bool:
+    domain = _email_domain(address)
+    return bool(domain and domain in INTERNAL_EMAIL_DOMAINS)
+
+
+def _from_header_contact(from_header: str) -> tuple[str | None, str | None]:
+    """Extract a non-internal sender name/email from a From header."""
+    display_name, address = parseaddr(from_header or "")
+    address = address.strip() or None
+    if _is_internal_email(address):
+        return None, None
+    return _clean_header_name(display_name), address
+
+
+def _name_tokens(name: str | None) -> list[str]:
+    if not name:
+        return []
+    return re.findall(r"[a-z0-9]+", name.lower())
+
+
+def _should_use_header_name(current: str | None, header_name: str | None) -> bool:
+    """Use the header name only for blanks or clear first-name-only expansions."""
+    if not header_name:
+        return False
+    if not current:
+        return True
+
+    current_tokens = _name_tokens(current)
+    header_tokens = _name_tokens(header_name)
+    if len(current_tokens) == 1 and len(header_tokens) >= 2:
+        return current_tokens[0] == header_tokens[0]
+    return False
+
+
+def _company_name_from_email(address: str | None) -> str | None:
+    """Infer a customer company from a non-generic external email domain."""
+    domain = _email_domain(address)
+    if not domain or domain in INTERNAL_EMAIL_DOMAINS or domain in GENERIC_EMAIL_DOMAINS:
+        return None
+    if domain in DOMAIN_COMPANY_OVERRIDES:
+        return DOMAIN_COMPANY_OVERRIDES[domain]
+
+    base = domain.split(".")[0]
+    if not base:
+        return None
+    words = re.split(r"[-_]+", base)
+    return " ".join(word.capitalize() for word in words if word)
+
+
+def _apply_header_contact_fallback(
+    *,
+    customer_name: str | None,
+    contact_name: str | None,
+    contact_email: str | None,
+    from_header: str,
+) -> tuple[str | None, str | None, str | None]:
+    """Fill missing top-level contact/customer fields from external From header."""
+    header_name, header_email = _from_header_contact(from_header)
+
+    if not contact_email and header_email:
+        contact_email = header_email
+    if _should_use_header_name(contact_name, header_name):
+        contact_name = header_name
+    if not customer_name:
+        customer_name = _company_name_from_email(contact_email or header_email)
+
+    return customer_name, contact_name, contact_email
+
+
 def _parse_ship_to(ship_to_data: dict | None) -> ShipTo | None:
     """Parse ship_to data from LLM response into ShipTo object."""
     if not ship_to_data:
@@ -477,6 +584,12 @@ in the "quotes" array."""
     confidence = float(result.get("confidence", 0.0))
     message_id = msg.get("Message-ID")
     quote_number = _resolve_quote_number(result.get("quote_number"), subject, body)
+    customer_name, contact_name, contact_email = _apply_header_contact_fallback(
+        customer_name=customer_name,
+        contact_name=contact_name,
+        contact_email=contact_email,
+        from_header=from_header,
+    )
 
     rfqs = []
 

@@ -42,6 +42,56 @@ def normalize_str(s: str | None) -> str:
     return re.sub(r"\s+", " ", s.strip().lower())
 
 
+_PERSON_PREFIXES = {
+    "mr",
+    "mrs",
+    "ms",
+    "miss",
+    "dr",
+}
+
+_PERSON_SUFFIXES = {
+    "jr",
+    "sr",
+    "ii",
+    "iii",
+    "iv",
+    "pe",
+    "p e",
+}
+
+
+def normalize_person_name(s: str | None) -> str:
+    """Normalize a person's name for validation comparison.
+
+    Handles cosmetic variants such as "Last, First", punctuation, titles,
+    suffixes, and middle initials. It intentionally does not alias unrelated
+    people.
+    """
+    if not s:
+        return ""
+
+    n = s.strip().lower()
+    n = re.sub(r"<[^>]+>", " ", n)
+    n = re.sub(r"\([^)]*\)", " ", n)
+
+    # Convert "Last, First [Middle]" to "First [Middle] Last".
+    if "," in n:
+        left, right = [part.strip() for part in n.split(",", 1)]
+        if left and right:
+            n = f"{right} {left}"
+
+    n = re.sub(r"['’`]", "", n)
+    n = re.sub(r"[^a-z0-9]+", " ", n)
+    words = [w for w in n.split() if w]
+    words = [w for w in words if w not in _PERSON_PREFIXES]
+    words = [w for w in words if w not in _PERSON_SUFFIXES]
+    # Middle initials are frequently present on one side only.
+    if len(words) > 2:
+        words = [w for w in words if len(w) > 1]
+    return " ".join(words)
+
+
 # Legal suffixes to strip when comparing company names (order: longest first)
 _LEGAL_SUFFIXES = [
     "mobile services",
@@ -140,15 +190,19 @@ def normalize_phone(s: str | None) -> str:
 
 
 def fuzzy_match(a: str | None, b: str | None, threshold: float = 0.8,
-                company: bool = False, phone: bool = False) -> str:
+                company: bool = False, phone: bool = False,
+                person: bool = False) -> str:
     """Compare two strings. Returns 'exact_match', 'close_match', 'mismatch', or 'missing'.
 
     If company=True, applies company-name normalization (strips legal suffixes,
     normalizes punctuation) before comparing.
     If phone=True, normalizes to digits only for phone number comparison.
+    If person=True, applies person-name normalization before comparing.
     """
     if phone:
         na, nb = normalize_phone(a), normalize_phone(b)
+    elif person:
+        na, nb = normalize_person_name(a), normalize_person_name(b)
     elif company:
         na, nb = normalize_company_name(a), normalize_company_name(b)
     else:
@@ -160,7 +214,7 @@ def fuzzy_match(a: str | None, b: str | None, threshold: float = 0.8,
     if na == nb:
         return "exact_match"
     # Space-stripped comparison (catches "Blackeagle" vs "Black Eagle")
-    if company and na.replace(" ", "") == nb.replace(" ", ""):
+    if (company or person) and na.replace(" ", "") == nb.replace(" ", ""):
         return "close_match"
     # Simple token overlap ratio
     ta, tb = set(na.split()), set(nb.split())
@@ -615,6 +669,8 @@ def compare_pair(gt_data: dict, our_data: dict) -> dict:
         # If ground truth is null/empty, don't penalize for extracting a value
         if not gt_val and our_val:
             field_results[field] = "not_tested"
+        elif field == "contact_name":
+            field_results[field] = fuzzy_match(gt_val, our_val, person=True)
         else:
             field_results[field] = fuzzy_match(gt_val, our_val)
     gt_phone = gt_data.get("contact_phone")
