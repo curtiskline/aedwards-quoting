@@ -11,6 +11,7 @@ from validate import (
     _item_similarity,
     fuzzy_match,
     normalize_company_name,
+    normalize_person_name,
 )
 
 
@@ -274,3 +275,19 @@ class TestFuzzyMatchCompany:
         # Without company=True, should use old behavior
         result = fuzzy_match("South Jersey Gas Company", "South Jersey Gas")
         assert result == "close_match"  # token overlap, not exact
+
+
+class TestNormalizePersonName:
+    def test_reorders_last_first(self):
+        assert normalize_person_name("Watson, Troy") == "troy watson"
+
+    def test_strips_titles_suffixes_and_initials(self):
+        assert normalize_person_name("Mr. Troy A. Watson, Jr.") == "troy watson"
+
+
+class TestFuzzyMatchPerson:
+    def test_exact_after_name_order_normalization(self):
+        assert fuzzy_match("Troy Watson", "Watson, Troy", person=True) == "exact_match"
+
+    def test_close_match_for_first_name_only(self):
+        assert fuzzy_match("Troy Watson", "Troy", person=True) == "close_match"
