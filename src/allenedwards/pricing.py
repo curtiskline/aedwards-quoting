@@ -132,10 +132,66 @@ WALL_THICKNESS_CODE_MAP: dict[float, str] = {
     1.0: "1",
 }
 
+COMMON_SUBINCH_FRACTIONS: tuple[tuple[Decimal, str], ...] = (
+    (Decimal("0"), "0"),
+    (Decimal("0.125"), "1/8"),
+    (Decimal("0.1875"), "3/16"),
+    (Decimal("0.25"), "1/4"),
+    (Decimal("0.28125"), "9/32"),
+    (Decimal("0.3125"), "5/16"),
+    (Decimal("0.34375"), "11/32"),
+    (Decimal("0.375"), "3/8"),
+    (Decimal("0.4375"), "7/16"),
+    (Decimal("0.5"), "1/2"),
+    (Decimal("0.5625"), "9/16"),
+    (Decimal("0.625"), "5/8"),
+    (Decimal("0.6875"), "11/16"),
+    (Decimal("0.75"), "3/4"),
+    (Decimal("0.8125"), "13/16"),
+    (Decimal("0.875"), "7/8"),
+    (Decimal("0.9375"), "15/16"),
+    (Decimal("1"), "1"),
+)
+
+COMMON_LARGE_DIMENSION_FRACTIONS: tuple[tuple[Decimal, str], ...] = (
+    (Decimal("0"), ""),
+    (Decimal("0.125"), "1/8"),
+    (Decimal("0.25"), "1/4"),
+    (Decimal("0.375"), "3/8"),
+    (Decimal("0.5"), "1/2"),
+    (Decimal("0.625"), "5/8"),
+    (Decimal("0.75"), "3/4"),
+    (Decimal("0.875"), "7/8"),
+    (Decimal("1"), "1"),
+)
+
 
 def _format_decimal_inches(value: float | Decimal) -> str:
     decimal_value = Decimal(str(value))
     return f"{decimal_value:.3f}".rstrip("0").rstrip(".")
+
+
+def decimal_to_fraction(value: float | Decimal) -> str:
+    """Format decimal inch measurements as reduced quote-style fractions."""
+    decimal_value = Decimal(str(value))
+    sign = "-" if decimal_value < 0 else ""
+    absolute_value = abs(decimal_value)
+    if absolute_value < 1:
+        return f"{sign}{_nearest_fraction_label(absolute_value, COMMON_SUBINCH_FRACTIONS)}"
+
+    whole = int(absolute_value)
+    remainder = absolute_value - Decimal(whole)
+    fraction_text = _nearest_fraction_label(remainder, COMMON_LARGE_DIMENSION_FRACTIONS)
+
+    if fraction_text == "1":
+        return f"{sign}{whole + 1}"
+    if not fraction_text:
+        return f"{sign}{whole}"
+    return f"{sign}{whole}-{fraction_text}"
+
+
+def _nearest_fraction_label(value: Decimal, options: tuple[tuple[Decimal, str], ...]) -> str:
+    return min(options, key=lambda option: (abs(value - option[0]), option[0]))[1]
 
 
 def normalize_nominal_od(diameter: float) -> float:
@@ -528,19 +584,11 @@ def generate_girth_weld_description(
 ) -> str:
     """Generate a description for a girth weld sleeve."""
     del length_ft
-    # Format wall thickness as fraction
-    wt_fractions = {
-        0.25: '1/4"',
-        0.3125: '5/16"',
-        0.375: '3/8"',
-        0.5: '1/2"',
-        0.625: '5/8"',
-        0.75: '3/4"',
-    }
-    wt_str = wt_fractions.get(wall_thickness, f'{wall_thickness}"')
+    wt_str = f'{decimal_to_fraction(wall_thickness)}"'
 
     actual_od = normalize_nominal_od(diameter)
-    return f'Girth Weld Sleeve, {actual_od}" ID, {wt_str} w/t, A572 GR{grade}'
+    dia_str = decimal_to_fraction(actual_od)
+    return f'Girth Weld Sleeve, {dia_str}" ID, {wt_str} w/t, A572 GR{grade}'
 
 
 def generate_sleeve_part_number(
@@ -580,16 +628,7 @@ def generate_sleeve_description(
     painting: bool = False,
 ) -> str:
     """Generate a description for a sleeve."""
-    # Format wall thickness as fraction
-    wt_fractions = {
-        0.25: '1/4"',
-        0.3125: '5/16"',
-        0.375: '3/8"',
-        0.5: '1/2"',
-        0.625: '5/8"',
-        0.75: '3/4"',
-    }
-    wt_str = wt_fractions.get(wall_thickness, f'{wall_thickness}"')
+    wt_str = f'{decimal_to_fraction(wall_thickness)}"'
 
     actual_od = normalize_nominal_od(diameter)
     diameter_decimal = Decimal(str(actual_od))
@@ -599,10 +638,7 @@ def generate_sleeve_description(
             dia_str = display
             break
     if not dia_str:
-        if diameter == int(diameter):
-            dia_str = str(int(diameter))
-        else:
-            dia_str = f"{diameter:.3f}".rstrip("0").rstrip(".")
+        dia_str = decimal_to_fraction(actual_od)
 
     if length_ft == int(length_ft):
         len_str = str(int(length_ft))
@@ -707,19 +743,11 @@ def generate_oversleeve_description(
     painting: bool = False,
 ) -> str:
     """Generate a description for an oversleeve."""
-    # Format wall thickness as fraction
-    wt_fractions = {
-        0.25: '1/4"',
-        0.3125: '5/16"',
-        0.375: '3/8"',
-        0.5: '1/2"',
-        0.625: '5/8"',
-        0.75: '3/4"',
-    }
-    wt_str = wt_fractions.get(wall_thickness, f'{wall_thickness}"')
+    wt_str = f'{decimal_to_fraction(wall_thickness)}"'
 
     oversleeve_od = calculate_oversleeve_od(diameter, wall_thickness)
-    desc = f'Oversleeve, {oversleeve_od}" ID, {wt_str} w/t, A572 GR{grade}, {length_ft}\' long'
+    dia_str = decimal_to_fraction(oversleeve_od)
+    desc = f'Oversleeve, {dia_str}" ID, {wt_str} w/t, A572 GR{grade}, {length_ft}\' long'
 
     services = []
     if milling:

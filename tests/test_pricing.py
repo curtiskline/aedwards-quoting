@@ -16,6 +16,7 @@ from allenedwards.pricing import (
     calculate_oversleeve_od,
     calculate_sleeve_price,
     calculate_sleeve_weight_per_ft,
+    decimal_to_fraction,
     generate_quote,
     generate_girth_weld_description,
     generate_girth_weld_part_number,
@@ -137,6 +138,20 @@ def test_description_generation():
     )
 
 
+def test_decimal_to_fraction_uses_common_quote_fractions():
+    assert decimal_to_fraction(0.25) == "1/4"
+    assert decimal_to_fraction(0.28) == "9/32"
+    assert decimal_to_fraction(0.322) == "5/16"
+    assert decimal_to_fraction(0.344) == "11/32"
+    assert decimal_to_fraction(6.625) == "6-5/8"
+    assert decimal_to_fraction(8.0) == "8"
+
+
+def test_sleeve_description_uses_fraction_fallback_for_nonstandard_dimensions():
+    desc = generate_sleeve_description(8.28, 0.28, 50, 10)
+    assert desc == 'Half Sole, 8-1/4" ID, 9/32" w/t, A572 GR50, 10\' long. Backing Strip Included.'
+
+
 # Girth weld sleeve tests
 
 
@@ -185,11 +200,21 @@ def test_girth_weld_description():
     """Test girth weld description generation."""
     # Basic girth weld sleeve
     desc = generate_girth_weld_description(8.625, 0.375, 50, 12)
-    assert desc == 'Girth Weld Sleeve, 8.625" ID, 3/8" w/t, A572 GR50'
+    assert desc == 'Girth Weld Sleeve, 8-5/8" ID, 3/8" w/t, A572 GR50'
 
     # Different specs
     desc = generate_girth_weld_description(6.625, 0.25, 65, 10)
-    assert desc == 'Girth Weld Sleeve, 6.625" ID, 1/4" w/t, A572 GR65'
+    assert desc == 'Girth Weld Sleeve, 6-5/8" ID, 1/4" w/t, A572 GR65'
+
+
+def test_oversleeve_description_uses_fraction_dimensions():
+    desc = generate_oversleeve_description(8.0, 0.375, 50, 10)
+    assert desc == 'Oversleeve, 9-3/8" ID, 3/8" w/t, A572 GR50, 10\' long'
+
+
+def test_oversleeve_description_rounds_nonstandard_dimensions_to_fractions():
+    desc = generate_oversleeve_description(8.28, 0.28, 50, 10)
+    assert desc == 'Oversleeve, 8-7/8" ID, 9/32" w/t, A572 GR50, 10\' long'
 
 
 def test_price_item_girth_weld():
