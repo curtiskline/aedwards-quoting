@@ -352,10 +352,31 @@ def test_line_item_type_dropdown_uses_active_db_product_types(tmp_path):
     assert response.status_code == 200
     assert b"Sleeve" in response.data
     assert b"Service" in response.data
-    assert b"Oversleeve" not in response.data
+    assert b"Oversleeve" in response.data
     assert b"Shipping &amp; Handling" not in response.data
     assert b"Legacy" not in response.data
     assert b"Other / Custom" not in response.data
+
+
+def test_line_item_type_dropdown_seeded_defaults_omit_oversleeve(tmp_path):
+    app = _make_app(tmp_path)
+    with app.app_context():
+        db.create_all()
+        user = User(email="seeded@example.com", name="Seeded User", password_hash="x")
+        db.session.add(user)
+        quote = Quote(quote_number="126-203A", status=QuoteStatus.NEW)
+        db.session.add(quote)
+        db.session.commit()
+        quote_id = quote.id
+        user_id = user.id
+
+    client = app.test_client()
+    _login(client, user_id)
+    response = client.get(f"/quotes/{quote_id}")
+    assert response.status_code == 200
+    assert b"Sleeve" in response.data
+    assert b"Oversleeve" not in response.data
+    assert b"Shipping &amp; Handling" not in response.data
 
 
 def test_add_shipping_line_item(tmp_path):

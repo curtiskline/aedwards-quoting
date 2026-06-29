@@ -60,12 +60,12 @@ Your task is to extract structured information from RFQ emails and return it as 
 
 Key domain knowledge:
 - Sleeves are identified by inner diameter (ID), wall thickness (w/t), grade (GR50 or GR65), and length
-- Oversleeves (ovsz) fit OVER the outside of carrier pipe + standard sleeve - use product_type "oversleeve"
+- Oversleeves (ovsz) fit OVER the outside of carrier pipe + standard sleeve - still use product_type "sleeve"
 - Common wall thicknesses: 1/4" (0.25), 5/16" (0.3125), 3/8" (0.375), 1/2" (0.5), 5/8" (0.625), 3/4" (0.75)
 - Grades: A572 GR50 or A572 GR65 (also written as GR.50, Gr65, etc.)
 - Pipe sizes may be written as NPS (nominal pipe size) like "6 inch" or actual ID like "6-5/8"
 - "half sole" or "reg half sole" indicates a standard sleeve type
-- "ovsz" or "oversleeve" indicates an oversleeve (fits over pipe + existing sleeve)
+- "ovsz" or "oversleeve" indicates an oversleeve (fits over pipe + existing sleeve), but keep product_type as "sleeve"
 - GTW = Girth Weld bands/bags
 - Milling (-M) and Painting (-P) are optional services
 
@@ -99,7 +99,7 @@ Return a JSON object with this structure:
             "po_number": "Customer purchase order number for this quote if explicitly provided, otherwise null",
             "items": [
                 {
-                    "product_type": "sleeve|oversleeve|girth_weld|compression|bag|omegawrap|accessory|service",
+                    "product_type": "sleeve|girth_weld|compression|bag|omegawrap|accessory|service",
                     "quantity": 30,
                     "diameter": "6.625",
                     "wall_thickness": "0.25",
@@ -137,7 +137,7 @@ IMPORTANT: grade and length_ft must ALWAYS be provided for each item — never r
 - If length is not stated, infer from context:
   - "bundle" of sleeves typically means standard lengths; use 10 for sleeves.
   - If a total footage is given (e.g., "10 FT"), that IS the length_ft.
-  - If truly unknown, default to 10 for sleeves/oversleeves, 6 for girth welds.
+  - If truly unknown, default to 10 for sleeves (including oversleeves), 6 for girth welds.
 
 The confidence score (0-1) should reflect how certain you are about the parsing.
 Lower confidence if specifications are ambiguous or missing critical details.
@@ -359,8 +359,10 @@ def _parse_items(items_data: list) -> list[ParsedItem]:
         # Filter out non-product metadata that the LLM incorrectly included
         if _is_metadata_item(item_data):
             continue
+        raw_product_type = str(item_data.get("product_type", "sleeve")).strip() or "sleeve"
+        product_type = "sleeve" if raw_product_type == "oversleeve" else raw_product_type
         item = ParsedItem(
-            product_type=item_data.get("product_type", "sleeve"),
+            product_type=product_type,
             quantity=int(item_data.get("quantity") or 1),
             description=item_data.get("description", ""),
             diameter=_parse_float(item_data.get("diameter")),

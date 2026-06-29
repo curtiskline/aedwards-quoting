@@ -433,7 +433,7 @@ def _normalize_gt_item(gt: dict) -> dict:
             item["product_type"] = "girth_weld"
         elif part.startswith("S-") or "half sole" in desc or "sleeve" in desc:
             if "ovsz" in desc or "oversleeve" in desc or "over sleeve" in desc:
-                item["product_type"] = "oversleeve"
+                item["product_type"] = "sleeve"
             elif "compression" in desc or part.startswith("Compression"):
                 item["product_type"] = "compression"
             else:

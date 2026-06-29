@@ -145,6 +145,49 @@ def test_parse_rfq_extracts_po_number_from_body():
             eml_path.unlink()
 
 
+def test_parse_rfq_normalizes_oversleeve_product_type_to_sleeve():
+    """Oversleeve requests should parse as sleeve product types."""
+    email_content = (
+        "From: buyer@example.com\n"
+        "Subject: Quote request\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "\n"
+        "Please quote 2 oversleeves."
+    )
+    with tempfile.NamedTemporaryFile(suffix=".eml", mode="w", delete=False) as f:
+        f.write(email_content)
+        eml_path = Path(f.name)
+
+    try:
+        provider = MockProvider(
+            {
+                "customer_name": "ACME",
+                "contact_name": "Buyer",
+                "contact_email": "buyer@example.com",
+                "ship_to": None,
+                "items": [
+                    {
+                        "product_type": "oversleeve",
+                        "quantity": 2,
+                        "description": "ovsz half sole",
+                        "diameter": "14.75",
+                        "wall_thickness": "0.375",
+                        "grade": "50",
+                        "length_ft": 10,
+                    }
+                ],
+                "urgency": "normal",
+                "confidence": 0.9,
+            }
+        )
+        rfq = parse_rfq(eml_path, provider)
+        assert len(rfq.items) == 1
+        assert rfq.items[0].product_type == "sleeve"
+    finally:
+        if eml_path.exists():
+            eml_path.unlink()
+
+
 def test_parse_rfq_fills_missing_contact_from_external_from_header():
     """External From header should fill blanks left by the model."""
     email_content = (

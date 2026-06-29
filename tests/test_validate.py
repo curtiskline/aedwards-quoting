@@ -49,7 +49,7 @@ class TestNormalizeGtItem:
             "part_number": "S-14.34-38-50-10",
             "description": 'ovsz half sole, 14-3/4" ID, 3/8" w/t, A572 GR50, 10\' long.',
         })
-        assert item["product_type"] == "oversleeve"
+        assert item["product_type"] == "sleeve"
         assert item["diameter"] == 14.34
 
     def test_backing_strip_is_accessory(self):

@@ -54,13 +54,12 @@ DEFAULT_PRODUCT_TYPES: list[tuple[str, str]] = [
     ("bag", "Bag"),
     ("girth_weld", "Girth Weld"),
     ("compression", "Compression"),
-    ("oversleeve", "Oversleeve"),
     ("accessory", "Accessory"),
     ("service", "Service"),
     ("shipping", "Shipping & Handling"),
 ]
 
-QUOTE_EDITOR_HIDDEN_PRODUCT_TYPES = {"oversleeve", "shipping"}
+QUOTE_EDITOR_HIDDEN_PRODUCT_TYPES = {"shipping"}
 
 
 @main_bp.get("/")
