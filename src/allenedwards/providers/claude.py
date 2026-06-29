@@ -12,7 +12,7 @@ from .base import LLMProvider
 class ClaudeProvider(LLMProvider):
     """Anthropic Claude API provider."""
 
-    MODEL = "claude-sonnet-4-20250514"
+    MODEL = "claude-sonnet-4-6"
 
     def __init__(self, api_key: str | None = None):
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
