@@ -46,10 +46,6 @@ if [[ -z "${O365_EMAIL}" ]]; then
   echo "O365_EMAIL is required (export it or set it in ${DOTENV_FILE})." >&2
   exit 1
 fi
-if [[ -z "${O365_PASSWORD}" ]]; then
-  echo "O365_PASSWORD is required (export it or set it in ${DOTENV_FILE})." >&2
-  exit 1
-fi
 
 SERVICE_FILE="${ROOT_DIR}/deploy/aedwards-monitor.service"
 
@@ -93,7 +89,9 @@ tar \
 
 {
   echo "O365_EMAIL=${O365_EMAIL}"
-  echo "O365_PASSWORD=${O365_PASSWORD}"
+  if [[ -n "${O365_PASSWORD}" ]]; then
+    echo "O365_PASSWORD=${O365_PASSWORD}"
+  fi
   echo "O365_CLIENT_ID=${O365_CLIENT_ID}"
   echo "O365_SCOPES=${O365_SCOPES}"
   echo "LLM_PROVIDER=${LLM_PROVIDER}"
