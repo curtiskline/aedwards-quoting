@@ -36,8 +36,8 @@ DOMAIN_COMPANY_OVERRIDES = {
     "mrcglobal.com": "MRC Global",
 }
 
-CLASSIFY_SYSTEM_PROMPT = """You are a strict binary classifier for Allan Edwards sales operations.
-Classify whether an incoming message is likely an RFQ for pipe/sleeve/girth-weld products.
+CLASSIFY_SYSTEM_PROMPT = """You are a binary classifier for Allan Edwards sales operations.
+Classify whether an incoming message is likely an RFQ or pricing request for any Allan Edwards product or service.
 
 Return JSON:
 {
@@ -47,10 +47,10 @@ Return JSON:
 }
 
 Classification guidance:
-- Messages asking for quote/pricing/lead time on steel pipe products are RFQs.
-- Internal status updates, invoices, shipping updates, signatures-only, or unrelated topics are not RFQs.
-- Personal emails, meeting notes, appointment reminders, greetings, or thank-you messages with no product request are not RFQs.
-- Classify honestly from the message content. If the message does not ask Allan Edwards for pipe/sleeve/girth-weld product pricing or availability, return false.
+- RFQs include requests for pricing, quotes, proposals, or availability on any pipeline products or services Allan Edwards supplies: sleeves, girth weld bands, pipe weights, compression sleeves, OmegaWrap, backing strips, milling, painting, heating equipment, or related pipeline integrity products.
+- Forwarded emails from internal staff (Jamee, Josh, Chip, etc.) that contain an external customer's product request are RFQs.
+- Internal status updates, invoices, shipping notifications, meeting invites, signatures-only emails, and personal messages with no product request are not RFQs.
+- When uncertain, classify as RFQ (true). False negatives lose business; false positives are reviewed and discarded cheaply.
 """
 
 PARSE_SYSTEM_PROMPT = """You are an expert at parsing Request for Quote (RFQ) emails for Allan Edwards Inc.,
@@ -683,8 +683,8 @@ def classify_rfq(subject: str, body: str, provider: LLMProvider) -> bool:
     if is_rfq:
         return True
 
-    # Only override a negative classification when confidence is near-random.
-    if confidence < 0.2:
+    # Prefer false positives — uncertain non-RFQ classifications get accepted.
+    if confidence < 0.5:
         return True
 
     return False
