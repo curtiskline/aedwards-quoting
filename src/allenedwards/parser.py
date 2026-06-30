@@ -658,8 +658,11 @@ in the "quotes" array."""
     return rfqs
 
 
-def classify_rfq(subject: str, body: str, provider: LLMProvider) -> bool:
+def classify_rfq(subject: str, body: str, provider: LLMProvider) -> tuple[bool, str | None]:
     """Classify if an email is likely an RFQ.
+
+    Returns (is_rfq, reason) where reason is the classifier's explanation
+    when the email is classified as non-RFQ (None otherwise).
 
     False negatives are costlier than false positives, so uncertain outcomes
     intentionally bias to True.
@@ -675,19 +678,20 @@ def classify_rfq(subject: str, body: str, provider: LLMProvider) -> bool:
         result = provider.complete_json(prompt, system=CLASSIFY_SYSTEM_PROMPT)
     except Exception:
         # Prefer false positives for MVP.
-        return True
+        return True, None
 
     is_rfq = bool(result.get("is_rfq", False))
     confidence = _parse_float(result.get("confidence")) or 0.0
+    reason = result.get("reason")
 
     if is_rfq:
-        return True
+        return True, None
 
     # Prefer false positives — uncertain non-RFQ classifications get accepted.
     if confidence < 0.5:
-        return True
+        return True, None
 
-    return False
+    return False, reason
 
 
 def _is_type_leak(value: str | None) -> bool:

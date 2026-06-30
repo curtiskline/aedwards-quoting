@@ -1,0 +1,46 @@
+{% extends "layout.html" %}
+{% block title %}Rejected Emails{% endblock %}
+{% block body %}
+  <h1>Rejected Emails</h1>
+  <p>Emails that were classified as non-RFQ and silently dropped.</p>
+
+  {% if rejected_emails %}
+    <table>
+      <thead>
+        <tr>
+          <th>Received</th>
+          <th>Sender</th>
+          <th>Subject</th>
+          <th>Reason</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for email in rejected_emails %}
+          <tr>
+            <td>{{ email.received_at.strftime('%Y-%m-%d %H:%M UTC') }}</td>
+            <td>
+              {% if email.sender_name %}{{ email.sender_name }}<br>{% endif %}
+              {% if email.sender_email %}<code>{{ email.sender_email }}</code>{% endif %}
+            </td>
+            <td>{{ email.subject or '' }}</td>
+            <td>{{ email.classifier_reason or '' }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {% if pagination.pages > 1 %}
+      <div style="margin-top:1rem;display:flex;gap:0.5rem;align-items:center;">
+        {% if pagination.has_prev %}
+          <a href="{{ url_for('admin.rejected_emails', page=pagination.prev_num) }}">Previous</a>
+        {% endif %}
+        <span>Page {{ pagination.page }} of {{ pagination.pages }}</span>
+        {% if pagination.has_next %}
+          <a href="{{ url_for('admin.rejected_emails', page=pagination.next_num) }}">Next</a>
+        {% endif %}
+      </div>
+    {% endif %}
+  {% else %}
+    <p>No rejected emails recorded.</p>
+  {% endif %}
+{% endblock %}

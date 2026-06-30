@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
+from sqlalchemy import desc
 
 from .extensions import db
-from .models import User
+from .models import RejectedEmail, User
 
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -73,3 +74,20 @@ def delete_user(user_id: int):
 
     flash("User removed.", "success")
     return _users_partial_response()
+
+
+@admin_bp.get("/rejected-emails")
+@login_required
+def rejected_emails():
+    page = request.args.get("page", 1, type=int)
+    per_page = 50
+    pagination = (
+        RejectedEmail.query
+        .order_by(desc(RejectedEmail.received_at))
+        .paginate(page=page, per_page=per_page, error_out=False)
+    )
+    return render_template(
+        "admin/rejected_emails.html",
+        rejected_emails=pagination.items,
+        pagination=pagination,
+    )

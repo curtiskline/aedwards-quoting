@@ -181,8 +181,11 @@ class InboxMonitor:
 
     def _process_message_inner(self, msg: EmailMessage) -> bool:
         body_text = _normalize_body(msg.body_content, msg.body_preview)
-        if not classify_rfq(msg.subject, body_text, self.provider):
-            logger.info("Message %s classified as non-RFQ", msg.id)
+        is_rfq, reason = classify_rfq(msg.subject, body_text, self.provider)
+        if not is_rfq:
+            logger.info("Message %s classified as non-RFQ: %s", msg.id, reason)
+            if self.enable_db_writes:
+                self._write_rejected_email(msg, reason)
             self._finalize_message(msg.id)
             return False
 
@@ -270,6 +273,36 @@ class InboxMonitor:
 
         with self._flask_app.app_context():
             write_quote_to_db(msg, rfq, quote, quote_number)
+
+    def _write_rejected_email(self, msg: EmailMessage, reason: str | None) -> None:
+        """Write a rejected email record to the database."""
+        from datetime import datetime
+
+        from app.extensions import db
+        from app.models import RejectedEmail
+
+        if not self._flask_app:
+            return
+
+        with self._flask_app.app_context():
+            received_at = None
+            if msg.received_datetime:
+                try:
+                    received_at = datetime.fromisoformat(msg.received_datetime.replace("Z", "+00:00"))
+                except ValueError:
+                    received_at = datetime.utcnow()
+            else:
+                received_at = datetime.utcnow()
+
+            record = RejectedEmail(
+                received_at=received_at,
+                sender_name=msg.sender_name,
+                sender_email=msg.sender_email,
+                subject=msg.subject,
+                classifier_reason=reason,
+            )
+            db.session.add(record)
+            db.session.commit()
 
     def _generate_db_quote_number(self) -> str:
         """Generate a sequential quote number from the database."""

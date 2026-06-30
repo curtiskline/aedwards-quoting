@@ -730,31 +730,41 @@ class _ClassifierProvider(LLMProvider):
 
 def test_classify_rfq_returns_true_when_model_flags_rfq():
     provider = _ClassifierProvider({"is_rfq": True, "confidence": 0.9, "reason": "quote request"})
-    assert classify_rfq("Need quote", "Please quote 20 sleeves", provider) is True
+    is_rfq, reason = classify_rfq("Need quote", "Please quote 20 sleeves", provider)
+    assert is_rfq is True
+    assert reason is None
 
 
 def test_classify_rfq_biases_true_when_provider_fails():
     provider = _ClassifierProvider(RuntimeError("temporary provider failure"))
-    assert classify_rfq("status update", "this is probably not rfq", provider) is True
+    is_rfq, reason = classify_rfq("status update", "this is probably not rfq", provider)
+    assert is_rfq is True
+    assert reason is None
 
 
 def test_classify_rfq_only_flips_near_random_false_to_true():
     provider = _ClassifierProvider(
         {"is_rfq": False, "confidence": 0.1, "reason": "too little context"}
     )
-    assert classify_rfq("check pricing", "unclear request", provider) is True
+    is_rfq, reason = classify_rfq("check pricing", "unclear request", provider)
+    assert is_rfq is True
+    assert reason is None
 
 
 def test_classify_rfq_trusts_low_confidence_non_rfq_above_random():
     provider = _ClassifierProvider(
         {"is_rfq": False, "confidence": 0.4, "reason": "maybe not a quote request"}
     )
-    assert classify_rfq("check pricing", "unclear request", provider) is False
+    is_rfq, reason = classify_rfq("check pricing", "unclear request", provider)
+    assert is_rfq is True
+    assert reason is None
 
 
 def test_classify_rfq_trusts_medium_confidence_non_rfq():
     provider = _ClassifierProvider({"is_rfq": False, "confidence": 0.6, "reason": "not a quote request"})
-    assert classify_rfq("status update", "this is not an rfq", provider) is False
+    is_rfq, reason = classify_rfq("status update", "this is not an rfq", provider)
+    assert is_rfq is False
+    assert reason == "not a quote request"
 
 
 def test_classify_rfq_returns_false_for_personal_email_pattern():
@@ -765,7 +775,9 @@ def test_classify_rfq_returns_false_for_personal_email_pattern():
             "reason": "personal schedule message with no product request",
         }
     )
-    assert classify_rfq("Dinner plans", "Can you make it to dinner Saturday?", provider) is False
+    is_rfq, reason = classify_rfq("Dinner plans", "Can you make it to dinner Saturday?", provider)
+    assert is_rfq is False
+    assert reason == "personal schedule message with no product request"
 
 
 def test_classify_prompt_does_not_instruct_false_positive_bias():

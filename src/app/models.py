@@ -237,6 +237,18 @@ class ShippingConfig(db.Model):
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
+class RejectedEmail(db.Model):
+    __tablename__ = "rejected_email"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    received_at: Mapped[datetime] = mapped_column(nullable=False, index=True)
+    sender_name: Mapped[str | None]
+    sender_email: Mapped[str | None]
+    subject: Mapped[str | None]
+    classifier_reason: Mapped[str | None]
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
+
+
 class AuditLog(TimestampMixin, db.Model):
     __tablename__ = "audit_log"
 
