@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, jsonify, redirect, render_template, request, url_for
+from flask_login import login_required
 from sqlalchemy import func, or_
+from sqlalchemy.exc import IntegrityError
 
 from .extensions import db
-from .models import Quote, QuoteLineItem, QuoteStatus, User
+from .models import AuditLog, Quote, QuoteLineItem, QuoteStatus, User
 
 quotes_bp = Blueprint("quotes", __name__, url_prefix="/quotes")
 
@@ -149,6 +151,41 @@ def badge():
     if count > 0:
         return f'<span class="badge">{count}</span>'
     return ""
+
+
+def _generate_quote_number() -> str:
+    """Generate next fiscal-year quote number (e.g. 126-001 for 2026)."""
+    year = datetime.utcnow().year
+    prefix = f"1{year % 100}"
+    result = db.session.query(func.max(Quote.quote_number)).filter(
+        Quote.quote_number.like(f"{prefix}-%")
+    ).scalar()
+    if result:
+        try:
+            seq = int(result.split("-")[-1]) + 1
+        except (ValueError, IndexError):
+            seq = 1
+    else:
+        seq = 1
+    return f"{prefix}-{seq:03d}"
+
+
+@quotes_bp.post("/")
+@login_required
+def create():
+    """Create a blank quote and redirect to its editor."""
+    for _ in range(2):
+        try:
+            quote_number = _generate_quote_number()
+            quote = Quote(quote_number=quote_number, status=QuoteStatus.NEW)
+            db.session.add(quote)
+            db.session.flush()
+            db.session.add(AuditLog(quote_id=quote.id, action="created_manually"))
+            db.session.commit()
+            return redirect(url_for("main.quote_detail", quote_id=quote.id))
+        except IntegrityError:
+            db.session.rollback()
+    return "Failed to generate unique quote number", 500
 
 
 @quotes_bp.post("/<int:quote_id>/claim")
