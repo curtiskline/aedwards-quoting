@@ -15,7 +15,7 @@ from allenedwards.cli import get_provider, resolve_provider_name
 from allenedwards.parser import CLASSIFY_SYSTEM_PROMPT, classify_rfq
 
 
-SHARED_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+SHARED_PROJECT_ROOT = Path(__file__).resolve().parents[1]
 EMAILS_DIR = SHARED_PROJECT_ROOT / "data" / "test-corpus" / "emails"
 RUN_INTEGRATION = os.environ.get("RUN_INTEGRATION") == "1"
 INTEGRATION_REASON = "Set RUN_INTEGRATION=1 to run live LLM classifier regression tests."
