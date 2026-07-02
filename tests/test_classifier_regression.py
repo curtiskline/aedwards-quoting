@@ -37,9 +37,9 @@ POSITIVE_CASES = [
         "pipe weights / buoyancy product request",
     ),
     (
-        "forwarded_external_rfq",
-        "20250206_171030_jhamilton_RE_ [EXTERNAL] RE_ Allan Edwards 36_ 3_4_ Gr 65 Sleeves.eml",
-        "forwarded external customer RFQ",
+        "sleeve_rfq_explicit",
+        "20250207_130029_jhamilton_RFQ - _B_ Sleeve for 8_ pipeline.eml",
+        "explicit B sleeve RFQ with pipe size",
     ),
     (
         "omegawrap_rfq",
