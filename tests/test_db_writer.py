@@ -144,7 +144,7 @@ def test_write_quote_creates_records(app, msg, rfq, priced_quote):
 
         assert db_quote.id is not None
         assert db_quote.quote_number == "126-100"
-        assert db_quote.status == QuoteStatus.NEW
+        assert db_quote.status == QuoteStatus.NEEDS_PRICING
         assert db_quote.source_email_id == "AAMk-test-123"
         assert db_quote.sender_email == "buyer@example.com"
         assert db_quote.sender_name == "John Buyer"
@@ -187,6 +187,16 @@ def test_write_zero_quote_sets_needs_pricing(app, msg, rfq, priced_quote):
     with app.app_context():
         db_quote = write_quote_to_db(msg, rfq, priced_quote, "126-002")
         assert db_quote.status == QuoteStatus.NEEDS_PRICING
+
+
+def test_write_quote_with_any_unpriced_line_item_sets_needs_pricing(app, msg, rfq, priced_quote):
+    priced_quote.subtotal = Decimal("4550.00")
+    with app.app_context():
+        db_quote = write_quote_to_db(msg, rfq, priced_quote, "126-002A")
+        assert db_quote.status == QuoteStatus.NEEDS_PRICING
+        assert len(db_quote.line_items) == 2
+        assert float(db_quote.line_items[1].unit_price) == 0.0
+        assert float(db_quote.line_items[1].line_total) == 0.0
 
 
 def test_customer_auto_match_by_name(app, msg, rfq, priced_quote):

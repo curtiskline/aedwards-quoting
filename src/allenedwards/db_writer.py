@@ -309,8 +309,13 @@ def write_quote_to_db(
         # No match but we have a name — create a new customer
         customer = _create_customer_from_rfq(rfq)
 
+    has_unpriced_items = any(
+        (not li.is_note) and (li.unit_price <= 0 or li.total <= 0)
+        for li in priced_quote.line_items
+    )
+
     status = QuoteStatus.NEW
-    if priced_quote.subtotal == 0:
+    if priced_quote.subtotal == 0 or has_unpriced_items:
         status = QuoteStatus.NEEDS_PRICING
 
     db_quote = DBQuote(

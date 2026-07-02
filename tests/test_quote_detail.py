@@ -162,6 +162,67 @@ def test_update_status(client, quote_with_items, app):
         assert q.status == QuoteStatus.READY
 
 
+def test_update_status_keeps_needs_pricing_when_any_line_item_is_unpriced(client, app):
+    with app.app_context():
+        q = Quote(
+            quote_number="QU-2026-9003",
+            status=QuoteStatus.NEEDS_PRICING,
+            customer_name_raw="Unpriced Corp",
+        )
+        _db.session.add(q)
+        _db.session.flush()
+        _db.session.add(
+            QuoteLineItem(
+                quote_id=q.id,
+                product_type="sleeve",
+                description="Needs manual pricing",
+                quantity=3,
+                unit_price=0,
+                line_total=0,
+                sort_order=1,
+            )
+        )
+        _db.session.commit()
+        quote_id = q.id
+
+    resp = client.post(f"/quotes/{quote_id}/status", data={"status": "ready"})
+    assert resp.status_code == 200
+    with app.app_context():
+        q = _db.session.get(Quote, quote_id)
+        assert q.status == QuoteStatus.NEEDS_PRICING
+
+
+def test_detail_does_not_promote_needs_pricing_quote_to_in_review(client, app):
+    with app.app_context():
+        q = Quote(
+            quote_number="QU-2026-9004",
+            status=QuoteStatus.NEEDS_PRICING,
+            customer_name_raw="Needs Pricing Corp",
+        )
+        _db.session.add(q)
+        _db.session.flush()
+        _db.session.add(
+            QuoteLineItem(
+                quote_id=q.id,
+                product_type="sleeve",
+                description="Missing specs item",
+                quantity=2,
+                unit_price=0,
+                line_total=0,
+                sort_order=1,
+            )
+        )
+        _db.session.commit()
+        quote_id = q.id
+
+    resp = client.get(f"/quotes/{quote_id}")
+    assert resp.status_code == 200
+    with app.app_context():
+        q = _db.session.get(Quote, quote_id)
+        assert q.status == QuoteStatus.NEEDS_PRICING
+        assert q.reviewed_by is not None
+
+
 # --- Meta update (main_bp route) ---
 
 def test_update_meta(client, quote_with_items, app):

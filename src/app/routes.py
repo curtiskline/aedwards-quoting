@@ -817,6 +817,20 @@ def _render_line_items(quote: Quote):
     return render_template("quotes/_line_items.html", **_quote_context(quote))
 
 
+def _quote_has_unpriced_items(quote: Quote) -> bool:
+    for item in quote.line_items:
+        if item.product_type == "note":
+            continue
+        if Decimal(str(item.unit_price)) <= 0 or Decimal(str(item.line_total)) <= 0:
+            return True
+    return False
+
+
+def _sync_quote_pricing_status(quote: Quote) -> None:
+    if _quote_has_unpriced_items(quote):
+        quote.status = QuoteStatus.NEEDS_PRICING
+
+
 def _product_types_admin_data(just_saved: bool = False) -> dict:
     rows = _all_product_types()
     return {"product_types": rows, "types_just_saved": just_saved}
@@ -826,10 +840,14 @@ def _product_types_admin_data(just_saved: bool = False) -> dict:
 def quote_detail(quote_id: int):
     quote = db.get_or_404(Quote, quote_id)
     needs_commit = _hydrate_quote_ship_to_from_customer(quote)
+    prior_status = quote.status
+    _sync_quote_pricing_status(quote)
+    if quote.status != prior_status:
+        needs_commit = True
     user = _current_user()
     if quote.reviewed_by is None and user is not None:
         quote.reviewed_by = user.id
-        if quote.status in {QuoteStatus.NEW, QuoteStatus.NEEDS_PRICING}:
+        if quote.status == QuoteStatus.NEW:
             quote.status = QuoteStatus.IN_REVIEW
         needs_commit = True
     if needs_commit:
@@ -888,6 +906,7 @@ def quote_update_status(quote_id: int):
     if raw_status not in status_map:
         abort(400, description="Invalid status")
     quote.status = status_map[raw_status]
+    _sync_quote_pricing_status(quote)
     if quote.status == QuoteStatus.IN_REVIEW and user is not None:
         quote.reviewed_by = user.id
         quote.review_started_at = datetime.utcnow()
@@ -927,6 +946,7 @@ def quote_add_line_item(quote_id: int):
             line_item.line_total = 0
     db.session.add(line_item)
     _apply_auto_shipping_line_item(quote)
+    _sync_quote_pricing_status(quote)
     db.session.commit()
     return _render_line_items(quote)
 
@@ -1102,6 +1122,7 @@ def quote_update_line_item(quote_id: int, item_id: int):
 
     item.specs_json = specs or None
     _apply_auto_shipping_line_item(quote)
+    _sync_quote_pricing_status(quote)
 
     db.session.commit()
     return _render_line_items(quote)
@@ -1145,6 +1166,7 @@ def quote_delete_line_item(quote_id: int, item_id: int):
     db.session.delete(item)
     _normalize_sort_orders(quote)
     _apply_auto_shipping_line_item(quote)
+    _sync_quote_pricing_status(quote)
     db.session.commit()
     return _render_line_items(quote)
 

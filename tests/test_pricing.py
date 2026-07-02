@@ -274,8 +274,8 @@ def test_price_item_girth_weld_different_tiers():
 
 
 def test_price_item_girth_weld_missing_data():
-    """Test girth weld returns None for missing diameter, but NOT for missing wall_thickness."""
-    # Missing diameter — should return None
+    """Missing pricing-critical data should still produce a TBD line item."""
+    # Missing diameter — persist as unpriced instead of dropping it
     item = ParsedItem(
         product_type="girth_weld",
         quantity=4,
@@ -285,9 +285,14 @@ def test_price_item_girth_weld_missing_data():
         grade=50,
         length_ft=12,
     )
-    assert price_item(item, sort_order=1) is None
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.part_number == "TBD"
+    assert result.unit_price == Decimal("0.00")
+    assert result.total == Decimal("0.00")
+    assert "Pricing TBD" in (result.notes or "")
 
-    # Diameter outside supported ranges — should return None
+    # Diameter outside supported ranges — persist as unpriced instead of dropping it
     item_too_small = ParsedItem(
         product_type="girth_weld",
         quantity=4,
@@ -297,7 +302,11 @@ def test_price_item_girth_weld_missing_data():
         grade=50,
         length_ft=12,
     )
-    assert price_item(item_too_small, sort_order=1) is None
+    result = price_item(item_too_small, sort_order=1)
+    assert result is not None
+    assert result.part_number == "TBD"
+    assert result.unit_price == Decimal("0.00")
+    assert result.total == Decimal("0.00")
 
 
 def test_price_item_girth_weld_no_wall_thickness():

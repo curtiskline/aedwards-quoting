@@ -895,7 +895,10 @@ def price_item(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
 
     result = _price_item_core(item, sort_order)
 
-    if result is not None and quantity_note:
+    if result is None:
+        result = _tbd_line_item(item, sort_order)
+
+    if quantity_note:
         if result.notes:
             result.notes = f"{result.notes}; {quantity_note}"
         else:
