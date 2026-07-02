@@ -210,8 +210,8 @@ def test_customer_auto_match_by_name(app, msg, rfq, priced_quote):
         assert db_quote.customer_id == cust_id
 
 
-def test_customer_auto_match_by_email(app, msg, rfq, priced_quote):
-    rfq.customer_name = "Different Name"
+def test_customer_auto_match_by_email_when_no_customer_name(app, msg, rfq, priced_quote):
+    rfq.customer_name = None
     with app.app_context():
         cust = Customer(company_name="Acme Pipeline Co", discount_pct=0)
         db.session.add(cust)
@@ -454,8 +454,8 @@ def test_no_domain_match_when_ambiguous(app, msg, rfq, priced_quote):
 
 # --- Priority / signal ordering tests ---
 
-def test_exact_email_beats_fuzzy_name(app, msg, rfq, priced_quote):
-    """Exact email match should win over fuzzy company name match."""
+def test_parsed_customer_name_beats_conflicting_exact_email(app, msg, rfq, priced_quote):
+    """Parsed customer name should win over a conflicting sender/contact email match."""
     with app.app_context():
         cust_name = Customer(company_name="Acme Pipeline Co", discount_pct=0)
         db.session.add(cust_name)
@@ -471,8 +471,27 @@ def test_exact_email_beats_fuzzy_name(app, msg, rfq, priced_quote):
         rfq.customer_name = "Acme Pipeline Co"
         rfq.contact_email = "buyer@example.com"
         db_quote = write_quote_to_db(msg, rfq, priced_quote, "126-027")
-        # Email match should take priority
-        assert db_quote.customer_id == email_cust_id
+        assert db_quote.customer_id == cust_name.id
+
+
+def test_parsed_customer_name_blocks_sender_domain_fallback(app, msg, rfq, priced_quote):
+    """When parsed customer name is present, do not fall back to a sender-domain customer."""
+    with app.app_context():
+        sender_customer = Customer(company_name="918.software", discount_pct=0)
+        db.session.add(sender_customer)
+        db.session.flush()
+        db.session.add(Contact(customer_id=sender_customer.id, name="Devin", email="devin@918.software"))
+        db.session.commit()
+
+        rfq.customer_name = "CenterPoint Energy"
+        rfq.contact_email = "devin@918.software"
+        msg.sender_email = "devin@918.software"
+
+        db_quote = write_quote_to_db(msg, rfq, priced_quote, "126-028")
+
+        assert db_quote.customer_id is not None
+        linked_customer = Customer.query.get(db_quote.customer_id)
+        assert linked_customer.company_name == "CenterPoint Energy"
 
 
 # --- Helper function unit tests ---
