@@ -227,3 +227,55 @@ def test_generate_quote_uses_carrier_shipping_note_and_rfq_row_order():
     assert quote.line_items[1].description == "Ship: Buckeye Transportation"
     assert quote.line_items[2].is_note is True
     assert quote.line_items[2].description == "RFQ: Daniel Cullison (835) 205-6974 dcullison@buckeye.com"
+
+
+def test_parse_rfq_preserves_incomplete_items_as_needs_pricing_quote_rows():
+    """Parsed items with missing pricing specs should survive into quote rows."""
+    email_content = (
+        "From: buyer@example.com\n"
+        "Subject: RFQ - line item with incomplete specs\n"
+        "Content-Type: text/plain; charset=utf-8\n"
+        "\n"
+        "Need 2 sleeves. Details to follow.\n"
+    )
+    with tempfile.NamedTemporaryFile(suffix=".eml", mode="w", delete=False) as f:
+        f.write(email_content)
+        eml_path = Path(f.name)
+
+    try:
+        provider = MockProvider(
+            {
+                "customer_name": "ACME",
+                "contact_name": "Buyer",
+                "contact_email": "buyer@example.com",
+                "ship_to": None,
+                "items": [
+                    {
+                        "product_type": "sleeve",
+                        "quantity": 2,
+                        "description": "2 custom sleeves, specs TBD",
+                        "diameter": None,
+                        "wall_thickness": None,
+                        "grade": "50",
+                        "length_ft": 10,
+                    }
+                ],
+                "urgency": "normal",
+                "confidence": 0.9,
+            }
+        )
+
+        rfq = parse_rfq(eml_path, provider)
+        quote = generate_quote(rfq, "126-INCOMPLETE")
+
+        assert len(rfq.items) == 1
+        assert len(quote.line_items) == 4
+        assert quote.line_items[0].description == "2 custom sleeves, specs TBD"
+        assert quote.line_items[0].part_number == "TBD"
+        assert quote.line_items[0].unit_price == Decimal("0.00")
+        assert quote.line_items[0].total == Decimal("0.00")
+        assert quote.line_items[3].description.startswith("*Defaults applied: Item 1: Pricing TBD")
+        assert quote.subtotal == Decimal("0.00")
+    finally:
+        if eml_path.exists():
+            eml_path.unlink()
