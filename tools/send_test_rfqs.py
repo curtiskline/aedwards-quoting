@@ -16,7 +16,7 @@ from pathlib import Path
 
 SHARED_PROJECT_ROOT = Path(__file__).resolve().parents[1]
 EMAILS_DIR = SHARED_PROJECT_ROOT / "data" / "test-corpus" / "emails"
-DEFAULT_TO = "AEResponder@allenedwards.com"
+DEFAULT_TO = "AEResponder@allanedwards.com"
 TEST_SUBJECT_PREFIX = "[TEST] "
 
 
