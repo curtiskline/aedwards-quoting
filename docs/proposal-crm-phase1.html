@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Allan Edwards Knowledge System — Phase 1 Proposal</title>
+<title>Allan Edwards Knowledge System — Proposal</title>
 <style>
   :root {
     --ink: #1a2332;
@@ -159,7 +159,7 @@
   <div class="draft-banner">Draft — for discussion, not yet sent</div>
 
   <header>
-    <div class="kicker">Proposal &middot; Phase 1</div>
+    <div class="kicker">Proposal</div>
     <h1>The Allan Edwards Knowledge System</h1>
     <div class="subtitle">Putting forty years of customer relationships one question away.</div>
     <div class="meta">
@@ -184,11 +184,14 @@
   <p>This system takes the opposite approach. Nobody fills out a form. Nobody maintains a
   database. It reads what the company already produces and answers questions about it.</p>
 
-  <h2>What Phase 1 Does</h2>
-  <p>Phase 1 starts exactly where you suggested: the Bartlesville question. We build a
-  question-and-answer interface over the customer data the quote tool has already collected —
-  every customer, contact, address, quote, and line item that has flowed through it. You ask
-  in plain English, from any phone or computer:</p>
+  <h2>Where We Start: The Bartlesville Answer</h2>
+  <p>We start exactly where you suggested: the Bartlesville question. Stage 1 builds a
+  question-and-answer page over the quote tool's customer database — every customer, contact,
+  address, quote, and line item. That database is young — the quote tool is just entering real
+  use — so Stage 1 also <b>loads it with history</b>: the archive of past quotes and RFQ emails
+  we already hold gets parsed into real customer and quote records, and every quote that flows
+  through the tool from here on adds to it. Then you ask in plain English, from any phone or
+  computer:</p>
 
   <div class="example">
     <div class="q">"I'm going to be in Bartlesville this week — who should I see?"</div>
@@ -202,20 +205,31 @@
     account — one summary, with the source records linked so you can verify anything it says.</div>
   </div>
 
-  <p>Three things about how it answers:</p>
+  <p>Four things about how it answers:</p>
   <ul>
     <li><b>Every answer shows its sources.</b> It doesn't ask you to trust it — each answer
     links to the actual quotes and records it came from.</li>
-    <li><b>No training required.</b> If you can send a text message, you can use it.</li>
-    <li><b>No data entry, ever.</b> Phase 1 runs entirely on data the company already has.
-    Nobody's job changes.</li>
+    <li><b>You can talk to it.</b> The page is one input field, built for a phone. Tap the
+    mic on your keyboard and dictate the question, same as texting hands-free. If you can
+    send a text message, you can use it.</li>
+    <li><b>It knows where you are.</b> Ask "who should I see near me?" and it uses your
+    phone's location — you grant that once in the browser, and it's optional. Type a town
+    name instead and it works the same.</li>
+    <li><b>No data entry, ever — but it listens.</b> Nobody fills out a form and nobody
+    maintains a database. When you learn something worth keeping, tell it: open the same
+    page, tap the mic, and say the note — or forward the email. Either way, it becomes part
+    of the company's memory.</li>
   </ul>
+  <p>One honest boundary: Stage 1 answers from what we've loaded — the quote archive, the
+  sources closest to this use case, and everything flowing through quotes.allanedwards.io.
+  Whatever hasn't been loaded yet, it honestly doesn't know; the later stages widen that,
+  one source at a time. Every source we add makes these same questions smarter.</p>
 
   <h2>Where It Lives</h2>
   <p>The system runs on a dedicated cloud server, the same arrangement as the quote tool at
   quotes.allanedwards.io — a private server that 918 Software manages for you. This one will be
   sized for what's coming: the knowledge system needs more memory than the quote tool's server
-  has, and the upgrade gives it room to grow into Phase 2 without another move.</p>
+  has, and the upgrade gives it room to grow into the later stages without another move.</p>
   <ul>
     <li>Reachable from anywhere — office, truck, or that Walmart parking lot — behind a login,
     same as the quote tool.</li>
@@ -226,76 +240,105 @@
   </ul>
 
   <h2>What It Accesses</h2>
-  <p>Phase 1 reads one source: <b>the quote tool's database</b> — customers, contacts,
+  <p>Stages 1 and 2 read one source: <b>the quote tool's database</b> — customers, contacts,
   addresses, quotes, and line items. It reads that data; it never changes it. The quote tool
   keeps working exactly as it does today.</p>
-  <p>That's a deliberate starting point. The quote data is already structured and already
-  flowing in daily, so Phase 1 delivers the Bartlesville answer without touching anything else.
+  <p>That's a deliberate starting point. Quote data is structured, we hold an archive of it
+  ready to load, and new quotes add to it as the tool gets used — so Stage 1 delivers the
+  Bartlesville answer without touching anything else.
   The shared drive, QuickBooks, email history, and the credit applications in the drawer are
-  Phase 2 — and the system is designed from day one to receive them.</p>
+  the ingestion stages — and the system is designed from day one to receive them.</p>
 
   <h2>What You'll See</h2>
   <ul>
-    <li><b>The ask page</b> — <b>ask.allanedwards.io</b>, a simple page where you type (or
-    dictate) a question and get an answer with sources. Works on a phone browser.</li>
-    <li><b>The dashboard</b> — a plain-view report of what the system knows and what it's been
-    asked: how many customers and quotes it's drawing on, what questions people are asking,
-    and anything it couldn't answer (which tells us what to feed it next).</li>
+    <li><b>The ask page</b> (Stage 1) — <b>ask.allanedwards.io</b>, one simple page that
+    works in both directions: dictate a question and get an answer with sources, or dictate
+    a note — open the page, tap the mic, talk — and it's kept. Works on a phone browser,
+    behind your login.</li>
+    <li><b>The field team's logins</b> (Stage 2) — accounts for the salespeople, with roles
+    and permissions, set up so a phone stays signed in for a long stretch instead of nagging
+    for a password every day.</li>
+    <li><b>The dashboard</b> (Stage 2) — a page that refreshes daily: where the system stands
+    as of today, what it's drawing on, who's been using it, what's been asked, and anything it
+    couldn't answer (which tells us what to feed it next).</li>
+    <li><b>The weekly digest</b> (Stage 2) — "here's what we learned this week": the little
+    pieces of information that arrived — a forwarded note, a new contact, a fresh quote —
+    gathered into one summary you can read in two minutes.</li>
   </ul>
 
-  <h2>Timeline &amp; Investment</h2>
-  <table>
-    <thead>
-      <tr><th style="width:32%">Milestone</th><th>What's delivered</th><th style="width:18%">Timing</th></tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>Server &amp; foundation</td>
-        <td>Cloud server provisioned, quote data connected, relationship map built</td>
-        <td>Weeks 1&ndash;2</td>
-      </tr>
-      <tr>
-        <td>The Bartlesville answer</td>
-        <td>Ask page live and answering location and customer-history questions, with sources</td>
-        <td>Weeks 3&ndash;4</td>
-      </tr>
-      <tr>
-        <td>Dashboard &amp; polish</td>
-        <td>Dashboard live; refinement based on real questions from you and your people</td>
-        <td>Weeks 5&ndash;6</td>
-      </tr>
-    </tbody>
-  </table>
+  <h2>The First Step: Let Me See the Data</h2>
+  <p>Before I can put honest numbers on this, I need to see what we're working with. Nobody
+  knows yet how much company data there is — how many documents, in what formats, how much is
+  scanned paper versus native files. Volume and format are what drive the cost of a system
+  like this, and guessing now would either pad the price or shortchange the work.</p>
+  <p>So this proposal starts with access, not an invoice: <b>read-only access to all the data
+  that's available</b> — the company drive, the quote and email archives, and whatever else
+  should eventually feed the system. I analyze what's there and come back with a scoped plan:
+  what to load first, what each stage delivers, and what each stage costs. Read-only means
+  exactly that — nothing changed, nothing moved, nothing leaving your control.</p>
 
+  <h2>How the Work Is Structured</h2>
+  <p>From there, the work runs in month-sized stages. Each stage is a complete, working
+  deliverable with a fixed price agreed before it starts — you see it running, use it, and
+  then decide whether the next one is worth it. No long contract, no big bet.</p>
   <table>
     <thead>
-      <tr><th>Item</th><th style="width:30%">Cost</th></tr>
+      <tr><th style="width:26%">Stage</th><th>What's delivered</th></tr>
     </thead>
     <tbody>
-      <tr><td>Phase 1 build (one-time)</td><td><b>$7,500</b></td></tr>
-      <tr><td>Cloud server &amp; hosting (monthly)</td><td><b>$200</b> / month</td></tr>
+      <tr>
+        <td><b>Stage 1</b> — Load and ask</td>
+        <td>Server stood up, the data sources closest to the Bartlesville use case ingested
+        and loaded, the relationship map built, and the ask page live at ask.allanedwards.io —
+        dictation and "near me" included, completely internal, behind your login</td>
+      </tr>
+      <tr>
+        <td><b>Stage 2</b> — The field team</td>
+        <td>Logins for the salespeople with roles and permissions, stay-signed-in phone
+        sessions, the daily dashboard, and the weekly "what we learned" digest — plus
+        refinement from the real questions people ask</td>
+      </tr>
+      <tr>
+        <td><b>Later stages</b> — Widen what it knows</td>
+        <td>Remaining sources onboarded one at a time — shared drive, credit applications,
+        QuickBooks, email history — each making the same questions smarter</td>
+      </tr>
     </tbody>
   </table>
+  <p>Ongoing hosting is a modest monthly cost that depends on how big the server needs to be —
+  that number comes out of the same data analysis.</p>
 
   <h2>Where This Goes Next</h2>
-  <p>Phase 1 is the foundation, and the reason it's built the way it is:</p>
-  <p><b>Phase 2 — the paper starts filing itself.</b> Emails, credit applications, shared-drive
-  documents, and QuickBooks records flow into the system automatically. Think of how an order
-  moves through Amazon — no person shepherds it; the process runs and people watch dashboards.
-  A credit application arrives with three trade references, and instead of going into a drawer,
-  those become three warm introductions the system can tell a salesperson about — the gold that
-  today dies in an inbox.</p>
-  <p><b>Phase 3 — talk to it from the field.</b> Push-to-talk from a phone: a salesperson
+  <p>Stages 1 and 2 are the foundation, and the reason they're built the way they are:</p>
+  <p><b>The ingestion stages — the paper starts filing itself.</b> Emails, credit applications,
+  shared-drive documents, and QuickBooks records flow into the system automatically, one source
+  per stage. Think of how an order moves through Amazon — no person shepherds it; the process
+  runs and people watch dashboards. A credit application arrives with three trade references,
+  and instead of going into a drawer, those become three warm introductions the system can tell
+  a salesperson about — the gold that today dies in an inbox. All of it happens on your server,
+  with our own pipeline — documents are never handed to an outside service to be indexed.</p>
+  <p><b>The note you sent Wednesday night is the proof.</b> You met an attorney for One Gas,
+  learned who's splitting off assets, got the name of the conference that matters, and came
+  away with "find out who else has training centers" — and you BCC'd it to Devin because, in
+  your words, <i>this type of info doesn't exactly have a home now.</i> You're right, and no
+  CRM gives it one. Here, that becomes memory: forward the email — or just say it into the ask
+  page from the parking lot — and later ask "who do we know at One Gas?" or "what did we learn
+  about training centers?" — and it answers, citing your own note.</p>
+  <p><b>Further out — talk to it from the field.</b> Push-to-talk from a phone: a salesperson
   leaves a customer visit, says thirty seconds about how it went, and that becomes part of the
-  company's memory — searchable by everyone, forever.</p>
-  <p>Each phase stands on the one before it. Phase 1 proves the answer quality on data we
-  already trust; Phase 2 widens what it knows; Phase 3 makes capture effortless.</p>
+  company's memory — searchable by everyone, forever. And if the browser page earns its keep,
+  a dedicated iPhone/Android app is a natural next step.</p>
+  <p>Each stage stands on the one before it. Stage 1 proves the answer quality on data we
+  already trust; Stage 2 puts it in the field's hands; every stage after widens what it
+  knows.</p>
 
   <h2>Decisions We'd Ask of You</h2>
   <ol>
-    <li><b>Day-one users:</b> just you at first, or salespeople from the start?</li>
-    <li><b>Historical depth (for Phase 2 planning):</b> your own question — "how far back do
-    you want to go?" No answer needed yet, but it shapes Phase 2's scope.</li>
+    <li><b>Access:</b> read-only access to the company drive and any other data that should
+    feed the system. This is the one thing the whole plan waits on — everything else follows
+    from the analysis.</li>
+    <li><b>Historical depth:</b> your own question — "how far back do you want to go?" No
+    answer needed yet, but it shapes how much there is to load.</li>
   </ol>
 
   <footer>
