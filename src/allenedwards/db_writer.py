@@ -126,52 +126,18 @@ def _match_customer(rfq: ParsedRFQ) -> Customer | None:
     """Auto-match an existing Customer using a multi-signal scoring approach.
 
     Signals (in priority order):
-    1. Exact contact email match (highest confidence)
-    2. Email domain match (strong signal for corporate domains)
-    3. Fuzzy company name match with confidence threshold
+    1. Parsed company name match (highest priority when present)
+    2. Exact contact email match
+    3. Email domain match (strong signal for corporate domains)
 
     Returns None when confidence is too low — better to leave unmatched
     than assign the wrong customer (which creates downstream data problems).
     """
-    # --- Signal 1: Exact contact email match (most reliable) ---
-    if rfq.contact_email:
-        contact = Contact.query.filter(
-            func.lower(Contact.email) == rfq.contact_email.lower()
-        ).first()
-        if contact:
-            logger.info(
-                "Matched customer %s via exact contact email %r",
-                contact.customer_id, rfq.contact_email,
-            )
-            return contact.customer
-
     customers = Customer.query.all()
     if not customers:
         return None
 
-    # --- Signal 2: Email domain match (corporate domains only) ---
-    rfq_domain = _extract_email_domain(rfq.contact_email or "")
-    if rfq_domain and rfq_domain not in _GENERIC_DOMAINS:
-        # Build a map of domain → customer from existing contacts
-        domain_customers: dict[str, list[Customer]] = {}
-        for customer in customers:
-            for contact in customer.contacts:
-                d = _extract_email_domain(contact.email)
-                if d and d not in _GENERIC_DOMAINS:
-                    domain_customers.setdefault(d, []).append(customer)
-
-        matches = domain_customers.get(rfq_domain, [])
-        # Only use domain match if it uniquely identifies one customer
-        unique_ids = {c.id for c in matches}
-        if len(unique_ids) == 1:
-            customer = matches[0]
-            logger.info(
-                "Matched customer %s via email domain %r",
-                customer.id, rfq_domain,
-            )
-            return customer
-
-    # --- Signal 3: Fuzzy company name match ---
+    # --- Signal 1: Parsed company name match ---
     if rfq.customer_name:
         norm_rfq = _normalize_company_name(rfq.customer_name)
         if not norm_rfq:
@@ -220,6 +186,46 @@ def _match_customer(rfq: ParsedRFQ) -> Customer | None:
                 rfq.customer_name, best_customer.company_name,
                 best_score, _NAME_MATCH_THRESHOLD,
             )
+
+        logger.info(
+            "Parsed customer name %r did not match an existing customer; skipping email/domain fallback",
+            rfq.customer_name,
+        )
+        return None
+
+    # --- Signal 2: Exact contact email match (only when no parsed customer name) ---
+    if rfq.contact_email:
+        contact = Contact.query.filter(
+            func.lower(Contact.email) == rfq.contact_email.lower()
+        ).first()
+        if contact:
+            logger.info(
+                "Matched customer %s via exact contact email %r",
+                contact.customer_id, rfq.contact_email,
+            )
+            return contact.customer
+
+    # --- Signal 3: Email domain match (corporate domains only, only when no parsed customer name) ---
+    rfq_domain = _extract_email_domain(rfq.contact_email or "")
+    if rfq_domain and rfq_domain not in _GENERIC_DOMAINS:
+        # Build a map of domain → customer from existing contacts
+        domain_customers: dict[str, list[Customer]] = {}
+        for customer in customers:
+            for contact in customer.contacts:
+                d = _extract_email_domain(contact.email)
+                if d and d not in _GENERIC_DOMAINS:
+                    domain_customers.setdefault(d, []).append(customer)
+
+        matches = domain_customers.get(rfq_domain, [])
+        # Only use domain match if it uniquely identifies one customer
+        unique_ids = {c.id for c in matches}
+        if len(unique_ids) == 1:
+            customer = matches[0]
+            logger.info(
+                "Matched customer %s via email domain %r",
+                customer.id, rfq_domain,
+            )
+            return customer
 
     return None
 
