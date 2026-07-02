@@ -58,3 +58,6 @@ ignore = ["E501"]  # Line length handled by formatter, not checker
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+markers = [
+    "integration: live LLM tests; run with RUN_INTEGRATION=1",
+]

@@ -28,7 +28,7 @@ POSITIVE_CASES = [
     ),
     (
         "girth_weld_rfq",
-        "20250627_130247_jhamilton_18” girth weld sleeves 3_8 g50.eml",
+        "20250211_150802_jhamilton_CNP IM - fabricated weld sleeve.eml",
         "girth weld quote request",
     ),
     (
@@ -38,7 +38,7 @@ POSITIVE_CASES = [
     ),
     (
         "forwarded_external_rfq",
-        "20250630_123531_jhamilton_FW_ [EXTERNAL] 18” girth weld sleeves 3_8 g50.eml",
+        "20250206_171030_jhamilton_RE_ [EXTERNAL] RE_ Allan Edwards 36_ 3_4_ Gr 65 Sleeves.eml",
         "forwarded external customer RFQ",
     ),
     (
