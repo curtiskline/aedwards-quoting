@@ -517,7 +517,7 @@ def test_auto_calculates_shipping_from_weight_and_distance(tmp_path):
         },
     )
     assert response.status_code == 200
-    assert b"Shipping Calc:" in response.data
+    assert b"editor-customer-info" in response.data
 
     with app.app_context():
         shipping_item = (

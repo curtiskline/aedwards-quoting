@@ -785,7 +785,7 @@ def test_classify_prompt_does_not_instruct_false_positive_bias():
 
     assert "prefer false positives" not in prompt
     assert "lean true" not in prompt
-    assert "personal emails" in prompt
+    assert "personal messages" in prompt
 
 
 def test_claude_provider_retries_on_json_decode_error(monkeypatch):

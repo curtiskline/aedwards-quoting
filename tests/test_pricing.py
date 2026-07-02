@@ -4,6 +4,7 @@ from decimal import Decimal
 import os
 from pathlib import Path
 import subprocess
+import sys
 
 from app import create_app
 from app.config import Config
@@ -755,7 +756,7 @@ def test_price_lookup_uses_db_override_in_app_context(tmp_path: Path):
     env = os.environ.copy()
     env["DATABASE_URL"] = f"sqlite:///{db_path}"
     env["PYTHONPATH"] = str(Path(__file__).resolve().parents[1] / "src")
-    subprocess.run(["alembic", "upgrade", "head"], check=True, cwd=Path(__file__).resolve().parents[1], env=env)
+    subprocess.run([sys.executable, "-m", "alembic", "upgrade", "head"], check=True, cwd=Path(__file__).resolve().parents[1], env=env)
 
     previous_db_uri = Config.SQLALCHEMY_DATABASE_URI
     try:

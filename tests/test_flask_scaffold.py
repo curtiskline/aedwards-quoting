@@ -3,12 +3,16 @@ from __future__ import annotations
 import os
 import sqlite3
 import subprocess
+import sys
 from pathlib import Path
 
 from app import create_app
 from app.config import Config
 from app.extensions import db
 from app.models import User
+
+
+ALEMBIC_CMD = [sys.executable, "-m", "alembic"]
 
 
 def _alembic_env(db_path: Path) -> dict[str, str]:
@@ -32,7 +36,7 @@ def test_migrations_create_tables(tmp_path: Path) -> None:
     db_path = tmp_path / "migrations.db"
     env = _alembic_env(db_path)
 
-    subprocess.run(["alembic", "upgrade", "head"], check=True, cwd=Path(__file__).resolve().parents[1], env=env)
+    subprocess.run([*ALEMBIC_CMD, "upgrade", "head"], check=True, cwd=Path(__file__).resolve().parents[1], env=env)
 
     conn = sqlite3.connect(db_path)
     try:
@@ -58,7 +62,7 @@ def test_migrations_seed_pricing_rows(tmp_path: Path) -> None:
     db_path = tmp_path / "seeded.db"
     env = _alembic_env(db_path)
 
-    subprocess.run(["alembic", "upgrade", "head"], check=True, cwd=Path(__file__).resolve().parents[1], env=env)
+    subprocess.run([*ALEMBIC_CMD, "upgrade", "head"], check=True, cwd=Path(__file__).resolve().parents[1], env=env)
 
     conn = sqlite3.connect(db_path)
     try:
@@ -76,7 +80,7 @@ def test_pricing_admin_page_and_inline_update(tmp_path: Path) -> None:
     try:
         os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
         subprocess.run(
-            ["alembic", "upgrade", "head"],
+            [*ALEMBIC_CMD, "upgrade", "head"],
             check=True,
             cwd=Path(__file__).resolve().parents[1],
             env=_alembic_env(db_path),
