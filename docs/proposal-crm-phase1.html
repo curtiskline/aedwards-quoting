@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Allan Edwards Knowledge System — Phase 1 Proposal</title>
+<style>
+  :root {
+    --ink: #1a2332;
+    --muted: #5a6678;
+    --accent: #1c4e80;
+    --rule: #d8dee6;
+    --paper: #ffffff;
+    --wash: #f4f6f9;
+    --flag: #fff3bf;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Georgia, 'Times New Roman', serif;
+    color: var(--ink);
+    background: #e9ecf0;
+    line-height: 1.55;
+  }
+  .page {
+    max-width: 820px;
+    margin: 2rem auto;
+    background: var(--paper);
+    padding: 3.2rem 3.4rem 3.6rem;
+    box-shadow: 0 2px 14px rgba(20,30,50,.12);
+  }
+  .draft-banner {
+    background: var(--flag);
+    border: 1px solid #e6c94c;
+    color: #6b5900;
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: .8rem;
+    letter-spacing: .12em;
+    text-align: center;
+    padding: .4rem;
+    margin-bottom: 2.2rem;
+    text-transform: uppercase;
+  }
+  header .kicker {
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: .78rem;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: .5rem;
+  }
+  h1 { font-size: 1.9rem; font-weight: normal; line-height: 1.2; margin-bottom: .4rem; }
+  .subtitle { color: var(--muted); font-size: 1.05rem; margin-bottom: 1.4rem; }
+  .meta {
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: .82rem;
+    color: var(--muted);
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    padding: .6rem 0;
+    margin-bottom: 2.4rem;
+    display: flex;
+    gap: 2.5rem;
+    flex-wrap: wrap;
+  }
+  .meta span b { color: var(--ink); font-weight: 600; }
+  h2 {
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: 1.02rem;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 2.4rem 0 .8rem;
+    padding-top: .4rem;
+  }
+  p { margin-bottom: .9rem; }
+  blockquote {
+    border-left: 3px solid var(--accent);
+    padding: .5rem 0 .5rem 1.1rem;
+    margin: 1.2rem 0 1.2rem .2rem;
+    color: var(--muted);
+    font-style: italic;
+    font-size: 1.02rem;
+  }
+  ul, ol { margin: 0 0 1rem 1.4rem; }
+  li { margin-bottom: .45rem; }
+  .example {
+    background: var(--wash);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 1rem 1.2rem;
+    margin: 1rem 0 1.2rem;
+    font-size: .95rem;
+  }
+  .example .q {
+    font-family: Helvetica, Arial, sans-serif;
+    font-weight: 600;
+    margin-bottom: .5rem;
+  }
+  .example .a { color: var(--muted); }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: .9rem;
+    margin: .8rem 0 1.2rem;
+  }
+  th {
+    text-align: left;
+    font-size: .78rem;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 2px solid var(--ink);
+    padding: .45rem .6rem .45rem 0;
+  }
+  td {
+    border-bottom: 1px solid var(--rule);
+    padding: .55rem .6rem .55rem 0;
+    vertical-align: top;
+  }
+  .tbd {
+    background: var(--flag);
+    padding: .05rem .4rem;
+    border-radius: 3px;
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: .85em;
+    white-space: nowrap;
+  }
+  .note-to-devin {
+    background: #eef4fb;
+    border: 1px dashed #9ab4d0;
+    border-radius: 6px;
+    padding: .7rem 1rem;
+    margin: 1rem 0;
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: .82rem;
+    color: #33506e;
+  }
+  .note-to-devin b { text-transform: uppercase; letter-spacing: .08em; font-size: .75rem; }
+  footer {
+    margin-top: 3rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--rule);
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: .8rem;
+    color: var(--muted);
+  }
+  @media print {
+    body { background: #fff; }
+    .page { box-shadow: none; margin: 0; padding: 1rem 0; max-width: none; }
+    .draft-banner, .note-to-devin { display: none; }
+    .tbd { background: none; border: 1px solid #999; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="draft-banner">Draft — for discussion, not yet sent</div>
+
+  <header>
+    <div class="kicker">Proposal &middot; Phase 1</div>
+    <h1>The Allan Edwards Knowledge System</h1>
+    <div class="subtitle">Putting forty years of customer relationships one question away.</div>
+    <div class="meta">
+      <span>Prepared for: <b>Chip Edwards, Allan Edwards Inc.</b></span>
+      <span>Prepared by: <b>Devin &middot; 918 Software</b></span>
+      <span>Date: <b>July 2026</b></span>
+    </div>
+  </header>
+
+  <h2>The Problem, In Your Words</h2>
+  <blockquote>"I'm sitting in a Walmart parking lot. I look somebody up and I can see our entire
+  history with them — communication, all our past work, people inside the industry who know them."</blockquote>
+  <p>Allan Edwards has decades of relationships — customer histories, past jobs, credit
+  relationships, pricing context. Today that knowledge lives in a shared drive nobody can
+  navigate, in QuickBooks, and in the heads of the people who've been there longest. You can
+  tie a prospect to a job from 23 years ago on the fly. Nobody else can, and there's no way
+  to teach it.</p>
+  <p>You've tried the CRM route — ACT, Salesforce, NetSuite, HubSpot — and every one of them
+  failed for the same reason: they demanded admin work from the people who produce revenue.
+  Your rule stands: <b>you cannot give the guys who produce work more work just so overhead can
+  have better records.</b></p>
+  <p>This system takes the opposite approach. Nobody fills out a form. Nobody maintains a
+  database. It reads what the company already produces and answers questions about it.</p>
+
+  <h2>What Phase 1 Does</h2>
+  <p>Phase 1 starts exactly where you suggested: the Bartlesville question. We build a
+  question-and-answer interface over the customer data the quote tool has already collected —
+  every customer, contact, address, quote, and line item that has flowed through it. You ask
+  in plain English, from any phone or computer:</p>
+
+  <div class="example">
+    <div class="q">"I'm going to be in Bartlesville this week — who should I see?"</div>
+    <div class="a">Returns every customer and contact in and around Bartlesville, with the
+    relationship context that makes the visit warm instead of cold: when we last quoted them,
+    what it was for, how much business they've done with us, and who their contact is.</div>
+  </div>
+  <div class="example">
+    <div class="q">"What's our history with Washita Valley?"</div>
+    <div class="a">Every quote we've sent them, what was on it, when, and the contacts on the
+    account — one summary, with the source records linked so you can verify anything it says.</div>
+  </div>
+
+  <p>Three things about how it answers:</p>
+  <ul>
+    <li><b>Every answer shows its sources.</b> It doesn't ask you to trust it — each answer
+    links to the actual quotes and records it came from.</li>
+    <li><b>No training required.</b> If you can send a text message, you can use it.</li>
+    <li><b>No data entry, ever.</b> Phase 1 runs entirely on data the company already has.
+    Nobody's job changes.</li>
+  </ul>
+
+  <h2>Where It Lives</h2>
+  <p>The system runs on a dedicated cloud server, the same arrangement as the quote tool at
+  quotes.allanedwards.io — a private server that 918 Software manages for you. This one will be
+  sized for what's coming: the knowledge system needs more memory than the quote tool's server
+  has, and the upgrade gives it room to grow into Phase 2 without another move.</p>
+  <ul>
+    <li>Reachable from anywhere — office, truck, or that Walmart parking lot — behind a login,
+    same as the quote tool.</li>
+    <li>Backed up daily, same discipline as the quote tool's database.</li>
+    <li><b>Your data stays on your server.</b> The system reads and understands your records
+    using software running on that machine — customer data is not handed to outside services
+    to be indexed or stored.</li>
+  </ul>
+
+  <h2>What It Accesses</h2>
+  <p>Phase 1 reads one source: <b>the quote tool's database</b> — customers, contacts,
+  addresses, quotes, and line items. It reads that data; it never changes it. The quote tool
+  keeps working exactly as it does today.</p>
+  <p>That's a deliberate starting point. The quote data is already structured and already
+  flowing in daily, so Phase 1 delivers the Bartlesville answer without touching anything else.
+  The shared drive, QuickBooks, email history, and the credit applications in the drawer are
+  Phase 2 — and the system is designed from day one to receive them.</p>
+
+  <h2>What You'll See</h2>
+  <ul>
+    <li><b>The ask page</b> — <b>ask.allanedwards.io</b>, a simple page where you type (or
+    dictate) a question and get an answer with sources. Works on a phone browser.</li>
+    <li><b>The dashboard</b> — a plain-view report of what the system knows and what it's been
+    asked: how many customers and quotes it's drawing on, what questions people are asking,
+    and anything it couldn't answer (which tells us what to feed it next).</li>
+  </ul>
+
+  <h2>Timeline &amp; Investment</h2>
+  <table>
+    <thead>
+      <tr><th style="width:32%">Milestone</th><th>What's delivered</th><th style="width:18%">Timing</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Server &amp; foundation</td>
+        <td>Cloud server provisioned, quote data connected, relationship map built</td>
+        <td>Weeks 1&ndash;2</td>
+      </tr>
+      <tr>
+        <td>The Bartlesville answer</td>
+        <td>Ask page live and answering location and customer-history questions, with sources</td>
+        <td>Weeks 3&ndash;4</td>
+      </tr>
+      <tr>
+        <td>Dashboard &amp; polish</td>
+        <td>Dashboard live; refinement based on real questions from you and your people</td>
+        <td>Weeks 5&ndash;6</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <table>
+    <thead>
+      <tr><th>Item</th><th style="width:30%">Cost</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>Phase 1 build (one-time)</td><td><b>$7,500</b></td></tr>
+      <tr><td>Cloud server &amp; hosting (monthly)</td><td><b>$200</b> / month</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Where This Goes Next</h2>
+  <p>Phase 1 is the foundation, and the reason it's built the way it is:</p>
+  <p><b>Phase 2 — the paper starts filing itself.</b> Emails, credit applications, shared-drive
+  documents, and QuickBooks records flow into the system automatically. Think of how an order
+  moves through Amazon — no person shepherds it; the process runs and people watch dashboards.
+  A credit application arrives with three trade references, and instead of going into a drawer,
+  those become three warm introductions the system can tell a salesperson about — the gold that
+  today dies in an inbox.</p>
+  <p><b>Phase 3 — talk to it from the field.</b> Push-to-talk from a phone: a salesperson
+  leaves a customer visit, says thirty seconds about how it went, and that becomes part of the
+  company's memory — searchable by everyone, forever.</p>
+  <p>Each phase stands on the one before it. Phase 1 proves the answer quality on data we
+  already trust; Phase 2 widens what it knows; Phase 3 makes capture effortless.</p>
+
+  <h2>Decisions We'd Ask of You</h2>
+  <ol>
+    <li><b>Day-one users:</b> just you at first, or salespeople from the start?</li>
+    <li><b>Historical depth (for Phase 2 planning):</b> your own question — "how far back do
+    you want to go?" No answer needed yet, but it shapes Phase 2's scope.</li>
+  </ol>
+
+  <footer>
+    Prepared by 918 Software &middot; Devin &middot; devin@918.software
+  </footer>
+
+</div>
+</body>
+</html>
