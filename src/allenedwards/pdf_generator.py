@@ -27,6 +27,10 @@ WHITE = colors.white
 GRAY = colors.Color(0.5, 0.5, 0.5)
 LIGHT_GRAY = colors.Color(0.9, 0.9, 0.9)
 
+
+def _clean_text(value: str | None) -> str:
+    return (value or "").strip()
+
 def _resolve_default_logo_path() -> Path:
     """Resolve bundled logo path for source and frozen runtimes."""
     if getattr(sys, "frozen", False):
@@ -251,23 +255,17 @@ class QuotePDFBuilder:
         ship_to_lines = [
             [Paragraph("<b>Ship to:</b>", self.styles["bold"])],
         ]
-        if self.quote.ship_to and self.quote.ship_to.get("company"):
-            ship_to_lines.append([Paragraph(self.quote.ship_to["company"], self.styles["normal"])])
-
-        # Contact name with phone
-        if self.quote.contact_name:
-            contact_line = self.quote.contact_name
-            if self.quote.contact_phone:
-                contact_line += f" {self.quote.contact_phone}"
-            ship_to_lines.append([Paragraph(contact_line, self.styles["normal"])])
-
         if self.quote.ship_to:
-            if self.quote.ship_to.get("company"):
-                ship_to_lines.append([Paragraph(self.quote.ship_to["company"], self.styles["normal"])])
-            if self.quote.ship_to.get("attention"):
-                ship_to_lines.append([Paragraph(self.quote.ship_to["attention"], self.styles["normal"])])
-            if self.quote.ship_to.get("street"):
-                ship_to_lines.append([Paragraph(self.quote.ship_to["street"], self.styles["normal"])])
+            seen_lines: set[str] = set()
+            for value in (
+                self.quote.ship_to.get("company"),
+                self.quote.ship_to.get("attention"),
+                self.quote.ship_to.get("street"),
+            ):
+                line = _clean_text(value)
+                if line and line not in seen_lines:
+                    ship_to_lines.append([Paragraph(line, self.styles["normal"])])
+                    seen_lines.add(line)
 
             city_state_zip_parts = []
             if self.quote.ship_to.get("city"):
@@ -302,19 +300,8 @@ class QuotePDFBuilder:
         return elements
 
     def _build_line_items_table(self) -> list:
-        """Build Template A line items table with quote title."""
+        """Build Template A line items table."""
         elements = []
-
-        # Quote title row (e.g., "Quote 2: HM999A3 Line")
-        quote_title = self.quote.quote_number
-        if self.quote.notes and ":" in self.quote.notes.split("\n")[0]:
-            # Use first line of notes as quote title if it looks like a title
-            first_note = self.quote.notes.split("\n")[0].strip()
-            if first_note:
-                quote_title = first_note
-        title_para = Paragraph(f"<b>{quote_title}</b>", self.styles["bold"])
-        elements.append(title_para)
-        elements.append(Spacer(1, 6))
 
         # Header row - Template A columns
         table_data = [
@@ -363,7 +350,7 @@ class QuotePDFBuilder:
             ("FONTNAME", (0, 1), (-1, -1), "Helvetica"),
             ("FONTSIZE", (0, 0), (-1, -1), 9),
             # Alignment
-            ("ALIGN", (0, 0), (-1, 0), "LEFT"),  # Header left aligned
+            ("ALIGN", (0, 0), (-1, 0), "CENTER"),
             ("ALIGN", (2, 1), (2, -1), "CENTER"),  # Quantity centered
             ("ALIGN", (3, 1), (-1, -1), "RIGHT"),  # Prices right aligned
             # Grid - box around entire table
@@ -413,11 +400,18 @@ class QuotePDFBuilder:
         return elements
 
     def _build_totals(self) -> list:
-        """Build Template A totals section: Subtotal, Shipping and Handling, TOTAL."""
+        """Build Template A totals section from the workbook template."""
         elements = []
 
-        # Template A totals: right-aligned, Subtotal / Shipping and Handling / TOTAL
+        tax_amount = self.quote.tax_amount if self.quote.tax_amount else None
         totals_data = [
+            [
+                "",
+                "",
+                "",
+                Paragraph("Tax:", self.styles["normal_small"]),
+                Paragraph(format_currency(tax_amount), self.styles["normal_small"]),
+            ],
             [
                 "",
                 "",
@@ -456,11 +450,13 @@ class QuotePDFBuilder:
             ("BACKGROUND", (0, -1), (-1, -1), YELLOW_HEADER),
             # Alignment
             ("ALIGN", (3, 0), (3, -1), "RIGHT"),
-            ("ALIGN", (4, 0), (4, -1), "RIGHT"),
+            ("ALIGN", (4, 0), (4, -2), "RIGHT"),
             ("ALIGN", (0, -1), (0, -1), "LEFT"),
+            ("ALIGN", (4, -1), (4, -1), "CENTER"),
             # Borders for subtotal/shipping rows
             ("LINEBELOW", (3, 0), (4, 0), 0.5, BLACK),
             ("LINEBELOW", (3, 1), (4, 1), 0.5, BLACK),
+            ("LINEBELOW", (3, 2), (4, 2), 0.5, BLACK),
             # Box around TOTAL row
             ("BOX", (0, -1), (-1, -1), 0.5, BLACK),
             # Padding

@@ -147,6 +147,32 @@ def test_preview_pdf_uses_shipping_summary_field_not_line_item(mock_generate_quo
     assert all(item.product_type != "shipping" for item in pricing_quote.line_items)
 
 
+@patch("app.routes.generate_quote_pdf")
+def test_preview_pdf_maps_ship_to_address_line_into_street_field(mock_generate_quote_pdf, tmp_path):
+    app = _make_app(tmp_path)
+    quote_id, user_id = _seed_quote(app)
+
+    def _fake_generate(pricing_quote, output_path):
+        output_path.write_bytes(b"%PDF-1.4\n")
+
+    mock_generate_quote_pdf.side_effect = _fake_generate
+
+    with app.test_client() as client:
+        _login(client, user_id)
+        resp = client.get(f"/quotes/{quote_id}/preview-pdf")
+
+    assert resp.status_code == 200
+    pricing_quote = mock_generate_quote_pdf.call_args.args[0]
+    assert pricing_quote.ship_to == {
+        "attention": "",
+        "street": "123 Main St",
+        "city": "Tulsa",
+        "state": "OK",
+        "postal_code": "74117",
+        "country": "US",
+    }
+
+
 def test_send_form_returns_html(tmp_path):
     app = _make_app(tmp_path)
     quote_id, user_id = _seed_quote(app)

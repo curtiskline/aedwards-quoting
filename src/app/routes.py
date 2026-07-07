@@ -1358,8 +1358,8 @@ def _db_quote_to_pricing_quote(quote: Quote) -> PricingQuote:
     if quote.ship_to_json:
         st = quote.ship_to_json
         ship_to = {
-            "company": st.get("address_line1", ""),
             "attention": st.get("address_line2", ""),
+            "street": st.get("address_line1", ""),
             "city": st.get("city", ""),
             "state": st.get("state", ""),
             "postal_code": st.get("postal_code", ""),

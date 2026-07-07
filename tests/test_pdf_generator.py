@@ -241,6 +241,26 @@ def test_bill_to_does_not_include_shipping_address():
     assert "Cottage Grove, MN, 55016" in ship_to_text
 
 
+def test_ship_to_does_not_duplicate_same_line_twice():
+    """Ship To should not repeat the same value when company/street collapse."""
+    quote = _make_quote(
+        ship_to={
+            "company": "123 Main St",
+            "street": "123 Main St",
+            "attention": "",
+            "city": "Tulsa",
+            "state": "OK",
+            "postal_code": "74117",
+        }
+    )
+    builder = QuotePDFBuilder(quote=quote, output_path=Path("/tmp/test.pdf"))
+    address_table = builder._build_bill_ship_to()[0]
+    ship_to_table = address_table._cellvalues[0][1]
+    ship_to_text = [row[0].text for row in ship_to_table._cellvalues]
+
+    assert ship_to_text.count("123 Main St") == 1
+
+
 def _make_quote(**overrides):
     """Helper to build a Quote with sensible defaults."""
     defaults = dict(
@@ -282,6 +302,24 @@ def test_notes_rendered_when_present():
     assert any("Notes:" in t for t in texts)
     assert any("Ship before Friday." in t for t in texts)
     assert any("Call on arrival." in t for t in texts)
+
+
+def test_totals_include_tax_row_before_subtotal_and_shipping():
+    """Workbook totals block includes Tax, Subtotal, Shipping and Handling, TOTAL."""
+    quote = _make_quote(
+        subtotal=Decimal("100.00"),
+        shipping_amount=Decimal("25.00"),
+        tax_amount=Decimal("8.25"),
+        total=Decimal("133.25"),
+    )
+    builder = QuotePDFBuilder(quote=quote, output_path=Path("/tmp/test.pdf"))
+    totals_table = builder._build_totals()[0]
+
+    assert totals_table._cellvalues[0][3].text == "Tax:"
+    assert totals_table._cellvalues[1][3].text == "Subtotal:"
+    assert totals_table._cellvalues[2][3].text == "Shipping and Handling:"
+    assert "TOTAL" in totals_table._cellvalues[3][0].text
+    assert "$8.25" in totals_table._cellvalues[0][4].text
 
 
 def test_notes_empty_when_none():
