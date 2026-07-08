@@ -676,6 +676,87 @@ def _extract_bundle_count(text: str) -> int | None:
     return int(match.group(1))
 
 
+# Words that indicate the item was ordered by piece count, so a footage figure in
+# the text is a per-piece length rather than a requested total footage.
+_PIECE_INDICATOR_RE = re.compile(r"\b(?:pcs?|pieces?|each|joints?)\b", re.IGNORECASE)
+
+# A requested TOTAL linear footage, e.g. "20 ft", "20'", "150 LF", "20 linear feet".
+# Excludes per-piece length phrasing ("10 ft long", "10' lengths", "x 10'").
+_TOTAL_FOOTAGE_RE = re.compile(
+    r"(?<![x×\d.])\s*(\d+(?:\.\d+)?)\s*(?:'|ft|feet|lf|linear\s*f(?:ee|oo)t)\b"
+    r"(?!\s*(?:long|lengths?|each|joints?|/|per))",
+    re.IGNORECASE,
+)
+
+
+def _extract_total_footage(text: str) -> float | None:
+    """Extract a requested TOTAL linear footage from raw item description text.
+
+    Returns the footage value, or None when the text does not clearly express a
+    total footage request (e.g. it counts pieces, or states a per-piece length).
+    """
+    if not text:
+        return None
+    if _PIECE_INDICATOR_RE.search(text):
+        # Explicit piece/joint count present — trust the structured quantity.
+        return None
+    match = _TOTAL_FOOTAGE_RE.search(text)
+    if not match:
+        return None
+    return float(match.group(1))
+
+
+def _normalize_sleeve_footage(item: ParsedItem) -> tuple[ParsedItem, str | None]:
+    """Recover from LLM footage/quantity mis-mapping for standard sleeves.
+
+    Sleeves ship in standard 10 ft pieces, so a request phrased as a TOTAL linear
+    footage (e.g. "20 ft of sleeve") must map to quantity = ceil(total_ft / 10)
+    pieces of 10 ft each. The LLM sometimes stuffs the raw footage into ``quantity``
+    (quoting "20 ft" as 20 pcs) or into ``length_ft`` (a single 20 ft sleeve). This
+    deterministically detects that mis-mapping from the preserved raw description
+    and corrects it, regardless of how the LLM phrased the extraction.
+
+    Returns the (possibly corrected) item and an optional note describing the fix.
+    """
+    import math
+
+    if item.product_type != "sleeve":
+        return item, None
+
+    footage = _extract_total_footage(item.description or "")
+    if footage is None or footage <= 0:
+        return item, None
+
+    pieces = max(1, math.ceil(footage / STANDARD_BUNDLE_LENGTH_FT))
+    fmt_ft = f"{footage:g}"
+
+    # Case A: the footage was copied into quantity while length_ft is a standard
+    # (or absent) per-piece length. Quoting `footage` pieces of 10 ft each would be
+    # ~10x the requested footage, so treat quantity as the footage figure.
+    if (
+        item.quantity == footage
+        and pieces != item.quantity
+        and (item.length_ft is None or item.length_ft in (STANDARD_BUNDLE_LENGTH_FT, footage))
+    ):
+        from dataclasses import replace
+        item = replace(item, quantity=pieces, length_ft=STANDARD_BUNDLE_LENGTH_FT)
+        note = f"Requested {fmt_ft} ft → {pieces} pc(s) of {STANDARD_BUNDLE_LENGTH_FT:.0f} ft"
+        return item, note
+
+    # Case B: the footage was copied into length_ft (a single over-length sleeve).
+    if (
+        item.length_ft == footage
+        and footage > STANDARD_BUNDLE_LENGTH_FT
+        and item.quantity <= 1
+    ):
+        from dataclasses import replace
+        item = replace(item, quantity=pieces, length_ft=STANDARD_BUNDLE_LENGTH_FT)
+        note = f"Requested {fmt_ft} ft → {pieces} pc(s) of {STANDARD_BUNDLE_LENGTH_FT:.0f} ft"
+        return item, note
+
+    return item, None
+
+
 def _quote_quantity_and_warning(item: ParsedItem) -> tuple[int, str | None]:
     """Resolve displayed quote quantity in pieces and optional warning text.
 
@@ -919,8 +1000,11 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
             return None
 
         item, default_notes = _apply_item_defaults(item)
+        item, footage_note = _normalize_sleeve_footage(item)
+        if footage_note:
+            default_notes = [footage_note, *default_notes]
         actual_od = normalize_nominal_od(item.diameter)
-        
+
         # Check if this is a standard bundle sleeve
         bundle_info = _get_bundle_pricing_info(item)
         if bundle_info:
