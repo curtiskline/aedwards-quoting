@@ -57,3 +57,16 @@ drafts/
 *-transcript.json
 recording_*.json
 /6468 N Yale Ave *.json
+
+# axon runtime artifacts
+.agent-tasks.db*
+.agent-registry.*
+.unanswered-questions
+.axon-prompts/
+.monitor_state.json
+canon/
+logs/
+worktrees/
+decision_trees/
+knowledge-graph.db
+icon.png
