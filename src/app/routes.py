@@ -342,6 +342,18 @@ def _shipping_line_item(quote: Quote) -> QuoteLineItem | None:
     return None
 
 
+def _shipping_amount_for_quote(quote: Quote) -> Decimal:
+    amount = Decimal("0.00")
+    for item in _sorted_line_items(quote):
+        if item.product_type == "shipping":
+            amount += Decimal(str(item.line_total))
+    return _quantize_money(amount)
+
+
+def _tax_amount_for_quote(quote: Quote) -> Decimal:
+    return _quantize_money(_decimal_from_raw(getattr(quote, "tax_amount", None)) or Decimal("0.00"))
+
+
 def _is_manual_shipping_override(item: QuoteLineItem | None) -> bool:
     if item is None:
         return False
@@ -648,32 +660,48 @@ def _line_item_view(item: QuoteLineItem) -> dict:
     }
 
 
-def _quote_totals(line_items: list[Quote] | list[QuoteLineItem]) -> dict:
-    if not line_items:
-        return {"subtotal": Decimal("0.00"), "total": Decimal("0.00")}
-    if isinstance(line_items[0], Quote):  # dashboard cards
+def _quote_totals(quote_or_quotes: Quote | list[Quote]) -> dict:
+    if isinstance(quote_or_quotes, list):
         subtotal = Decimal("0.00")
-        for quote in line_items:  # type: ignore[assignment]
+        for quote in quote_or_quotes:
             for li in quote.line_items:
                 subtotal += Decimal(str(li.line_total))
-        return {"subtotal": _quantize_money(subtotal), "total": _quantize_money(subtotal)}
-    subtotal = sum((Decimal(str(li.line_total)) for li in line_items), Decimal("0.00"))
+        subtotal = _quantize_money(subtotal)
+        return {
+            "subtotal": subtotal,
+            "shipping": Decimal("0.00"),
+            "tax": Decimal("0.00"),
+            "total": subtotal,
+        }
+
+    quote = quote_or_quotes
+    subtotal = Decimal("0.00")
+    for item in _sorted_line_items(quote):
+        if item.product_type == "shipping":
+            continue
+        subtotal += Decimal(str(item.line_total))
     subtotal = _quantize_money(subtotal)
-    return {"subtotal": subtotal, "total": subtotal}
+    shipping = _shipping_amount_for_quote(quote)
+    tax = _tax_amount_for_quote(quote)
+    total = _quantize_money(subtotal + shipping + tax)
+    return {"subtotal": subtotal, "shipping": shipping, "tax": tax, "total": total}
 
 
 def _quote_context(quote: Quote) -> dict:
     line_items = _sorted_line_items(quote)
     shipping_line = _shipping_line_item(quote)
     shipping_breakdown = _shipping_breakdown(quote)
+    totals = _quote_totals(quote)
     return {
         "quote": quote,
         "line_items": [_line_item_view(li) for li in line_items],
         "product_type_choices": _product_type_choices(),
-        "totals": _quote_totals(line_items),
+        "totals": totals,
         "review_user": db.session.get(User, quote.reviewed_by) if quote.reviewed_by else None,
         "shipping_breakdown": shipping_breakdown,
         "shipping_manual_override": _is_manual_shipping_override(shipping_line),
+        "shipping_amount": totals["shipping"],
+        "tax_amount": totals["tax"],
     }
 
 
@@ -915,6 +943,57 @@ def quote_update_status(quote_id: int):
         quote.review_started_at = None
     db.session.commit()
     return _render_status_bar(quote)
+
+
+@main_bp.post("/quotes/<int:quote_id>/totals")
+def quote_update_totals(quote_id: int):
+    quote = db.get_or_404(Quote, quote_id)
+    auto_shipping_trigger = request.form.get("auto_shipping_trigger") == "1"
+    tax_amount = _quantize_money(_parse_decimal(request.form.get("tax_amount"), _tax_amount_for_quote(quote)))
+    quote.tax_amount = float(tax_amount)
+
+    shipping_item = _shipping_line_item(quote)
+    if auto_shipping_trigger:
+        if shipping_item is not None:
+            shipping_item.description = AUTO_SHIPPING_DESCRIPTION
+            shipping_item.quantity = 1
+            shipping_item.unit_price = 0
+            shipping_item.line_total = 0
+            shipping_item.specs_json = {"manual_override": False, "auto_calculated_shipping": True}
+        _apply_auto_shipping_line_item(quote)
+    else:
+        shipping_amount = _quantize_money(
+            _parse_decimal(request.form.get("shipping_amount"), _shipping_amount_for_quote(quote))
+        )
+        if shipping_amount > 0:
+            if shipping_item is None:
+                _normalize_sort_orders(quote)
+                shipping_item = QuoteLineItem(
+                    quote=quote,
+                    product_type="shipping",
+                    description="Manual freight / shipping",
+                    quantity=1,
+                    unit_price=float(shipping_amount),
+                    line_total=float(shipping_amount),
+                    specs_json={},
+                    sort_order=len(quote.line_items) + 1,
+                )
+                db.session.add(shipping_item)
+            else:
+                if not (shipping_item.description or "").strip() or dict(shipping_item.specs_json or {}).get(
+                    "auto_calculated_shipping"
+                ):
+                    shipping_item.description = "Manual freight / shipping"
+                shipping_item.quantity = 1
+                shipping_item.unit_price = float(shipping_amount)
+                shipping_item.line_total = float(shipping_amount)
+            shipping_item.specs_json = {"manual_override": True, "auto_calculated_shipping": False}
+        elif shipping_item is not None:
+            db.session.delete(shipping_item)
+
+    _sync_quote_pricing_status(quote)
+    db.session.commit()
+    return _render_line_items(quote)
 
 
 @main_bp.post("/quotes/<int:quote_id>/line-items/add")
@@ -1335,11 +1414,9 @@ def move_product_type(type_id: int):
 def _db_quote_to_pricing_quote(quote: Quote) -> PricingQuote:
     """Convert a DB Quote model to the pricing.Quote dataclass for PDF generation."""
     line_items = _sorted_line_items(quote)
-    shipping_amount = Decimal("0.00")
     pricing_items: list[PricingLineItem] = []
     for li in line_items:
         if li.product_type == "shipping":
-            shipping_amount += Decimal(str(li.line_total))
             continue
         pricing_items.append(PricingLineItem(
             sort_order=len(pricing_items) + 1,
@@ -1351,9 +1428,10 @@ def _db_quote_to_pricing_quote(quote: Quote) -> PricingQuote:
             total=Decimal(str(li.line_total)),
         ))
     subtotal = _quantize_money(sum((item.total for item in pricing_items), Decimal("0.00")))
-    shipping_value = _quantize_money(shipping_amount)
+    shipping_value = _shipping_amount_for_quote(quote)
     shipping_total = shipping_value if shipping_value > 0 else None
-    total = _quantize_money(subtotal + (shipping_total or Decimal("0.00")))
+    tax_amount = _tax_amount_for_quote(quote)
+    total = _quantize_money(subtotal + (shipping_total or Decimal("0.00")) + tax_amount)
     ship_to = None
     if quote.ship_to_json:
         st = quote.ship_to_json
@@ -1375,7 +1453,7 @@ def _db_quote_to_pricing_quote(quote: Quote) -> PricingQuote:
         line_items=pricing_items,
         subtotal=subtotal,
         shipping_amount=shipping_total,
-        tax_amount=Decimal("0.00"),
+        tax_amount=tax_amount,
         total=total,
         notes=quote.notes_customer,
         po_number=quote.po_number,
