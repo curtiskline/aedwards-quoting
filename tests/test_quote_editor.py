@@ -1002,3 +1002,59 @@ def test_totals_form_blank_shipping_without_breakdown_stays_zero(tmp_path):
         specs = dict(shipping_item.specs_json or {})
         assert specs.get("manual_override") is False
         assert specs.get("auto_calculated_shipping") is True
+
+
+def test_shipping_calc_line_hidden_during_manual_override(tmp_path):
+    """The auto 'Shipping Calc' breakdown must not display while a manual freight
+    override is active — it previously showed a contradictory auto number next to
+    the 'Manual override active' note."""
+    app = _make_app(tmp_path)
+    with app.app_context():
+        db.create_all()
+        user = User(email="shipcalc@example.com", name="Ship Calc", password_hash="x")
+        db.session.add(user)
+        quote = Quote(
+            quote_number="126-268",
+            status=QuoteStatus.NEW,
+            ship_to_json={"city": "Oklahoma City", "state": "OK", "postal_code": "73102", "country": "US"},
+        )
+        db.session.add(quote)
+        db.session.flush()
+        db.session.add(
+            QuoteLineItem(
+                quote_id=quote.id,
+                product_type="sleeve",
+                description="Sleeve",
+                quantity=5,
+                unit_price=100,
+                line_total=500,
+                specs_json={"diameter": "24", "wall_thickness": "0.5", "length_ft": "10"},
+                sort_order=1,
+            )
+        )
+        db.session.commit()
+        quote_id = quote.id
+        user_id = user.id
+
+    client = app.test_client()
+    _login(client, user_id)
+
+    # Auto in effect: Shipping Calc breakdown should show.
+    client.post(
+        f"/quotes/{quote_id}/line-items/1/update",
+        data={"product_type": "sleeve", "description": "Sleeve", "quantity": "5", "unit_price": "100.00",
+              "spec_diameter": "24", "spec_wall_thickness": "0.5", "spec_grade": "50", "spec_length_ft": "10"},
+    )
+    auto_html = client.get(f"/quotes/{quote_id}").get_data(as_text=True)
+    assert "Shipping Calc:" in auto_html
+    assert "Auto-calculated from shipping" in auto_html
+    assert "Manual override active" not in auto_html
+
+    # Manual override: Shipping Calc breakdown must be hidden; only the mode note remains.
+    client.post(
+        f"/quotes/{quote_id}/totals",
+        data={"shipping_amount": "250.00", "shipping_amount_baseline": "0.00", "tax_amount": "0"},
+    )
+    manual_html = client.get(f"/quotes/{quote_id}").get_data(as_text=True)
+    assert "Manual override active" in manual_html
+    assert "Shipping Calc:" not in manual_html
