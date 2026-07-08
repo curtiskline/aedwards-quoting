@@ -409,13 +409,6 @@ class QuotePDFBuilder:
                 "",
                 "",
                 "",
-                Paragraph("Tax:", self.styles["normal_small"]),
-                Paragraph(format_currency(tax_amount), self.styles["normal_small"]),
-            ],
-            [
-                "",
-                "",
-                "",
                 Paragraph("Subtotal:", self.styles["normal_small"]),
                 Paragraph(format_currency(self.quote.subtotal), self.styles["normal_small"]),
             ],
@@ -425,6 +418,13 @@ class QuotePDFBuilder:
                 "",
                 Paragraph("Shipping and Handling:", self.styles["normal_small"]),
                 Paragraph(format_currency(self.quote.shipping_amount) if self.quote.shipping_amount else "", self.styles["normal_small"]),
+            ],
+            [
+                "",
+                "",
+                "",
+                Paragraph("Tax:", self.styles["normal_small"]),
+                Paragraph(format_currency(tax_amount), self.styles["normal_small"]),
             ],
             [
                 Paragraph("<b>TOTAL</b>", self.styles["bold"]),
