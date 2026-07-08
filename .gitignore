@@ -50,3 +50,10 @@ logs/
 work/
 drafts/
 .unanswered-questions
+
+# Meeting/recording transcript artifacts (audio, video, transcripts)
+*.m4a
+*.mkv
+*-transcript.json
+recording_*.json
+"6468 N Yale Ave"*.json

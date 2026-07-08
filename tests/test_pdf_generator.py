@@ -304,8 +304,8 @@ def test_notes_rendered_when_present():
     assert any("Call on arrival." in t for t in texts)
 
 
-def test_totals_include_tax_row_before_subtotal_and_shipping():
-    """Workbook totals block includes Tax, Subtotal, Shipping and Handling, TOTAL."""
+def test_totals_order_matches_quote_sheet_spec():
+    """Totals block order per Chip's Quote Sheet: Subtotal, Shipping and Handling, Tax, TOTAL."""
     quote = _make_quote(
         subtotal=Decimal("100.00"),
         shipping_amount=Decimal("25.00"),
@@ -315,11 +315,11 @@ def test_totals_include_tax_row_before_subtotal_and_shipping():
     builder = QuotePDFBuilder(quote=quote, output_path=Path("/tmp/test.pdf"))
     totals_table = builder._build_totals()[0]
 
-    assert totals_table._cellvalues[0][3].text == "Tax:"
-    assert totals_table._cellvalues[1][3].text == "Subtotal:"
-    assert totals_table._cellvalues[2][3].text == "Shipping and Handling:"
+    assert totals_table._cellvalues[0][3].text == "Subtotal:"
+    assert totals_table._cellvalues[1][3].text == "Shipping and Handling:"
+    assert totals_table._cellvalues[2][3].text == "Tax:"
     assert "TOTAL" in totals_table._cellvalues[3][0].text
-    assert "$8.25" in totals_table._cellvalues[0][4].text
+    assert "$8.25" in totals_table._cellvalues[2][4].text
 
 
 def test_notes_empty_when_none():
