@@ -261,6 +261,29 @@ def test_ship_to_does_not_duplicate_same_line_twice():
     assert ship_to_text.count("123 Main St") == 1
 
 
+def test_ship_to_omits_null_stringified_values():
+    """A country/field stored as the literal string 'None'/'null' must not render."""
+    quote = _make_quote(
+        ship_to={
+            "company": "contractor yard",
+            "street": "",
+            "attention": "",
+            "city": "",
+            "state": "MS",
+            "postal_code": "",
+            "country": "None",
+        }
+    )
+    builder = QuotePDFBuilder(quote=quote, output_path=Path("/tmp/test.pdf"))
+    address_table = builder._build_bill_ship_to()[0]
+    ship_to_table = address_table._cellvalues[0][1]
+    ship_to_text = [row[0].text for row in ship_to_table._cellvalues]
+
+    assert "None" not in ship_to_text
+    assert "MS" in ship_to_text
+    assert "contractor yard" in ship_to_text
+
+
 def _make_quote(**overrides):
     """Helper to build a Quote with sensible defaults."""
     defaults = dict(

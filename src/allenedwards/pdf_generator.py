@@ -29,7 +29,12 @@ LIGHT_GRAY = colors.Color(0.9, 0.9, 0.9)
 
 
 def _clean_text(value: str | None) -> str:
-    return (value or "").strip()
+    text = (value or "").strip()
+    # Drop null-stringified placeholders (e.g. a Python None stored as the literal
+    # string "None" in ship_to_json) so they don't render as address lines.
+    if text.lower() in ("none", "null"):
+        return ""
+    return text
 
 def _resolve_default_logo_path() -> Path:
     """Resolve bundled logo path for source and frozen runtimes."""
@@ -268,16 +273,15 @@ class QuotePDFBuilder:
                     seen_lines.add(line)
 
             city_state_zip_parts = []
-            if self.quote.ship_to.get("city"):
-                city_state_zip_parts.append(self.quote.ship_to["city"])
-            if self.quote.ship_to.get("state"):
-                city_state_zip_parts.append(self.quote.ship_to["state"])
-            if self.quote.ship_to.get("postal_code"):
-                city_state_zip_parts.append(self.quote.ship_to["postal_code"])
+            for key in ("city", "state", "postal_code"):
+                part = _clean_text(self.quote.ship_to.get(key))
+                if part:
+                    city_state_zip_parts.append(part)
             if city_state_zip_parts:
                 ship_to_lines.append([Paragraph(", ".join(city_state_zip_parts), self.styles["normal"])])
-            if self.quote.ship_to.get("country"):
-                ship_to_lines.append([Paragraph(self.quote.ship_to["country"], self.styles["normal"])])
+            country = _clean_text(self.quote.ship_to.get("country"))
+            if country:
+                ship_to_lines.append([Paragraph(country, self.styles["normal"])])
 
         ship_to_table = Table(ship_to_lines, colWidths=[3.5 * inch])
         ship_to_table.setStyle(TableStyle([
