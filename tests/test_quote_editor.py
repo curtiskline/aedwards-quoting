@@ -1049,8 +1049,10 @@ def test_shipping_calc_line_hidden_during_manual_override(tmp_path):
     assert "Shipping Calc:" in auto_html
     assert "Auto-calculated from shipping" in auto_html
     assert "Manual override active" not in auto_html
+    assert "Auto estimate:" not in auto_html
 
-    # Manual override: Shipping Calc breakdown must be hidden; only the mode note remains.
+    # Manual override: the full Shipping Calc breakdown is hidden and replaced with a
+    # muted "Auto estimate: ... — currently overridden" hint; the mode note remains.
     client.post(
         f"/quotes/{quote_id}/totals",
         data={"shipping_amount": "250.00", "shipping_amount_baseline": "0.00", "tax_amount": "0"},
@@ -1058,3 +1060,5 @@ def test_shipping_calc_line_hidden_during_manual_override(tmp_path):
     manual_html = client.get(f"/quotes/{quote_id}").get_data(as_text=True)
     assert "Manual override active" in manual_html
     assert "Shipping Calc:" not in manual_html
+    assert "Auto estimate:" in manual_html
+    assert "currently overridden" in manual_html

@@ -124,15 +124,23 @@
   </form>
 
   <div class="line-item-totals">
-    {% if shipping_breakdown and not shipping_manual_override %}
-      <div class="pricing-note">
-        <strong>Shipping Calc:</strong>
-        {{ '%.2f'|format(shipping_breakdown.total_weight_lb) }} lbs ×
-        {{ '%.2f'|format(shipping_breakdown.distance_miles) }} miles ×
-        ${{ '%.6f'|format(shipping_breakdown.rate_per_lb_mile) }}/lb/mi
-        = <strong>${{ '%.2f'|format(shipping_breakdown.total_cost) }}</strong>
-        ({{ shipping_breakdown.origin_zip }} → {{ shipping_breakdown.destination_zip }})
-      </div>
+    {% if shipping_breakdown %}
+      {% if shipping_manual_override %}
+        <div class="pricing-note">
+          <strong>Auto estimate:</strong>
+          ${{ '%.2f'|format(shipping_breakdown.total_cost) }}
+          ({{ shipping_breakdown.origin_zip }} → {{ shipping_breakdown.destination_zip }}) — currently overridden
+        </div>
+      {% else %}
+        <div class="pricing-note">
+          <strong>Shipping Calc:</strong>
+          {{ '%.2f'|format(shipping_breakdown.total_weight_lb) }} lbs ×
+          {{ '%.2f'|format(shipping_breakdown.distance_miles) }} miles ×
+          ${{ '%.6f'|format(shipping_breakdown.rate_per_lb_mile) }}/lb/mi
+          = <strong>${{ '%.2f'|format(shipping_breakdown.total_cost) }}</strong>
+          ({{ shipping_breakdown.origin_zip }} → {{ shipping_breakdown.destination_zip }})
+        </div>
+      {% endif %}
     {% endif %}
     <form method="post" action="/quotes/{{ quote.id }}/totals" hx-post="/quotes/{{ quote.id }}/totals" hx-target="#editor-line-items" hx-swap="outerHTML" class="add-line-item-card">
       <h3>Totals</h3>
