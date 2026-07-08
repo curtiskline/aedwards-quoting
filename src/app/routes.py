@@ -692,6 +692,13 @@ def _quote_context(quote: Quote) -> dict:
     shipping_line = _shipping_line_item(quote)
     shipping_breakdown = _shipping_breakdown(quote)
     totals = _quote_totals(quote)
+    shipping_manual_override = _is_manual_shipping_override(shipping_line)
+    if shipping_manual_override:
+        shipping_mode_note = "Manual override active. Clear the field and save to return to auto shipping."
+    elif shipping_breakdown:
+        shipping_mode_note = "Auto-calculated from shipping config. Leave it as-is to stay auto, or type a value to override."
+    else:
+        shipping_mode_note = "Auto shipping needs a valid ship-to ZIP and configured rate data. Type a value to set freight manually."
     return {
         "quote": quote,
         "line_items": [_line_item_view(li) for li in line_items],
@@ -699,7 +706,8 @@ def _quote_context(quote: Quote) -> dict:
         "totals": totals,
         "review_user": db.session.get(User, quote.reviewed_by) if quote.reviewed_by else None,
         "shipping_breakdown": shipping_breakdown,
-        "shipping_manual_override": _is_manual_shipping_override(shipping_line),
+        "shipping_manual_override": shipping_manual_override,
+        "shipping_mode_note": shipping_mode_note,
         "shipping_amount": totals["shipping"],
         "tax_amount": totals["tax"],
     }
@@ -948,24 +956,64 @@ def quote_update_status(quote_id: int):
 @main_bp.post("/quotes/<int:quote_id>/totals")
 def quote_update_totals(quote_id: int):
     quote = db.get_or_404(Quote, quote_id)
-    auto_shipping_trigger = request.form.get("auto_shipping_trigger") == "1"
     tax_amount = _quantize_money(_parse_decimal(request.form.get("tax_amount"), _tax_amount_for_quote(quote)))
     quote.tax_amount = float(tax_amount)
 
     shipping_item = _shipping_line_item(quote)
-    if auto_shipping_trigger:
-        if shipping_item is not None:
+    shipping_manual_override = _is_manual_shipping_override(shipping_item)
+    raw_shipping_amount = request.form.get("shipping_amount")
+    baseline_shipping_amount = _quantize_money(
+        _parse_decimal(request.form.get("shipping_amount_baseline"), _shipping_amount_for_quote(quote))
+    )
+    if raw_shipping_amount is not None and not raw_shipping_amount.strip():
+        if shipping_item is None:
+            _normalize_sort_orders(quote)
+            shipping_item = QuoteLineItem(
+                quote=quote,
+                product_type="shipping",
+                description=AUTO_SHIPPING_DESCRIPTION,
+                quantity=1,
+                unit_price=0,
+                line_total=0,
+                specs_json={},
+                sort_order=len(quote.line_items) + 1,
+            )
+            db.session.add(shipping_item)
+        else:
             shipping_item.description = AUTO_SHIPPING_DESCRIPTION
             shipping_item.quantity = 1
             shipping_item.unit_price = 0
             shipping_item.line_total = 0
-            shipping_item.specs_json = {"manual_override": False, "auto_calculated_shipping": True}
+        shipping_item.specs_json = {"manual_override": False, "auto_calculated_shipping": True}
         _apply_auto_shipping_line_item(quote)
     else:
         shipping_amount = _quantize_money(
-            _parse_decimal(request.form.get("shipping_amount"), _shipping_amount_for_quote(quote))
+            _parse_decimal(raw_shipping_amount, baseline_shipping_amount)
         )
-        if shipping_amount > 0:
+        if shipping_manual_override and shipping_amount == baseline_shipping_amount:
+            pass
+        elif shipping_amount == baseline_shipping_amount:
+            if shipping_item is None:
+                _normalize_sort_orders(quote)
+                shipping_item = QuoteLineItem(
+                    quote=quote,
+                    product_type="shipping",
+                    description=AUTO_SHIPPING_DESCRIPTION,
+                    quantity=1,
+                    unit_price=0,
+                    line_total=0,
+                    specs_json={},
+                    sort_order=len(quote.line_items) + 1,
+                )
+                db.session.add(shipping_item)
+            else:
+                shipping_item.description = AUTO_SHIPPING_DESCRIPTION
+                shipping_item.quantity = 1
+                shipping_item.unit_price = 0
+                shipping_item.line_total = 0
+            shipping_item.specs_json = {"manual_override": False, "auto_calculated_shipping": True}
+            _apply_auto_shipping_line_item(quote)
+        else:
             if shipping_item is None:
                 _normalize_sort_orders(quote)
                 shipping_item = QuoteLineItem(
@@ -988,8 +1036,6 @@ def quote_update_totals(quote_id: int):
                 shipping_item.unit_price = float(shipping_amount)
                 shipping_item.line_total = float(shipping_amount)
             shipping_item.specs_json = {"manual_override": True, "auto_calculated_shipping": False}
-        elif shipping_item is not None:
-            db.session.delete(shipping_item)
 
     _sync_quote_pricing_status(quote)
     db.session.commit()

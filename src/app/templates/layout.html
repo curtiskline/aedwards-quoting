@@ -262,14 +262,36 @@
         grid-template-columns: 140px 1fr 90px 110px;
       }
       .line-item-totals { margin-top: 0.25rem; text-align: right; display: grid; gap: 0.15rem; }
+      .totals-form-grid {
+        display: grid;
+        gap: 0.75rem;
+        grid-template-columns: repeat(2, minmax(0, 220px));
+        justify-content: end;
+      }
+      .totals-form-grid label {
+        display: grid;
+        gap: 0.35rem;
+        text-align: left;
+      }
+      .totals-input {
+        width: 100%;
+        max-width: 220px;
+      }
       @media (max-width: 900px) {
         .line-item-row-top, .line-item-row-pricing, .add-line-item-grid {
           grid-template-columns: repeat(2, 1fr);
+        }
+        .totals-form-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          justify-content: stretch;
         }
       }
       @media (max-width: 640px) {
         .quote-editor-status-actions { width: 100%; }
         .line-item-row-top, .line-item-row-pricing, .line-item-row-specs, .add-line-item-grid {
+          grid-template-columns: 1fr;
+        }
+        .totals-form-grid {
           grid-template-columns: 1fr;
         }
       }

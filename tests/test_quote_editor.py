@@ -657,7 +657,7 @@ def test_totals_form_saves_manual_shipping_and_tax(tmp_path):
     _login(client, user_id)
     response = client.post(
         f"/quotes/{quote_id}/totals",
-        data={"shipping_amount": "125.50", "tax_amount": "16.25"},
+        data={"shipping_amount": "125.50", "shipping_amount_baseline": "0.00", "tax_amount": "16.25"},
     )
     assert response.status_code == 200
     assert b"S&amp;H:</strong> $125.50" in response.data
@@ -692,7 +692,7 @@ def test_totals_form_saves_manual_shipping_and_tax(tmp_path):
         assert specs.get("manual_override") is True
 
 
-def test_totals_form_can_switch_back_to_auto_shipping(tmp_path):
+def test_totals_form_blank_shipping_reverts_to_auto(tmp_path):
     app = _make_app(tmp_path)
     with app.app_context():
         db.create_all()
@@ -743,7 +743,7 @@ def test_totals_form_can_switch_back_to_auto_shipping(tmp_path):
     _login(client, user_id)
     response = client.post(
         f"/quotes/{quote_id}/totals",
-        data={"shipping_amount": "500.00", "tax_amount": "0", "auto_shipping_trigger": "1"},
+        data={"shipping_amount": "", "shipping_amount_baseline": "500.00", "tax_amount": "0"},
     )
     assert response.status_code == 200
     assert b"Shipping Calc:" in response.data
@@ -755,6 +755,250 @@ def test_totals_form_can_switch_back_to_auto_shipping(tmp_path):
             .one()
         )
         assert float(shipping_item.line_total) > 0
+        specs = dict(shipping_item.specs_json or {})
+        assert specs.get("manual_override") is False
+        assert specs.get("auto_calculated_shipping") is True
+
+
+def test_totals_form_unchanged_auto_shipping_stays_auto(tmp_path):
+    app = _make_app(tmp_path)
+    with app.app_context():
+        db.create_all()
+        user = User(email="totals-auto-unchanged@example.com", name="Totals Auto Unchanged", password_hash="x")
+        db.session.add(user)
+        quote = Quote(
+            quote_number="126-209",
+            status=QuoteStatus.NEW,
+            ship_to_json={
+                "address_line1": "123 Main",
+                "city": "Oklahoma City",
+                "state": "OK",
+                "postal_code": "73102",
+                "country": "US",
+            },
+        )
+        db.session.add(quote)
+        db.session.flush()
+        sleeve_item = QuoteLineItem(
+            quote_id=quote.id,
+            product_type="sleeve",
+            description="Calculated Sleeve",
+            quantity=5,
+            unit_price=100,
+            line_total=500,
+            specs_json={"diameter": "24", "wall_thickness": "0.5", "length_ft": "10"},
+            sort_order=1,
+        )
+        db.session.add(sleeve_item)
+        db.session.commit()
+        quote_id = quote.id
+        sleeve_id = sleeve_item.id
+        user_id = user.id
+
+    client = app.test_client()
+    _login(client, user_id)
+
+    first_resp = client.post(
+        f"/quotes/{quote_id}/line-items/{sleeve_id}/update",
+        data={
+            "product_type": "sleeve",
+            "description": "Calculated Sleeve",
+            "quantity": "5",
+            "unit_price": "100.00",
+            "spec_diameter": "24",
+            "spec_wall_thickness": "0.5",
+            "spec_grade": "50",
+            "spec_length_ft": "10",
+        },
+    )
+    assert first_resp.status_code == 200
+
+    with app.app_context():
+        shipping_item = (
+            db.session.query(QuoteLineItem)
+            .filter_by(quote_id=quote_id, product_type="shipping")
+            .one()
+        )
+        baseline = float(shipping_item.line_total)
+
+    totals_resp = client.post(
+        f"/quotes/{quote_id}/totals",
+        data={
+            "shipping_amount": f"{baseline:.2f}",
+            "shipping_amount_baseline": f"{baseline:.2f}",
+            "tax_amount": "0",
+        },
+    )
+    assert totals_resp.status_code == 200
+
+    second_resp = client.post(
+        f"/quotes/{quote_id}/line-items/{sleeve_id}/update",
+        data={
+            "product_type": "sleeve",
+            "description": "Calculated Sleeve Updated",
+            "quantity": "8",
+            "unit_price": "100.00",
+            "spec_diameter": "24",
+            "spec_wall_thickness": "0.5",
+            "spec_grade": "50",
+            "spec_length_ft": "10",
+        },
+    )
+    assert second_resp.status_code == 200
+
+    with app.app_context():
+        updated_shipping = (
+            db.session.query(QuoteLineItem)
+            .filter_by(quote_id=quote_id, product_type="shipping")
+            .one()
+        )
+        assert float(updated_shipping.line_total) != baseline
+        specs = dict(updated_shipping.specs_json or {})
+        assert specs.get("manual_override") is False
+        assert specs.get("auto_calculated_shipping") is True
+
+
+def test_totals_form_zero_shipping_persists_as_manual_override(tmp_path):
+    app = _make_app(tmp_path)
+    with app.app_context():
+        db.create_all()
+        user = User(email="totals-zero@example.com", name="Totals Zero", password_hash="x")
+        db.session.add(user)
+        quote = Quote(
+            quote_number="126-210",
+            status=QuoteStatus.NEW,
+            ship_to_json={
+                "address_line1": "123 Main",
+                "city": "Oklahoma City",
+                "state": "OK",
+                "postal_code": "73102",
+                "country": "US",
+            },
+        )
+        db.session.add(quote)
+        db.session.flush()
+        sleeve_item = QuoteLineItem(
+            quote_id=quote.id,
+            product_type="sleeve",
+            description="Calculated Sleeve",
+            quantity=5,
+            unit_price=100,
+            line_total=500,
+            specs_json={"diameter": "24", "wall_thickness": "0.5", "length_ft": "10"},
+            sort_order=1,
+        )
+        db.session.add(sleeve_item)
+        db.session.commit()
+        quote_id = quote.id
+        sleeve_id = sleeve_item.id
+        user_id = user.id
+
+    client = app.test_client()
+    _login(client, user_id)
+
+    first_resp = client.post(
+        f"/quotes/{quote_id}/line-items/{sleeve_id}/update",
+        data={
+            "product_type": "sleeve",
+            "description": "Calculated Sleeve",
+            "quantity": "5",
+            "unit_price": "100.00",
+            "spec_diameter": "24",
+            "spec_wall_thickness": "0.5",
+            "spec_grade": "50",
+            "spec_length_ft": "10",
+        },
+    )
+    assert first_resp.status_code == 200
+
+    with app.app_context():
+        shipping_item = (
+            db.session.query(QuoteLineItem)
+            .filter_by(quote_id=quote_id, product_type="shipping")
+            .one()
+        )
+        baseline = float(shipping_item.line_total)
+
+    totals_resp = client.post(
+        f"/quotes/{quote_id}/totals",
+        data={
+            "shipping_amount": "0",
+            "shipping_amount_baseline": f"{baseline:.2f}",
+            "tax_amount": "0",
+        },
+    )
+    assert totals_resp.status_code == 200
+    assert b"S&amp;H:</strong> $0.00" in totals_resp.data
+
+    second_resp = client.post(
+        f"/quotes/{quote_id}/line-items/{sleeve_id}/update",
+        data={
+            "product_type": "sleeve",
+            "description": "Calculated Sleeve Updated",
+            "quantity": "8",
+            "unit_price": "100.00",
+            "spec_diameter": "24",
+            "spec_wall_thickness": "0.5",
+            "spec_grade": "50",
+            "spec_length_ft": "10",
+        },
+    )
+    assert second_resp.status_code == 200
+    assert b"S&amp;H:</strong> $0.00" in second_resp.data
+
+    with app.app_context():
+        updated_shipping = (
+            db.session.query(QuoteLineItem)
+            .filter_by(quote_id=quote_id, product_type="shipping")
+            .one()
+        )
+        assert float(updated_shipping.line_total) == 0.0
+        specs = dict(updated_shipping.specs_json or {})
+        assert specs.get("manual_override") is True
+        assert specs.get("auto_calculated_shipping") is False
+
+
+def test_totals_form_blank_shipping_without_breakdown_stays_zero(tmp_path):
+    app = _make_app(tmp_path)
+    with app.app_context():
+        db.create_all()
+        user = User(email="totals-blank-zero@example.com", name="Totals Blank Zero", password_hash="x")
+        db.session.add(user)
+        quote = Quote(quote_number="126-211", status=QuoteStatus.NEW)
+        db.session.add(quote)
+        db.session.flush()
+        db.session.add(
+            QuoteLineItem(
+                quote_id=quote.id,
+                product_type="shipping",
+                description="Manual freight / shipping",
+                quantity=1,
+                unit_price=125,
+                line_total=125,
+                specs_json={"manual_override": True, "auto_calculated_shipping": False},
+                sort_order=1,
+            )
+        )
+        db.session.commit()
+        quote_id = quote.id
+        user_id = user.id
+
+    client = app.test_client()
+    _login(client, user_id)
+    response = client.post(
+        f"/quotes/{quote_id}/totals",
+        data={"shipping_amount": "", "shipping_amount_baseline": "125.00", "tax_amount": "0"},
+    )
+    assert response.status_code == 200
+    assert b"S&amp;H:</strong> $0.00" in response.data
+
+    with app.app_context():
+        shipping_item = (
+            db.session.query(QuoteLineItem)
+            .filter_by(quote_id=quote_id, product_type="shipping")
+            .one()
+        )
+        assert float(shipping_item.line_total) == 0.0
         specs = dict(shipping_item.specs_json or {})
         assert specs.get("manual_override") is False
         assert specs.get("auto_calculated_shipping") is True
