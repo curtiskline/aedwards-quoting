@@ -56,4 +56,4 @@ drafts/
 *.mkv
 *-transcript.json
 recording_*.json
-"6468 N Yale Ave"*.json
+/6468 N Yale Ave *.json
