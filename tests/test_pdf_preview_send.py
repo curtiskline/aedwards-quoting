@@ -148,6 +148,31 @@ def test_preview_pdf_uses_shipping_summary_field_not_line_item(mock_generate_quo
 
 
 @patch("app.routes.generate_quote_pdf")
+def test_preview_pdf_includes_manual_tax_in_totals(mock_generate_quote_pdf, tmp_path):
+    app = _make_app(tmp_path)
+    quote_id, user_id = _seed_quote(app)
+    with app.app_context():
+        quote = db.session.get(Quote, quote_id)
+        assert quote is not None
+        quote.tax_amount = 87.50
+        db.session.commit()
+
+    def _fake_generate(pricing_quote, output_path):
+        output_path.write_bytes(b"%PDF-1.4\n")
+
+    mock_generate_quote_pdf.side_effect = _fake_generate
+
+    with app.test_client() as client:
+        _login(client, user_id)
+        resp = client.get(f"/quotes/{quote_id}/preview-pdf")
+
+    assert resp.status_code == 200
+    pricing_quote = mock_generate_quote_pdf.call_args.args[0]
+    assert pricing_quote.tax_amount == Decimal("87.50")
+    assert pricing_quote.total == Decimal("1637.50")
+
+
+@patch("app.routes.generate_quote_pdf")
 def test_preview_pdf_maps_ship_to_address_line_into_street_field(mock_generate_quote_pdf, tmp_path):
     app = _make_app(tmp_path)
     quote_id, user_id = _seed_quote(app)

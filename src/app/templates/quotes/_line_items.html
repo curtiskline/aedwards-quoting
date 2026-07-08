@@ -135,7 +135,23 @@
         {% if shipping_manual_override %}• Manual shipping override is active{% else %}• Auto-updates as line items or ship-to change{% endif %}
       </div>
     {% endif %}
+    <form method="post" action="/quotes/{{ quote.id }}/totals" hx-post="/quotes/{{ quote.id }}/totals" hx-target="#editor-line-items" hx-swap="outerHTML" class="add-line-item-card">
+      <div class="add-line-item-grid">
+        <label>Freight / S&amp;H
+          <input name="shipping_amount" type="number" min="0" step="0.01" value="{{ '%.2f'|format(shipping_amount) }}" />
+        </label>
+        <label>Tax
+          <input name="tax_amount" type="number" min="0" step="0.01" value="{{ '%.2f'|format(tax_amount) }}" />
+        </label>
+      </div>
+      <div class="line-item-actions">
+        <button type="submit">Save Totals</button>
+        <button type="submit" name="auto_shipping_trigger" value="1">Use Auto Shipping</button>
+      </div>
+    </form>
     <div><strong>Subtotal:</strong> ${{ '%.2f'|format(totals.subtotal) }}</div>
+    <div><strong>S&amp;H:</strong> ${{ '%.2f'|format(totals.shipping) }}</div>
+    <div><strong>Tax:</strong> ${{ '%.2f'|format(totals.tax) }}</div>
     <div><strong>Total:</strong> ${{ '%.2f'|format(totals.total) }}</div>
   </div>
 

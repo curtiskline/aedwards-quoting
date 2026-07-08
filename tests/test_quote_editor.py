@@ -626,3 +626,135 @@ def test_manual_shipping_override_is_preserved(tmp_path):
         assert float(updated_shipping.unit_price) == 500.0
         specs = dict(updated_shipping.specs_json or {})
         assert specs.get("manual_override") is True
+
+
+def test_totals_form_saves_manual_shipping_and_tax(tmp_path):
+    app = _make_app(tmp_path)
+    with app.app_context():
+        db.create_all()
+        user = User(email="totals@example.com", name="Totals User", password_hash="x")
+        db.session.add(user)
+        quote = Quote(quote_number="126-207", status=QuoteStatus.NEW)
+        db.session.add(quote)
+        db.session.flush()
+        db.session.add(
+            QuoteLineItem(
+                quote_id=quote.id,
+                product_type="sleeve",
+                description="Base item",
+                quantity=2,
+                unit_price=100,
+                line_total=200,
+                sort_order=1,
+            )
+        )
+        db.session.commit()
+        quote_id = quote.id
+        line_item_id = quote.line_items[0].id
+        user_id = user.id
+
+    client = app.test_client()
+    _login(client, user_id)
+    response = client.post(
+        f"/quotes/{quote_id}/totals",
+        data={"shipping_amount": "125.50", "tax_amount": "16.25"},
+    )
+    assert response.status_code == 200
+    assert b"S&amp;H:</strong> $125.50" in response.data
+    assert b"Tax:</strong> $16.25" in response.data
+    assert b"Total:</strong> $341.75" in response.data
+
+    recalc_response = client.post(
+        f"/quotes/{quote_id}/line-items/{line_item_id}/update",
+        data={
+            "product_type": "sleeve",
+            "description": "Base item updated",
+            "quantity": "3",
+            "unit_price": "100.00",
+        },
+    )
+    assert recalc_response.status_code == 200
+    assert b"S&amp;H:</strong> $125.50" in recalc_response.data
+    assert b"Tax:</strong> $16.25" in recalc_response.data
+    assert b"Total:</strong> $441.75" in recalc_response.data
+
+    with app.app_context():
+        quote = db.session.get(Quote, quote_id)
+        assert quote is not None
+        assert float(quote.tax_amount) == 16.25
+        shipping_item = (
+            db.session.query(QuoteLineItem)
+            .filter_by(quote_id=quote_id, product_type="shipping")
+            .one()
+        )
+        assert float(shipping_item.line_total) == 125.5
+        specs = dict(shipping_item.specs_json or {})
+        assert specs.get("manual_override") is True
+
+
+def test_totals_form_can_switch_back_to_auto_shipping(tmp_path):
+    app = _make_app(tmp_path)
+    with app.app_context():
+        db.create_all()
+        user = User(email="totals-auto@example.com", name="Totals Auto", password_hash="x")
+        db.session.add(user)
+        quote = Quote(
+            quote_number="126-208",
+            status=QuoteStatus.NEW,
+            ship_to_json={
+                "address_line1": "123 Main",
+                "city": "Oklahoma City",
+                "state": "OK",
+                "postal_code": "73102",
+                "country": "US",
+            },
+        )
+        db.session.add(quote)
+        db.session.flush()
+        db.session.add(
+            QuoteLineItem(
+                quote_id=quote.id,
+                product_type="sleeve",
+                description="Calculated Sleeve",
+                quantity=5,
+                unit_price=100,
+                line_total=500,
+                specs_json={"diameter": "24", "wall_thickness": "0.5", "length_ft": "10"},
+                sort_order=1,
+            )
+        )
+        db.session.add(
+            QuoteLineItem(
+                quote_id=quote.id,
+                product_type="shipping",
+                description="Manual freight / shipping",
+                quantity=1,
+                unit_price=500,
+                line_total=500,
+                specs_json={"manual_override": True, "auto_calculated_shipping": False},
+                sort_order=2,
+            )
+        )
+        db.session.commit()
+        quote_id = quote.id
+        user_id = user.id
+
+    client = app.test_client()
+    _login(client, user_id)
+    response = client.post(
+        f"/quotes/{quote_id}/totals",
+        data={"shipping_amount": "500.00", "tax_amount": "0", "auto_shipping_trigger": "1"},
+    )
+    assert response.status_code == 200
+    assert b"Shipping Calc:" in response.data
+
+    with app.app_context():
+        shipping_item = (
+            db.session.query(QuoteLineItem)
+            .filter_by(quote_id=quote_id, product_type="shipping")
+            .one()
+        )
+        assert float(shipping_item.line_total) > 0
+        specs = dict(shipping_item.specs_json or {})
+        assert specs.get("manual_override") is False
+        assert specs.get("auto_calculated_shipping") is True
