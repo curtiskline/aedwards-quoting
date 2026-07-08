@@ -802,3 +802,75 @@ def test_bundle_round_edge_cases():
     """Test bundle rounding edge cases."""
     assert bundle_round(0, 5) == (0, 0)
     assert bundle_round(5, 0) == (5, 0)
+
+
+# --- Regression: RFQ 3402905 AOG — "20 ft" must not be quoted as 20 pcs (task 263) ---
+
+def _sleeve_footage_item(**overrides):
+    base = dict(
+        product_type="sleeve",
+        quantity=20,
+        description="20 ft of sleeve for 6-5/8 pipe",
+        diameter=6.625,
+        wall_thickness=0.25,
+        grade=50,
+        length_ft=10,
+    )
+    base.update(overrides)
+    return ParsedItem(**base)
+
+
+def test_total_footage_in_quantity_converts_to_pieces_and_bundles():
+    """RFQ 3402905 AOG: '20 ft of sleeve' mis-parsed as quantity=20 pieces.
+
+    20 ft = 2 pieces of 10 ft, which rounds up to one bundle (5 pcs). The tool must
+    NOT quote 20 pcs.
+    """
+    result = price_item(_sleeve_footage_item(quantity=20, length_ft=10), sort_order=1)
+
+    assert result is not None
+    assert result.quantity == 5  # 2 pcs rounded up to 1 bundle (5 pcs), NOT 20
+    assert "20 ft" in result.notes
+    assert "bundle" in result.notes.lower()
+
+
+def test_total_footage_in_length_converts_to_pieces():
+    """'20 ft' mis-parsed as a single 20-ft-long sleeve (length_ft=20, quantity=1)."""
+    result = price_item(_sleeve_footage_item(quantity=1, length_ft=20), sort_order=1)
+
+    assert result is not None
+    assert result.quantity == 5  # 2 pcs of 10 ft -> 1 bundle
+    assert "20 ft" in result.notes
+
+
+def test_correct_footage_extraction_is_unchanged():
+    """When the LLM already extracted 20 ft as 2 pieces, behavior is unchanged."""
+    result = price_item(_sleeve_footage_item(quantity=2, length_ft=10), sort_order=1)
+
+    assert result is not None
+    assert result.quantity == 5  # still rounds to a bundle
+    # No spurious footage-normalization note when quantity was already correct.
+    assert "→" not in (result.notes or "")
+
+
+def test_explicit_piece_count_is_not_treated_as_footage():
+    """'20 pcs, 10 ft each' is a genuine 20-piece order, not a 20 ft request."""
+    result = price_item(
+        _sleeve_footage_item(quantity=20, length_ft=10, description="20 pcs, 10 ft each"),
+        sort_order=1,
+    )
+
+    assert result is not None
+    assert result.quantity == 20  # unchanged — explicit piece count trusted
+
+
+def test_large_footage_request_converts_to_piece_count():
+    """'150 LF' -> 15 pieces of 10 ft (= 3 bundles exactly)."""
+    result = price_item(
+        _sleeve_footage_item(quantity=150, description="need 150 LF of sleeve"),
+        sort_order=1,
+    )
+
+    assert result is not None
+    assert result.quantity == 15  # ceil(150/10), NOT 150 pcs
+    assert "150 ft" in result.notes

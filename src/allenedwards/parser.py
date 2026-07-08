@@ -134,9 +134,15 @@ If no grade is specified at all, default to "50" (A572 GR50 is the most common).
 
 IMPORTANT: grade and length_ft must ALWAYS be provided for each item — never return null.
 - If grade is not explicitly stated, infer it from context or default to "50".
+- UNITS: length_ft is the length of ONE sleeve piece (standard sleeves are 10 ft
+  pieces, 10 ft max — never longer). quantity is the NUMBER OF PIECES, never a footage.
+- If a customer requests a TOTAL linear footage of sleeve (e.g. "20 ft of sleeve",
+  "150 LF", "need 30 feet"), convert it to pieces: set length_ft = 10 and
+  quantity = ceil(total_ft / 10). Examples: "20 ft" -> quantity 2, length_ft 10;
+  "150 LF" -> quantity 15, length_ft 10. NEVER put the total footage directly into
+  length_ft, and NEVER put the total footage into quantity as a piece count.
 - If length is not stated, infer from context:
   - "bundle" of sleeves typically means standard lengths; use 10 for sleeves.
-  - If a total footage is given (e.g., "10 FT"), that IS the length_ft.
   - If truly unknown, default to 10 for sleeves (including oversleeves), 6 for girth welds.
 
 The confidence score (0-1) should reflect how certain you are about the parsing.
