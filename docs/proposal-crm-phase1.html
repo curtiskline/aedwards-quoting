@@ -170,129 +170,39 @@
     </div>
   </header>
 
-  <h2>The Problem, In Your Words</h2>
+  <h2>The Idea</h2>
   <blockquote>"I'm sitting in a Walmart parking lot. I look somebody up and I can see our entire
   history with them — communication, all our past work, people inside the industry who know them."</blockquote>
-  <p>Allan Edwards has decades of relationships — customer histories, past jobs, credit
-  relationships, pricing context. Today that knowledge lives in a shared drive nobody can
-  navigate, in QuickBooks, and in the heads of the people who've been there longest. You can
-  tie a prospect to a job from 23 years ago on the fly. Nobody else can, and there's no way
-  to teach it.</p>
-  <p>You've tried the CRM route — ACT, Salesforce, NetSuite, HubSpot — and every one of them
-  failed for the same reason: they demanded admin work from the people who produce revenue.
-  Your rule stands: <b>you cannot give the guys who produce work more work just so overhead can
-  have better records.</b></p>
-  <p>This system takes the opposite approach. Nobody fills out a form. Nobody maintains a
-  database. It reads what the company already produces and answers questions about it.</p>
+  <p>That's what this builds. A system that reads what the company already produces and answers
+  questions about it — no forms, no database to maintain, no admin work for the guys who produce
+  revenue. You ask in plain English from any phone; it answers and shows its sources.</p>
 
-  <h2>Where We Start: Questions Over Your Customer History</h2>
-  <p>We start exactly where you suggested: questions like the Bartlesville one. Stage 1 builds
-  a question-and-answer page over the quote tool's customer database — every customer, contact,
-  address, quote, and line item. That database is young — the quote tool is just entering real
-  use — so Stage 1 also <b>loads it with history</b>: the archive of past quotes and RFQ emails
-  we already hold gets parsed into real customer and quote records, and every quote that flows
-  through the tool from here on adds to it. Then you ask in plain English, from any phone or
-  computer:</p>
-
+  <h2>Stage 1: Questions Over Your Customer History</h2>
+  <p>We start on the quote tool's data — every customer, contact, address, quote, and line item —
+  and load it with the archive of past quotes and RFQ emails we already hold. Then you ask:</p>
   <div class="example">
     <div class="q">"I'm going to be in Bartlesville this week — who should I see?"</div>
-    <div class="a">Returns every customer and contact in and around Bartlesville, with the
-    relationship context that makes the visit warm instead of cold: when we last quoted them,
-    what it was for, how much business they've done with us, and who their contact is.</div>
+    <div class="a">Every customer near Bartlesville, with the context that makes the visit warm:
+    when we last quoted them, for what, how much they've done with us, and who to ask for.</div>
   </div>
-  <div class="example">
-    <div class="q">"What's our history with Washita Valley?"</div>
-    <div class="a">Every quote we've sent them, what was on it, when, and the contacts on the
-    account — one summary, with the source records linked so you can verify anything it says.</div>
-  </div>
-
-  <p>Four things about how it answers:</p>
   <ul>
-    <li><b>Every answer shows its sources.</b> It doesn't ask you to trust it — each answer
-    links to the actual quotes and records it came from.</li>
-    <li><b>You can talk to it.</b> The page is one input field, built for a phone. Tap the
-    mic on your keyboard and dictate the question, same as texting hands-free. If you can
-    send a text message, you can use it.</li>
-    <li><b>It knows where you are.</b> Ask "who should I see near me?" and it uses your
-    phone's location — you grant that once in the browser, and it's optional. Type a town
-    name instead and it works the same.</li>
-    <li><b>No data entry, ever — but it listens.</b> Nobody fills out a form and nobody
-    maintains a database. When you learn something worth keeping, tell it: open the same
-    page, tap the mic, and say the note — or forward the email. Either way, it becomes part
-    of the company's memory.</li>
+    <li><b>Talk to it.</b> One field, built for a phone — tap the mic and dictate, same as
+    texting hands-free. Ask "who should I see near me?" and it uses your location.</li>
+    <li><b>It listens too.</b> Learn something worth keeping? Say it into the page or forward
+    the email, and it becomes part of the company's memory.</li>
+    <li><b>Every answer cites its sources</b>, and <b>your data never leaves your server</b> —
+    it runs on a private machine we manage for you, same as the quote tool, backed up daily.</li>
   </ul>
-  <p>One honest boundary: Stage 1 answers from what we've loaded — the quote archive and
-  everything flowing through quotes.allanedwards.io.
-  Whatever hasn't been loaded yet, it honestly doesn't know; the later stages widen that,
-  one source at a time. Every source we add makes these same questions smarter.</p>
+  <p>It answers from what's loaded; the later stages widen that one source at a time.</p>
 
-  <h2>Where It Lives</h2>
-  <p>The system runs on a dedicated cloud server, the same arrangement as the quote tool at
-  quotes.allanedwards.io — a private server that 918 Software manages for you. This one will be
-  sized for what's coming: the knowledge system needs more memory than the quote tool's server
-  has, and the upgrade gives it room to grow into the later stages without another move.</p>
-  <ul>
-    <li>Reachable from anywhere — office, truck, or that Walmart parking lot — behind a login,
-    same as the quote tool.</li>
-    <li>Backed up daily, same discipline as the quote tool's database.</li>
-    <li><b>Your data stays on your server.</b> The system reads and understands your records
-    using software running on that machine — customer data is not handed to outside services
-    to be indexed or stored.</li>
-  </ul>
-
-  <h2>What It Accesses</h2>
-  <p>Stages 1 and 2 read one source: <b>the quote tool's database</b> — customers, contacts,
-  addresses, quotes, and line items. It reads that data; it never changes it. The quote tool
-  keeps working exactly as it does today.</p>
-  <p>That's a deliberate starting point. Quote data is structured, we hold an archive of it
-  ready to load, and new quotes add to it as the tool gets used — so Stage 1 answers these
-  questions without touching anything else.
-  The shared drive, QuickBooks, email history, and the credit applications in the drawer are
-  the ingestion stages — and the system is designed from day one to receive them.</p>
-
-  <h2>What You'll See</h2>
-  <ul>
-    <li><b>The ask page</b> (Stage 1) — <b>ask.allanedwards.io</b>, one simple page that
-    works in both directions: dictate a question and get an answer with sources, or dictate
-    a note — open the page, tap the mic, talk — and it's kept. Works on a phone browser,
-    behind your login.</li>
-    <li><b>The field team's logins</b> (Stage 2) — accounts for the salespeople, with roles
-    and permissions, set up so a phone stays signed in for a long stretch instead of nagging
-    for a password every day.</li>
-    <li><b>The dashboard</b> (Stage 2) — a page that refreshes daily: where the system stands
-    as of today, what it's drawing on, who's been using it, what's been asked, and anything it
-    couldn't answer (which tells us what to feed it next).</li>
-    <li><b>The weekly digest</b> (Stage 2) — "here's what we learned this week": the little
-    pieces of information that arrived — a forwarded note, a new contact, a fresh quote —
-    gathered into one summary you can read in two minutes.</li>
-  </ul>
-
-  <h2>What The Data Survey Changed</h2>
-  <p>That read-only survey is now done. We know enough about the volume, formats, and the split
-  between born-digital files and OCR-heavy material to price this honestly without padding it.
-  The result is a staged plan that keeps the work in month-sized chunks and puts a fixed number
-  in front of each chunk before it starts.</p>
-  <p>The main cost drivers are exactly what you'd expect once you look at the corpus: how much
-  of the shared drive is clean text versus scanned paper, how much duplicate and low-value
-  material gets filtered out before load, how much legacy-format cleanup is needed, and the
-  ingestion inference that helps classify and extract documents on the way in. That inference is
-  not an open meter here — it is baked into the stage prices below, and with a lean model it
-  stays in the low hundreds even on a heavy stage.</p>
-  <p>For turning scanned paper into searchable text, the plan leans on open-weight tools that
-  run on your own server at no per-page cost: clean text pulls straight out of born-digital PDFs
-  for free, and the scanned material is read by open OCR models that run in-house. A page only
-  escalates to a heavier model when the confidence check says it needs one. This is cheaper than
-  a dedicated OCR service — but the more important part is that your documents stay on your own
-  server the whole way through; nothing scanned is shipped off to an outside service to be read.</p>
-
-  <h2>How the Work Is Structured</h2>
-  <p>From there, the work runs in month-sized stages. Each stage is a complete, working
-  deliverable with a fixed price agreed before it starts — you see it running, use it, and
-  then decide whether the next one is worth it. No long contract, no big bet.</p>
-  <p>For Stages 4 through 7, the range is there to keep the scope disciplined while the shared
-  drive settles. Once the SharePoint rebuild question is settled, each of those stages becomes
-  one locked fixed price before work begins. That keeps the model the same all the way through:
-  scoped work, fixed price, no surprises.</p>
+  <h2>The Work, in Fixed-Price Stages</h2>
+  <p>The data survey is done, so I can price this without padding it. The work runs in
+  month-sized stages — each a complete, working deliverable at a fixed price agreed before it
+  starts. You use it, then decide whether the next one is worth it. No long contract.</p>
+  <p>Stages 4–7 show a range while the shared drive is in flux (you're rebuilding SharePoint) —
+  each locks to a single fixed price before it begins. Scanned paper is read by open-weight OCR
+  that runs on your own server: no per-page fee, and nothing scanned leaves the machine. The
+  inference that classifies documents is baked into the prices below, not an open meter.</p>
   <table>
     <thead>
       <tr><th style="width:23%">Stage</th><th>What's delivered</th><th style="width:18%">Price</th></tr>
@@ -349,44 +259,26 @@
       </tr>
     </tbody>
   </table>
-  <p><b>Monthly hosting and upkeep:</b> <span class="money">$200/mo</span>. That covers the
-  larger 16 GB server this system needs, backups and storage, ongoing query inference, and a
-  light maintenance cushion.</p>
+  <p><b>Monthly hosting and upkeep:</b> <span class="money">$200/mo</span> — the larger server
+  this system needs, backups, storage, and query costs.</p>
 
-  <h2>Where This Goes Next</h2>
-  <p>Stages 1 and 2 are the foundation, and the reason they're built the way they are:</p>
-  <p><b>The ingestion stages — the paper starts filing itself.</b> Emails, credit applications,
-  shared-drive documents, and QuickBooks records flow into the system automatically, one source
-  per stage. Think of how an order moves through Amazon — no person shepherds it; the process
-  runs and people watch dashboards. A credit application arrives with three trade references,
-  and instead of going into a drawer, those become three warm introductions the system can tell
-  a salesperson about — the gold that today dies in an inbox. All of it happens on your server,
-  with our own pipeline — documents are never handed to an outside service to be indexed.</p>
-  <p><b>The note you sent Wednesday night is the proof.</b> You met an attorney for One Gas,
-  learned who's splitting off assets, got the name of the conference that matters, and came
-  away with "find out who else has training centers" — and you BCC'd it to Devin because, in
-  your words, <i>this type of info doesn't exactly have a home now.</i> You're right, and no
-  CRM gives it one. Here, that becomes memory: forward the email — or just say it into the ask
-  page from the parking lot — and later ask "who do we know at One Gas?" or "what did we learn
-  about training centers?" — and it answers, citing your own note.</p>
-  <p><b>Further out — talk to it from the field.</b> Push-to-talk from a phone: a salesperson
-  leaves a customer visit, says thirty seconds about how it went, and that becomes part of the
-  company's memory — searchable by everyone, forever. And if the browser page earns its keep,
-  a dedicated iPhone/Android app is a natural next step. That is a later Phase 3 item, not
-  priced in this proposal; the indicative range is $6,000–$10,000 when it becomes worth doing.</p>
-  <p>Each stage stands on the one before it. Stage 1 proves the answer quality on data we
-  already trust; Stage 2 puts it in the field's hands; every stage after widens what it
-  knows.</p>
+  <h2>Where This Goes</h2>
+  <p>Stages 1 and 2 prove it on data we already trust and put it in the field's hands. After
+  that, the paper starts filing itself: emails, credit applications, drive documents, and
+  QuickBooks flow in on their own, one source per stage. A credit application's three trade
+  references stop dying in a drawer and become three warm introductions.</p>
+  <p>The note you BCC'd me Wednesday night — the One Gas attorney, who's splitting off assets,
+  the conference that matters — is the proof. That kind of thing has no home today. Here it does:
+  forward it or say it into the ask page, and later ask "who do we know at One Gas?" — it answers,
+  citing your own note.</p>
+  <p>Further out is push-to-talk from the field, and a dedicated app if the web page earns it.
+  That's a later Phase 3, not priced here — figure $6,000–$10,000 when it's worth doing.</p>
 
   <h2>Decisions We'd Ask of You</h2>
   <ol>
-    <li><b>Historical depth:</b> your own question — "how far back do you want to go?" That
-    directly changes the volume inside the later ingestion stages.</li>
-    <li><b>Stage timing after the shared-drive work settles:</b> if the SharePoint rebuild
-    changes the shape of the drive, we lock the exact fixed price for Stages 4 through 7
-    against the settled structure before each one starts.</li>
-    <li><b>Day-one rollout:</b> Chip only at first, or Chip plus the field team once Stage 2
-    is live.</li>
+    <li><b>Historical depth:</b> how far back do you want to go? That sets the volume in the
+    later ingestion stages.</li>
+    <li><b>Day-one rollout:</b> you first, or you plus the field team once Stage 2 is live?</li>
   </ol>
 
   <footer>
