@@ -148,8 +148,13 @@ ongoing query inference (typically under $5), and a light upkeep cushion.
    is retained only as an optional last-resort fallback (still cheaper per page than Document
    AI). The $8–14k Stage 5 range is driven by lane-build + confidence-gate + quality-review
    effort, not per-page OCR fees.
-3. **SharePoint rebuild timing** — Stage 4–7 numbers firm to a final fixed price once the
-   SharePoint rebuild request settles. Jackson Technical / Nick Beals flagged on 2026-07-09
-   that a from-scratch rebuild may happen; the right framing is disciplined scoping, not risk.
+3. **SharePoint rebuild timing + structure freeze** (decision D14) — Stage 4–7 numbers firm to a
+   final fixed price once the SharePoint rebuild request settles. Jackson Technical / Nick Beals
+   flagged on 2026-07-09 that a from-scratch rebuild may happen; the right framing is disciplined
+   scoping, not risk. **Hard sequencing constraint:** any rebuild happens FIRST, we ingest against
+   the settled structure, then the structure is frozen. Ingestion stores references back to source
+   documents; if we key on Microsoft Graph stable `driveItem` IDs, intra-site moves/renames survive,
+   but a from-scratch rebuild reassigns every ID and breaks all stored links. Rebuild-then-build-then-freeze.
+   (Follow-up sent to Nick 2026-07-09, in-thread "Re: Read only".)
 4. **Privacy promise holds** — all extraction runs on Allan Edwards's own server. Documents are
    never handed to an outside service to be indexed.
