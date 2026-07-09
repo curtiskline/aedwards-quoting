@@ -137,6 +137,7 @@
     color: #33506e;
   }
   .note-to-devin b { text-transform: uppercase; letter-spacing: .08em; font-size: .75rem; }
+  .money { white-space: nowrap; font-weight: 600; }
   footer {
     margin-top: 3rem;
     padding-top: 1rem;
@@ -266,24 +267,30 @@
     gathered into one summary you can read in two minutes.</li>
   </ul>
 
-  <h2>The First Step: Let Me See the Data</h2>
-  <p>Before I can put honest numbers on this, I need to see what we're working with. Nobody
-  knows yet how much company data there is — how many documents, in what formats, how much is
-  scanned paper versus native files. Volume and format are what drive the cost of a system
-  like this, and guessing now would either pad the price or shortchange the work.</p>
-  <p>So this proposal starts with access, not an invoice: <b>read-only access to all the data
-  that's available</b> — the company drive, the quote and email archives, and whatever else
-  should eventually feed the system. I analyze what's there and come back with a scoped plan:
-  what to load first, what each stage delivers, and what each stage costs. Read-only means
-  exactly that — nothing changed, nothing moved, nothing leaving your control.</p>
+  <h2>What The Data Survey Changed</h2>
+  <p>That read-only survey is now done. We know enough about the volume, formats, and the split
+  between born-digital files and OCR-heavy material to price this honestly without padding it.
+  The result is a staged plan that keeps the work in month-sized chunks and puts a fixed number
+  in front of each chunk before it starts.</p>
+  <p>The main cost drivers are exactly what you'd expect once you look at the corpus: how much
+  of the shared drive is clean text versus scanned paper, how much duplicate and low-value
+  material gets filtered out before load, how much legacy-format cleanup is needed, and the
+  ingestion inference that helps classify and extract documents on the way in. That inference is
+  not an open meter here — it is baked into the stage prices below, and with a Flash-tier model
+  it stays in the low hundreds even on a heavy stage. For OCR work, Gemini-vision is also
+  cheaper than a dedicated OCR service like Document AI.</p>
 
   <h2>How the Work Is Structured</h2>
   <p>From there, the work runs in month-sized stages. Each stage is a complete, working
   deliverable with a fixed price agreed before it starts — you see it running, use it, and
   then decide whether the next one is worth it. No long contract, no big bet.</p>
+  <p>For Stages 4 through 7, the range is there to keep the scope disciplined while the shared
+  drive settles. Once the SharePoint rebuild question is settled, each of those stages becomes
+  one locked fixed price before work begins. That keeps the model the same all the way through:
+  scoped work, fixed price, no surprises.</p>
   <table>
     <thead>
-      <tr><th style="width:26%">Stage</th><th>What's delivered</th></tr>
+      <tr><th style="width:23%">Stage</th><th>What's delivered</th><th style="width:18%">Price</th></tr>
     </thead>
     <tbody>
       <tr>
@@ -292,22 +299,54 @@
         built, and the ask page live at ask.allanedwards.io — ask questions or speak notes
         into the record, dictation and "near me" included, completely internal, behind your
         login</td>
+        <td class="money">$6,000 fixed</td>
       </tr>
       <tr>
         <td><b>Stage 2</b> — The field team</td>
         <td>Logins for the salespeople with roles and permissions, stay-signed-in phone
         sessions, the daily dashboard, and the weekly "what we learned" digest — plus
         refinement from the real questions people ask</td>
+        <td class="money">$5,000 fixed</td>
       </tr>
       <tr>
-        <td><b>Later stages</b> — Widen what it knows</td>
-        <td>Remaining sources onboarded one at a time — shared drive, credit applications,
-        QuickBooks, email history — each making the same questions smarter</td>
+        <td><b>Stage 3</b> — Email / RFQ ingestion lane</td>
+        <td>The quote and RFQ email archive already in hand, plus live inbound mail, gets
+        classified, extracted, and linked back to customers — the cleanest ingestion lane
+        and the right place to widen the system first.</td>
+        <td class="money">$6,000 fixed</td>
+      </tr>
+      <tr>
+        <td><b>Stage 4</b> — Shared drive Tier 1</td>
+        <td>Born-digital PDFs and Office files across Sales, Engineering, Customer Service,
+        and Document Control come in first — quotes, invoices, MTRs, packing slips — with
+        dedup and relevance filtering before load.</td>
+        <td class="money">$6,000–$9,000</td>
+      </tr>
+      <tr>
+        <td><b>Stage 5</b> — Shared drive Tier 2</td>
+        <td>The scanned and image-heavy side of the drive comes next: OCR fallback for the
+        PDFs and image files that do not yield clean text on their own, routed through a
+        confidence gate before they enter the knowledge base.</td>
+        <td class="money">$8,000–$14,000</td>
+      </tr>
+      <tr>
+        <td><b>Stage 6</b> — QuickBooks + credit applications</td>
+        <td>Customer and transaction records join the graph, along with credit applications
+        and trade references that can turn into warm introductions instead of dead paper.</td>
+        <td class="money">$6,000–$8,000</td>
+      </tr>
+      <tr>
+        <td><b>Stage 7</b> — Remaining libraries + carve-outs</td>
+        <td>Fabrication &amp; Warehouse, Leadership, and the Finance remainder come in with
+        the special lanes handled separately: `.eml` email parsing, `.zip` recursive unpack,
+        CAD kept metadata-only, media handled only if it is worth transcribing.</td>
+        <td class="money">$5,000–$8,000</td>
       </tr>
     </tbody>
   </table>
-  <p>Ongoing hosting is a modest monthly cost that depends on how big the server needs to be —
-  that number comes out of the same data analysis.</p>
+  <p><b>Monthly hosting and upkeep:</b> <span class="money">$200/mo</span>. That covers the
+  larger 16 GB server this system needs, backups and storage, ongoing query inference, and a
+  light maintenance cushion.</p>
 
   <h2>Where This Goes Next</h2>
   <p>Stages 1 and 2 are the foundation, and the reason they're built the way they are:</p>
@@ -328,18 +367,21 @@
   <p><b>Further out — talk to it from the field.</b> Push-to-talk from a phone: a salesperson
   leaves a customer visit, says thirty seconds about how it went, and that becomes part of the
   company's memory — searchable by everyone, forever. And if the browser page earns its keep,
-  a dedicated iPhone/Android app is a natural next step.</p>
+  a dedicated iPhone/Android app is a natural next step. That is a later Phase 3 item, not
+  priced in this proposal; the indicative range is $6,000–$10,000 when it becomes worth doing.</p>
   <p>Each stage stands on the one before it. Stage 1 proves the answer quality on data we
   already trust; Stage 2 puts it in the field's hands; every stage after widens what it
   knows.</p>
 
   <h2>Decisions We'd Ask of You</h2>
   <ol>
-    <li><b>Access:</b> read-only access to the company drive and any other data that should
-    feed the system. This is the one thing the whole plan waits on — everything else follows
-    from the analysis.</li>
-    <li><b>Historical depth:</b> your own question — "how far back do you want to go?" No
-    answer needed yet, but it shapes how much there is to load.</li>
+    <li><b>Historical depth:</b> your own question — "how far back do you want to go?" That
+    directly changes the volume inside the later ingestion stages.</li>
+    <li><b>Stage timing after the shared-drive work settles:</b> if the SharePoint rebuild
+    changes the shape of the drive, we lock the exact fixed price for Stages 4 through 7
+    against the settled structure before each one starts.</li>
+    <li><b>Day-one rollout:</b> Chip only at first, or Chip plus the field team once Stage 2
+    is live.</li>
   </ol>
 
   <footer>
