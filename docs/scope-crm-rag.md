@@ -138,8 +138,16 @@ ongoing query inference (typically under $5), and a light upkeep cushion.
 2. **What drives the higher ranges** — OCR share, dedup/relevance filtering, legacy-format
    normalization, and ingestion inference are the real cost drivers. Ingestion inference should
    be named explicitly alongside OCR and parser work; with a cheap Flash-tier model it stays in
-   the low hundreds even in a heavy stage. Gemini-vision OCR is still cheaper than a dedicated
-   OCR service such as Document AI.
+   the low hundreds even in a heavy stage.
+   **OCR path is open-weight, on-prem first** (proven in axon: `pdftotext` for born-digital +
+   Claude-vision fallback, decision axon:D24). Born-digital PDFs extract free via `pdftotext`;
+   scanned material runs through open OCR models in-house (Tesseract/PaddleOCR → Surya/Marker,
+   escalating to a local VLM such as olmOCR / Qwen2.5-VL on a burst GPU droplet only when a
+   confidence gate demands it). This shifts OCR cost from per-page API fees to bounded compute
+   and, more importantly, keeps scanned documents on Allan Edwards's own server. Gemini-vision
+   is retained only as an optional last-resort fallback (still cheaper per page than Document
+   AI). The $8–14k Stage 5 range is driven by lane-build + confidence-gate + quality-review
+   effort, not per-page OCR fees.
 3. **SharePoint rebuild timing** — Stage 4–7 numbers firm to a final fixed price once the
    SharePoint rebuild request settles. Jackson Technical / Nick Beals flagged on 2026-07-09
    that a from-scratch rebuild may happen; the right framing is disciplined scoping, not risk.

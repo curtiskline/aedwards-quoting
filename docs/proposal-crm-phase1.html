@@ -276,9 +276,14 @@
   of the shared drive is clean text versus scanned paper, how much duplicate and low-value
   material gets filtered out before load, how much legacy-format cleanup is needed, and the
   ingestion inference that helps classify and extract documents on the way in. That inference is
-  not an open meter here — it is baked into the stage prices below, and with a Flash-tier model
-  it stays in the low hundreds even on a heavy stage. For OCR work, Gemini-vision is also
-  cheaper than a dedicated OCR service like Document AI.</p>
+  not an open meter here — it is baked into the stage prices below, and with a lean model it
+  stays in the low hundreds even on a heavy stage.</p>
+  <p>For turning scanned paper into searchable text, the plan leans on open-weight tools that
+  run on your own server at no per-page cost: clean text pulls straight out of born-digital PDFs
+  for free, and the scanned material is read by open OCR models that run in-house. A page only
+  escalates to a heavier model when the confidence check says it needs one. This is cheaper than
+  a dedicated OCR service — but the more important part is that your documents stay on your own
+  server the whole way through; nothing scanned is shipped off to an outside service to be read.</p>
 
   <h2>How the Work Is Structured</h2>
   <p>From there, the work runs in month-sized stages. Each stage is a complete, working
