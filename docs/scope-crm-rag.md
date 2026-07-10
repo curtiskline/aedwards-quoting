@@ -116,8 +116,11 @@ synthesis optional; query telemetry from day one. See `rag-architecture-options.
 - **Day-one users** — RESOLVED 2026-07-10: Chip first; field team joins at checkpoint 3.
 - **Exact counts/sizes** — deferred; Graph `Sites.Read.All` request to Jackson Technical when
   we want precision inside a stage (recommended before locking Stage 2's price).
-- **Data stays private** — all extraction runs on Allan Edwards's own server; documents are
-  never handed to an outside service to index. (Already promised in the proposal; holds here.)
+- **Data handling (stated plainly, 2026-07-10)** — the proposal no longer claims documents
+  never leave 918-controlled infrastructure: source data syncs from SharePoint, and
+  classification/answer synthesis calls commercial AI APIs. What holds: OCR + embeddings run
+  on 918's local hardware; the system and its DB live on the 918-managed droplet. Per I80,
+  Chip-facing docs state this rather than sell privacy absolutes.
 
 ---
 
