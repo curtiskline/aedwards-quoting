@@ -46,7 +46,7 @@ A new salesperson should be able to onboard to the company's full relationship g
 ## Data Sources (input)
 
 - **Historical job records** — already digital, on their shared drive; currently unsearchable
-- **QuickBooks** — customer records, transaction history
+- **QuickBooks** — customer records, transaction history *(later phase — Chip never asked for this integration; wire it in only if the books prove worth querying)*
 - **Credit applications and trade references** — currently going into a drawer
 - **Email history** — inbound/outbound customer communications
 - **Voice capture** — Stage 1 phone dictation into the ask page, with richer field push-to-talk later if it earns it

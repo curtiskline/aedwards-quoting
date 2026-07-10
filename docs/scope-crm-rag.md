@@ -62,17 +62,17 @@ structure inside the three stages.
 
 | # | Stage | Delivered (absorbs) | Primary cost driver |
 | --- | --- | --- | --- |
-| 1 | **Load & Ask** | Server stood up; quote-tool DB loaded; **full held email/RFQ archive backfilled** through the already-live classify→extract→link lane (monitor.py, RFQ classifier, parser.py, db_writer.py), facts wired into the knowledge layer; relationship map; `ask.allanedwards.io` with dictation + "near me"; query telemetry from day one. Success here is a new salesperson getting warm leads and relationship history fast, then dictating a note back into the company record from a phone. *(absorbs old S1 + S3)* | Build, not volume — task-235 seed layer; email engine proven |
+| 1 | **Load & Ask** | Server stood up; quote-tool DB loaded; **full held email/RFQ archive backfilled** through the already-live classify→extract→link lane (monitor.py, RFQ classifier, parser.py, db_writer.py), facts wired into the knowledge layer; relationship map; `ask.allanedwards.io` with dictation + "near me"; query telemetry from day one. Success here is a new salesperson getting warm leads and relationship history fast, then dictating a note back into the company record from a phone. Also rolls in the quote-tool delete fix Chip asked for by email 2026-07-09 (no separate charge). *(absorbs old S1 + S3)* | Build, not volume — task-235 seed layer; email engine proven |
 | 2 | **The Whole Drive** | All 5 libraries (~71K files): text-PDF + Office extraction; OCR lane with confidence gate for scanned material; dedup + relevance filter before load; `.eml` lane + `.zip` recursive unpack; **CAD `.sldprt` = metadata-only**, media = optional transcription; coverage view. **Starts only after SharePoint rebuild settles (D14).** *(absorbs old S4 + S5 + S7)* | Dedup/relevance filtering + quality review; OCR compute is local/bounded |
-| 3 | **The Field Team + the Books** | Salesperson logins/roles, long-lived phone sessions, daily coverage dashboard, weekly "what we learned" digest; QuickBooks customer/transaction records; credit-app trade-reference mining → "warm intro" facts. *(absorbs old S2 + S6)* | QuickBooks connector build; auth/dashboard is light with LLM leverage |
-| — | **Phase 3 — Voice capture** | Richer field workflow beyond the Stage 1 phone web page: dedicated push-to-talk → transcription → same ingestion pipeline; later, native mobile app | Reuses existing voice-input pipeline; not priced here |
+| 3 | **The Field Team** | Salespeople added as users — users/roles already exist in the tool, the new build is the admin screen to manage them; long-lived phone sessions, daily coverage dashboard, weekly "what we learned" digest; credit-app trade-reference mining → "warm intro" facts. *(absorbs old S2; old S6 QuickBooks moved to Phase 3)* | Dashboard + digest + credit-app mining; user admin is light — auth/roles infra exists |
+| — | **Phase 3 — Voice capture & the books** | Richer field workflow beyond the Stage 1 phone web page: dedicated push-to-talk → transcription → same ingestion pipeline; later, native mobile app. QuickBooks connector (customer/transaction records) — moved here 2026-07-10: Chip mentioned QuickBooks once, descriptively (M2 ~7:52), never as an ask | Reuses existing voice-input pipeline; not priced here |
 
 Ordering rationale: Stage 1 proves answer quality on trusted data (structured DB + the proven
 email lane) **and** gives the first workflow Chip explicitly validated: a new salesperson asking
 who to see in Bartlesville, getting warm leads plus relationship history, and speaking a note
 back into the record from a phone. Stage 2 is the bulk-ingestion expansion path, gated behind
 the SharePoint rebuild (rebuild → ingest → freeze). Stage 3 rolls it out to the field more
-broadly and connects the books. Every stage widens the *same* questions; none is a throwaway.
+broadly. Every stage widens the *same* questions; none is a throwaway.
 
 This system is for non-veteran users first. It should systematize the common 80% of
 relationship lookups and memory capture, not attempt to model every edge case before launch.
@@ -88,9 +88,9 @@ relationship lookups and memory capture, not attempt to model every edge case be
    share is duplicates, superseded revisions, and non-knowledge assets (branding, templates).
    Filtering down first is real work but shrinks every downstream lane.
 3. **Legacy-format normalization** — `.xls`/`.doc` and `.zip`/`.eml` add per-lane parser work.
-4. **Per-lane pipeline build** — email, archive, QuickBooks connector, CAD each is a discrete
-   build; they remain separate internal lanes even though they now ship grouped into three
-   stages.
+4. **Per-lane pipeline build** — email, archive, CAD each is a discrete build; they remain
+   separate internal lanes even though they now ship grouped into three stages. (QuickBooks
+   connector lane moved to unpriced Phase 3, 2026-07-10 — not a Chip ask.)
 5. **Hosting (monthly)** — the knowledge server needs more RAM than the quote tool's (local
    embedding model + vector store), so it is a larger droplet. Sized once the corpus that
    actually gets embedded is known; billed monthly, same discipline as the quote tool.
@@ -128,8 +128,12 @@ flow from one place.
 | --- | --- | --- | --- |
 | 1 | **Load & Ask** | Server stood up; quote-tool DB loaded; full held email/RFQ archive backfilled via the already-live lane, facts wired into the knowledge layer; relationship map; `ask.allanedwards.io` with dictation + "near me"; query telemetry from day one | **$6,000 fixed** (includes ingestion inference) |
 | 2 | **The Whole Drive** | All 5 libraries (~71K files): born-digital extraction + local OCR lane with confidence gate; dedup + relevance filter; `.eml`/`.zip` lanes; CAD metadata-only; coverage view. Gated behind SharePoint rebuild settling (D14) | **$6,000–$7,000** — locks to a single fixed price before start, once the rebuild settles (includes OCR + inference) |
-| 3 | **The Field Team + the Books** | Salesperson logins/roles, phone sessions, daily dashboard, weekly digest; QuickBooks customer/transaction records; credit-app trade-reference mining | **$6,000 fixed** |
-| — | **Phase 3 — Voice capture** | Field push-to-talk → transcription → same ingestion pipeline; later, native mobile app | Later; indicative **$6,000-$10,000** only, **not priced in this proposal** |
+| 3 | **The Field Team** | Salespeople added as users + user-admin screen (auth/roles infra exists), phone sessions, daily dashboard, weekly digest; credit-app trade-reference mining | **$6,000 fixed** |
+| — | **Phase 3 — Voice capture & the books** | Field push-to-talk → transcription → same ingestion pipeline; later, native mobile app; QuickBooks connector | Later; indicative **$6,000-$10,000** only, **not priced in this proposal** |
+
+*2026-07-10 (task 281): QuickBooks moved out of Stage 3 to Phase 3 — transcript check showed it
+was never a Chip ask (one descriptive mention, M2 ~7:52). Stage 3 stays $6,000 fixed: the month
+is filled by the dashboard, digest, credit-app mining, and user-admin screen.*
 
 **Margin note (internal):** at these numbers 918 absorbs OCR/review risk on local hardware and
 LLM leverage. Protection levers if Stage 2 runs heavy: the "historical depth" decision (volume
