@@ -62,16 +62,20 @@ structure inside the three stages.
 
 | # | Stage | Delivered (absorbs) | Primary cost driver |
 | --- | --- | --- | --- |
-| 1 | **Load & Ask** | Server stood up; quote-tool DB loaded; **full held email/RFQ archive backfilled** through the already-live classify→extract→link lane (monitor.py, RFQ classifier, parser.py, db_writer.py), facts wired into the knowledge layer; relationship map; `ask.allanedwards.io` with dictation + "near me"; query telemetry from day one. *(absorbs old S1 + S3)* | Build, not volume — task-235 seed layer; email engine proven |
+| 1 | **Load & Ask** | Server stood up; quote-tool DB loaded; **full held email/RFQ archive backfilled** through the already-live classify→extract→link lane (monitor.py, RFQ classifier, parser.py, db_writer.py), facts wired into the knowledge layer; relationship map; `ask.allanedwards.io` with dictation + "near me"; query telemetry from day one. Success here is a new salesperson getting warm leads and relationship history fast, then dictating a note back into the company record from a phone. *(absorbs old S1 + S3)* | Build, not volume — task-235 seed layer; email engine proven |
 | 2 | **The Whole Drive** | All 5 libraries (~71K files): text-PDF + Office extraction; OCR lane with confidence gate for scanned material; dedup + relevance filter before load; `.eml` lane + `.zip` recursive unpack; **CAD `.sldprt` = metadata-only**, media = optional transcription; coverage view. **Starts only after SharePoint rebuild settles (D14).** *(absorbs old S4 + S5 + S7)* | Dedup/relevance filtering + quality review; OCR compute is local/bounded |
 | 3 | **The Field Team + the Books** | Salesperson logins/roles, long-lived phone sessions, daily coverage dashboard, weekly "what we learned" digest; QuickBooks customer/transaction records; credit-app trade-reference mining → "warm intro" facts. *(absorbs old S2 + S6)* | QuickBooks connector build; auth/dashboard is light with LLM leverage |
-| — | **Phase 3 — Voice capture** | Field push-to-talk → transcription → same ingestion pipeline; later, native mobile app | Reuses existing voice-input pipeline; not priced here |
+| — | **Phase 3 — Voice capture** | Richer field workflow beyond the Stage 1 phone web page: dedicated push-to-talk → transcription → same ingestion pipeline; later, native mobile app | Reuses existing voice-input pipeline; not priced here |
 
 Ordering rationale: Stage 1 proves answer quality on trusted data (structured DB + the proven
-email lane) **and** gives the demo breadth — Chip's "Walmart parking lot" scenario needs more
-than quote data. Stage 2 is the bulk ingestion, gated behind the SharePoint rebuild
-(rebuild → ingest → freeze). Stage 3 rolls it out to the field and connects the books. Every
-stage widens the *same* questions; none is a throwaway.
+email lane) **and** gives the first workflow Chip explicitly validated: a new salesperson asking
+who to see in Bartlesville, getting warm leads plus relationship history, and speaking a note
+back into the record from a phone. Stage 2 is the bulk-ingestion expansion path, gated behind
+the SharePoint rebuild (rebuild → ingest → freeze). Stage 3 rolls it out to the field more
+broadly and connects the books. Every stage widens the *same* questions; none is a throwaway.
+
+This system is for non-veteran users first. It should systematize the common 80% of
+relationship lookups and memory capture, not attempt to model every edge case before launch.
 
 ---
 
@@ -106,8 +110,6 @@ synthesis optional; query telemetry from day one. See `rag-architecture-options.
 - **Day-one users** — Chip only, or Chip + salespeople? Affects Stage 3 sizing.
 - **Exact counts/sizes** — deferred; Graph `Sites.Read.All` request to Jackson Technical when
   we want precision inside a stage (recommended before locking Stage 2's price).
-- **Voice in Phase 1?** — proposal treats it as dictation-into-ask (Stage 1) with full
-  push-to-talk field capture as Phase 3. Confirm that split with Chip.
 - **Data stays private** — all extraction runs on Allan Edwards's own server; documents are
   never handed to an outside service to index. (Already promised in the proposal; holds here.)
 

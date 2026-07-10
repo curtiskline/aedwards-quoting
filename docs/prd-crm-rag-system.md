@@ -36,7 +36,7 @@ This replaces cold calling with warm outreach. Allan Edwards has worked with nea
 Before any sales call, an employee can pull up a full relationship summary: every quote, every job, every contact, every communication thread. Chip's example: a credit application arrives with three trade references. Instead of filing those references, the system mines them — *"Here are three companies you now have a warm intro to. Here's what we know about them."*
 
 ### 3. Institutional Memory Capture
-Voice memos, meeting notes, emails, and field observations all feed into the system. Anyone in the field can push-to-talk an update and it gets written into the record automatically. The goal is that Chip's 20+ years of pattern recognition becomes partially transferable.
+Voice memos, meeting notes, emails, and field observations all feed into the system. In the first release, anyone in the field can open the ask page on a phone, tap the mic, and dictate an update into the record without a separate transcription stack. Richer push-to-talk field workflow can come later. The goal is that Chip's 20+ years of pattern recognition becomes partially transferable.
 
 ### 4. Relationship Context for New Hires
 A new salesperson should be able to onboard to the company's full relationship graph. Not just a contact list — the actual history of why a relationship exists, who built it, and what's been done together.
@@ -49,7 +49,7 @@ A new salesperson should be able to onboard to the company's full relationship g
 - **QuickBooks** — customer records, transaction history
 - **Credit applications and trade references** — currently going into a drawer
 - **Email history** — inbound/outbound customer communications
-- **Voice capture** — field push-to-talk or post-meeting memos
+- **Voice capture** — Stage 1 phone dictation into the ask page, with richer field push-to-talk later if it earns it
 - **Quote history** — from the existing Allan Edwards quote tool (already structured)
 
 ---
@@ -59,12 +59,13 @@ A new salesperson should be able to onboard to the company's full relationship g
 - Must not require production employees to do extra data entry. Any capture mechanism must be passive or trivially easy (push-to-talk, auto-pull from existing systems).
 - Admin overhead must be near-zero. The Salesforce failure happened because it required a full-time employee to manage.
 - The existing quote tool's database (contacts, addresses, quote history) is the natural seed — start there.
+- This system is for non-veteran users first. It should systematize the common 80% of relationship lookups and memory capture, not attempt to model every edge case before launch.
 
 ---
 
 ## What "Done" Looks Like (Phase 1)
 
-A working RAG interface that can answer questions about the company's customer base and quote history. Seeded with:
+A working RAG interface that can answer questions about the company's customer base and quote history. A new salesperson can get warm leads and relationship history, then dictate a note back into the company record from a phone. Seeded with:
 - All existing quote tool data (contacts, line items, quote history)
 - Historical records migrated from the shared drive (scope TBD — Chip's question: *"how far back do you want to go?"*)
 
@@ -75,7 +76,7 @@ An employee types or speaks a question. The system returns a relevant, sourced a
 ## Open Questions
 
 1. How far back does Chip want to go on historical data migration? (He asked this himself — no answer yet.)
-2. Is voice capture on mobile the primary input method, or does a web UI suffice for Phase 1?
+2. When does a dedicated field app become worth doing beyond the Stage 1 phone web UI?
 3. Does this live inside the existing quote tool, or is it a separate product?
 4. Who are the day-one users? Chip + salespeople, or Chip only at first?
 
