@@ -58,7 +58,7 @@ contribution is **making the ingestion stages concrete** — previously "later s
 | --- | --- | --- | --- |
 | 1 | **Load & Ask** (structured seed) | Server stood up; quote-tool DB + held quote/RFQ archive loaded; relationship map; `ask.allanedwards.io` with dictation + "near me"; query telemetry log from day one | Build, not volume — this is the task-235 seed layer |
 | 2 | **The Field Team** | Salesperson logins/roles, long-lived phone sessions, daily coverage dashboard, weekly "what we learned" digest, refinement from real queries | Build + light iteration |
-| 3 | **Email/RFQ ingestion lane** | Agentic ETL for the quote/RFQ email archive already held + live inbound; classify → extract → link to customers | **Easiest, high value** — start ingestion here |
+| 3 | **Email/RFQ ingestion lane** | Extends the quote tool's already-live classify→extract→link lane (monitor.py inbox poll, RFQ classifier, parser.py, db_writer.py customer link+dedup): backfill the held archive, wire extracted facts into the ask/knowledge system (not just quote drafts), add confidence gate + coverage view | **Easiest, high value** — engine already proven in prod; start ingestion here |
 | 4 | **Shared drive — Tier 1 (born-digital)** | Text-PDF + Office extraction across Sales/Eng/CS + Document Control (quotes, invoices, MTRs, packing slips); dedup + relevance filter before load | Office/legacy normalization; dedup |
 | 5 | **Shared drive — Tier 2 (OCR lane)** | OCR fallback for scanned/image-heavy PDFs + images, routed by a confidence gate; the survey's biggest cost line | **OCR volume × quality variance** |
 | 6 | **QuickBooks + credit applications** | Customer/transaction records; credit-app trade-reference mining → "warm intro" facts | Connector build; PDF/OCR for scanned apps |
@@ -118,7 +118,7 @@ so later edits flow from one place.
 | --- | --- | --- | --- |
 | 1 | **Load & Ask** (structured seed) | Server stood up; quote-tool DB + held quote/RFQ archive loaded; relationship map; `ask.allanedwards.io` with dictation + "near me"; query telemetry log from day one | **$6,000 fixed** |
 | 2 | **The Field Team** | Salesperson logins/roles, long-lived phone sessions, daily coverage dashboard, weekly "what we learned" digest, refinement from real queries | **$5,000 fixed** |
-| 3 | **Email/RFQ ingestion lane** | Agentic ETL for the quote/RFQ email archive already held + live inbound; classify → extract → link to customers | **$6,000 fixed** (includes ingestion inference) |
+| 3 | **Email/RFQ ingestion lane** | Extends the quote tool's already-live classify→extract→link lane: backfill the held archive, wire extracted facts into the ask/knowledge system, add confidence gate + coverage view. Price held — remaining work (archive backfill, knowledge-side linking, guardrails) is genuine | **$6,000 fixed** (includes ingestion inference) |
 | 4 | **Shared drive — Tier 1 (born-digital)** | Text-PDF + Office extraction across Sales/Eng/CS + Document Control (quotes, invoices, MTRs, packing slips); dedup + relevance filter before load | **$6,000-$9,000** (includes inference) |
 | 5 | **Shared drive — Tier 2 (OCR lane)** | OCR fallback for scanned/image-heavy PDFs + images, routed by a confidence gate; the survey's biggest cost line | **$8,000-$14,000** (includes OCR + inference) |
 | 6 | **QuickBooks + credit applications** | Customer/transaction records; credit-app trade-reference mining → "warm intro" facts | **$6,000-$8,000** |
