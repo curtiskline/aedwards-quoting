@@ -193,7 +193,7 @@
     <li><b>Every answer cites its sources</b>, and <b>your data never leaves your server</b> —
     it runs on a private machine we manage for you, same as the quote tool, backed up daily.</li>
   </ul>
-  <p>It answers from what's loaded; the later stages widen that one source at a time.</p>
+  <p>It answers from what's loaded; the next two stages widen it — the drive, then the books.</p>
 
   <h2>What the Survey Found</h2>
   <p>The read-only survey is done. About <b>71,000 files</b> across five libraries:</p>
@@ -212,18 +212,20 @@
   <p>Mostly <b>PDFs</b>, then Excel and Word (including old <span style="white-space:nowrap">.xls / .doc</span>),
   with a long tail of images, video, email, ZIP archives, and a bit of CAD. The PDFs split two
   ways: born-digital files that read cleanly for near-nothing, and scanned paper that needs OCR —
-  and that split is the biggest cost driver, which is why the drive stages carry a range. One
-  honest caveat: SharePoint's own search only exposes a slice, so exact counts by type need
-  admin-level read access — the one thing I'd ask Jackson Technical for before pricing Stage 5.</p>
+  and that split is why Stage 2 carries a range. One honest caveat: SharePoint's own search only
+  exposes a slice, so exact counts by type need admin-level read access — the one thing I'd ask
+  Jackson Technical for before locking Stage 2's price.</p>
 
-  <h2>The Work, in Fixed-Price Stages</h2>
-  <p>With that in hand, I can price this without padding it. The work runs in month-sized
+  <h2>The Work, in Three Fixed-Price Stages</h2>
+  <p>With that in hand, I can price this without padding it. The work runs in three month-sized
   stages — each a complete, working deliverable at a fixed price agreed before it starts. You
-  use it, then decide whether the next one is worth it. No long contract.</p>
-  <p>Stages 4–7 show a range while the shared drive is in flux (you're rebuilding SharePoint) —
-  each locks to a single fixed price before it begins. Scanned paper is read by open-weight OCR
-  that runs on your own server: no per-page fee, and nothing scanned leaves the machine. The
-  inference that classifies documents is baked into the prices below, not an open meter.</p>
+  use it, then decide whether the next one is worth it. No long contract. The whole build lands
+  around <span class="money">$18,000</span> over about three months — roughly $6,000 a month.</p>
+  <p>Stage 2 shows a range only because you're rebuilding SharePoint — it locks to a single
+  fixed price before it begins, once the rebuild settles. Scanned paper is read by open-weight
+  OCR running on hardware we control: no per-page fee, and your documents are never handed to
+  an outside service to read or index. The inference that classifies documents is baked into
+  the prices below, not an open meter.</p>
   <table>
     <thead>
       <tr><th style="width:23%">Stage</th><th>What's delivered</th><th style="width:18%">Price</th></tr>
@@ -231,54 +233,30 @@
     <tbody>
       <tr>
         <td><b>Stage 1</b> — Load and ask</td>
-        <td>Server stood up, the quote and customer history loaded, the relationship map
-        built, and the ask page live at ask.allanedwards.io — ask questions or speak notes
-        into the record, dictation and "near me" included, completely internal, behind your
-        login</td>
+        <td>Server stood up, the quote and customer history loaded, and the full held email
+        archive backfilled through the same lane your quote tool already runs in production —
+        every extracted fact wired into the relationship map, and the ask page live at
+        ask.allanedwards.io. Ask questions or speak notes into the record, dictation and
+        "near me" included, completely internal, behind your login.</td>
         <td class="money">$6,000 fixed</td>
       </tr>
       <tr>
-        <td><b>Stage 2</b> — The field team</td>
+        <td><b>Stage 2</b> — The whole drive</td>
+        <td>All five libraries come in — about 71,000 files. Born-digital PDFs and Office
+        files extract directly; scanned paper runs through the OCR lane with a confidence
+        gate; duplicates and dead weight are filtered before load. Email files and ZIP
+        archives unpack in the same pass, CAD stays metadata-only. A coverage view shows
+        what's in, what's pending, and what needs a human eye. Starts once the SharePoint
+        rebuild question settles, so nothing gets ingested twice.</td>
+        <td class="money">$6,000–$7,000</td>
+      </tr>
+      <tr>
+        <td><b>Stage 3</b> — The field team + the books</td>
         <td>Logins for the salespeople with roles and permissions, stay-signed-in phone
         sessions, the daily dashboard, and the weekly "what we learned" digest — plus
-        refinement from the real questions people ask</td>
-        <td class="money">$5,000 fixed</td>
-      </tr>
-      <tr>
-        <td><b>Stage 3</b> — Email / RFQ ingestion lane</td>
-        <td>Your quote tool already reads inbound RFQ email, pulls out the customer, contact,
-        and line items, and files them — that lane runs today. This stage widens it: the full
-        held email archive is backfilled, every extracted fact is wired into the ask page so it
-        answers questions and not just drafts quotes, and a confidence check plus a coverage view
-        keep it trustworthy at volume.</td>
+        QuickBooks customer and transaction records, and credit applications mined for
+        trade references that become warm introductions instead of dead paper.</td>
         <td class="money">$6,000 fixed</td>
-      </tr>
-      <tr>
-        <td><b>Stage 4</b> — Shared drive Tier 1</td>
-        <td>Born-digital PDFs and Office files across Sales, Engineering, Customer Service,
-        and Document Control come in first — quotes, invoices, MTRs, packing slips — with
-        dedup and relevance filtering before load.</td>
-        <td class="money">$6,000–$9,000</td>
-      </tr>
-      <tr>
-        <td><b>Stage 5</b> — Shared drive Tier 2</td>
-        <td>The scanned and image-heavy side of the drive comes next: OCR fallback for the
-        PDFs and image files that do not yield clean text on their own, routed through a
-        confidence gate before they enter the knowledge base.</td>
-        <td class="money">$8,000–$14,000</td>
-      </tr>
-      <tr>
-        <td><b>Stage 6</b> — QuickBooks + credit applications</td>
-        <td>Customer and transaction records join the graph, along with credit applications
-        and trade references that can turn into warm introductions instead of dead paper.</td>
-        <td class="money">$6,000–$8,000</td>
-      </tr>
-      <tr>
-        <td><b>Stage 7</b> — Remaining libraries + carve-outs</td>
-        <td>Fabrication &amp; Warehouse, Leadership, and the Finance remainder come in with
-        the special lanes handled separately: `.eml` email parsing, `.zip` recursive unpack,
-        CAD kept metadata-only, media handled only if it is worth transcribing.</td>
-        <td class="money">$5,000–$8,000</td>
       </tr>
     </tbody>
   </table>
@@ -287,12 +265,11 @@
 
   <h2>Where This Goes</h2>
   <p>None of this is a leap of faith. Your quote tool already reads inbound RFQ email on its
-  own and files the customer and the line items — the same kind of pipeline every later stage
-  runs on, proven on your own mail. Stages 1 and 2 prove the rest on data we already trust and
-  put it in the field's hands. After that, the paper starts filing itself: emails, credit
-  applications, drive documents, and QuickBooks flow in on their own, one source per stage. A
-  credit application's three trade references stop dying in a drawer and become three warm
-  introductions.</p>
+  own and files the customer and the line items — Stage 1 loads the archive through that same
+  lane, proven on your own mail. Stage 2 brings in the drive; Stage 3 puts it in the field's
+  hands and adds the books. After that, the paper files itself: every new email, document, and
+  credit application flows in the day it arrives. A credit application's three trade references
+  stop dying in a drawer and become three warm introductions.</p>
   <p>The note you BCC'd me Wednesday night — the One Gas attorney, who's splitting off assets,
   the conference that matters — is the proof. That kind of thing has no home today. Here it does:
   forward it or say it into the ask page, and later ask "who do we know at One Gas?" — it answers,
@@ -302,9 +279,9 @@
 
   <h2>Decisions We'd Ask of You</h2>
   <ol>
-    <li><b>Historical depth:</b> how far back do you want to go? That sets the volume in the
-    later ingestion stages.</li>
-    <li><b>Day-one rollout:</b> you first, or you plus the field team once Stage 2 is live?</li>
+    <li><b>Historical depth:</b> how far back do you want to go? That sets the volume in
+    Stage 2.</li>
+    <li><b>Day-one rollout:</b> you first, or you plus the field team once Stage 3 is live?</li>
   </ol>
 
   <footer>
