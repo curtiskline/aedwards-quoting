@@ -60,6 +60,12 @@ build), and OCR/parsing/document-fetch now runs on 918's local hardware (no per-
 metered cloud OCR). The old 7-lane breakdown below the table survives as internal work
 structure inside the three stages.
 
+**Reframed 2026-07-10 (task 283):** client-facing framing is now **one fixed-price deliverable
+($19,000) with three usage checkpoints** — Chip asked for a fixed-price project; the per-stage
+"use it, then decide" opt-out framing undercut confidence and is gone. The three stages below
+survive as internal delivery structure and billing milestones ($6k / $7k / $6k, billed as each
+checkpoint lands). Usable from checkpoint 1; full deployment at checkpoint 3.
+
 | # | Stage | Delivered (absorbs) | Primary cost driver |
 | --- | --- | --- | --- |
 | 1 | **Load & Ask** | Server stood up; quote-tool DB loaded; **full held email/RFQ archive backfilled** through the already-live classify→extract→link lane (monitor.py, RFQ classifier, parser.py, db_writer.py), facts wired into the knowledge layer; relationship map; `ask.allanedwards.io` with dictation + "near me"; query telemetry from day one. Success here is a new salesperson getting warm leads and relationship history fast, then dictating a note back into the company record from a phone. Also rolls in the quote-tool delete fix Chip asked for by email 2026-07-09 (no separate charge). *(absorbs old S1 + S3)* | Build, not volume — task-235 seed layer; email engine proven |
@@ -105,9 +111,9 @@ synthesis optional; query telemetry from day one. See `rag-architecture-options.
 
 ## Assumptions & open items before this becomes a quote
 
-- **Historical depth** — Chip's own open question, *"how far back do you want to go?"* Directly
-  sets Stage 2 volume — this is the volume valve if the drive runs heavy. Needs a Chip answer.
-- **Day-one users** — Chip only, or Chip + salespeople? Affects Stage 3 sizing.
+- **Historical depth** — RESOLVED 2026-07-10: Chip wants all of it. Full history, priced in at
+  the $19k single price (top of the old range). The volume valve is gone — absorbed by pricing.
+- **Day-one users** — RESOLVED 2026-07-10: Chip first; field team joins at checkpoint 3.
 - **Exact counts/sizes** — deferred; Graph `Sites.Read.All` request to Jackson Technical when
   we want precision inside a stage (recommended before locking Stage 2's price).
 - **Data stays private** — all extraction runs on Allan Edwards's own server; documents are
@@ -117,18 +123,21 @@ synthesis optional; query telemetry from day one. See `rag-architecture-options.
 
 ## Locked pricing (source of truth)
 
-Locked by Devin on **2026-07-10** (task 276) — supersedes the 2026-07-09 seven-stage lock.
-Rationale for the restructure: the 7-stage total ($42–56k) was 5–6× the $9k quote system and
-read as gouging; three stages at ~$6k/month totals **$18–19k** (≈2× the quote system for ≈2×
-the scope), matches the retainer cadence Devin originally floated, and reflects that OCR /
-parsing / document-fetch now runs on 918's local hardware. Keep pricing here so later edits
-flow from one place.
+Locked by Devin on **2026-07-10** (task 283) — supersedes the same-day three-price lock (task
+276) and the 2026-07-09 seven-stage lock. **Single fixed price: $19,000**, billed per
+checkpoint ($6,000 / $7,000 / $6,000). Rationale: Chip asked for a fixed-price project — one
+number, one deliverable; $19k is the top of the old $18–19k range because "all the historical
+data" resolves checkpoint 2's volume at maximum, which removes the pre-stage re-lock lever;
+checkpoint billing keeps the ~$6k/month cash rhythm Devin originally floated and avoids
+carrying the build unpaid through a D14 (SharePoint rebuild) stall. Keep pricing here so later
+edits flow from one place.
 
-| # | Stage | Delivered | Price |
+| # | Checkpoint | Delivered | Billed at checkpoint |
 | --- | --- | --- | --- |
-| 1 | **Load & Ask** | Server stood up; quote-tool DB loaded; full held email/RFQ archive backfilled via the already-live lane, facts wired into the knowledge layer; relationship map; `ask.allanedwards.io` with dictation + "near me"; query telemetry from day one | **$6,000 fixed** (includes ingestion inference) |
-| 2 | **The Whole Drive** | All 5 libraries (~71K files): born-digital extraction + local OCR lane with confidence gate; dedup + relevance filter; `.eml`/`.zip` lanes; CAD metadata-only; coverage view. Gated behind SharePoint rebuild settling (D14) | **$6,000–$7,000** — locks to a single fixed price before start, once the rebuild settles (includes OCR + inference) |
-| 3 | **The Field Team** | Salespeople added as users + user-admin screen (auth/roles infra exists), phone sessions, daily dashboard, weekly digest; credit-app trade-reference mining | **$6,000 fixed** |
+| 1 | **Load & Ask** | Server stood up; quote-tool DB loaded; full held email/RFQ archive backfilled via the already-live lane, facts wired into the knowledge layer; relationship map; `ask.allanedwards.io` with dictation + "near me"; query telemetry from day one; quote-delete fix rolled in | **$6,000** (includes ingestion inference) |
+| 2 | **The Whole Drive** | All 5 libraries (~71K files), full historical depth: born-digital extraction + local OCR lane with confidence gate; dedup + relevance filter; `.eml`/`.zip` lanes; CAD metadata-only; coverage view. Schedule-gated behind SharePoint rebuild settling (D14) | **$7,000** (includes OCR + inference) |
+| 3 | **The Field Team** | Salespeople added as users + user-admin screen (auth/roles infra exists), phone sessions, daily dashboard, weekly digest; credit-app trade-reference mining. Full system deployed | **$6,000** |
+| | **Total** | One fixed-price deliverable | **$19,000** |
 | — | **Phase 3 — Voice capture & the books** | Field push-to-talk → transcription → same ingestion pipeline; later, native mobile app; QuickBooks connector | Later; indicative **$6,000-$10,000** only, **not priced in this proposal** |
 
 *2026-07-10 (task 281): QuickBooks moved out of Stage 3 to Phase 3 — transcript check showed it
@@ -136,9 +145,11 @@ was never a Chip ask (one descriptive mention, M2 ~7:52). Stage 3 stays $6,000 f
 is filled by the dashboard, digest, credit-app mining, and user-admin screen.*
 
 **Margin note (internal):** at these numbers 918 absorbs OCR/review risk on local hardware and
-LLM leverage. Protection levers if Stage 2 runs heavy: the "historical depth" decision (volume
-valve), the pre-stage price re-lock, and the coverage dashboard keeping review targeted rather
-than exhaustive.
+LLM leverage. The old protection levers (historical-depth volume valve, pre-stage price
+re-lock) are gone with the single price — absorbed by pricing checkpoint 2 at the top of the
+old range ($7k). Remaining levers if the drive runs heavy: aggressive dedup/relevance
+filtering before load, and the coverage dashboard keeping review targeted rather than
+exhaustive. D14 remains a schedule gate, not a price contingency.
 
 ### Monthly
 
