@@ -234,6 +234,13 @@ def _resolve_product_type(raw_product_type: str | None, fallback: str) -> str:
     return "sleeve"
 
 
+def _get_active_quote_or_404(quote_id: int) -> Quote:
+    quote = db.get_or_404(Quote, quote_id)
+    if quote.deleted_at is not None:
+        abort(404)
+    return quote
+
+
 def _current_user() -> User | None:
     user_id = request.headers.get("X-User-Id") or request.args.get("user_id")
     if user_id:
@@ -877,7 +884,7 @@ def _product_types_admin_data(just_saved: bool = False) -> dict:
 
 @main_bp.get("/quotes/<int:quote_id>")
 def quote_detail(quote_id: int):
-    quote = db.get_or_404(Quote, quote_id)
+    quote = _get_active_quote_or_404(quote_id)
     needs_commit = _hydrate_quote_ship_to_from_customer(quote)
     prior_status = quote.status
     _sync_quote_pricing_status(quote)
@@ -899,7 +906,7 @@ def quote_detail(quote_id: int):
 @main_bp.get("/quotes/<int:quote_id>/attachments/<int:attachment_id>")
 @login_required
 def quote_attachment_download(quote_id: int, attachment_id: int):
-    quote = db.get_or_404(Quote, quote_id)
+    quote = _get_active_quote_or_404(quote_id)
     attachment = db.session.get(QuoteAttachment, attachment_id)
     if attachment is None or attachment.quote_id != quote.id:
         abort(404)
@@ -914,9 +921,30 @@ def quote_attachment_download(quote_id: int, attachment_id: int):
     )
 
 
+@main_bp.post("/quotes/<int:quote_id>/delete")
+@login_required
+def quote_delete(quote_id: int):
+    """Soft-delete a quote so it disappears from lists and searches."""
+    quote = _get_active_quote_or_404(quote_id)
+    user = _current_user()
+    quote.deleted_at = datetime.utcnow()
+    quote.reviewed_by = None
+    quote.review_started_at = None
+    db.session.add(
+        AuditLog(
+            quote_id=quote.id,
+            action="deleted",
+            user_id=user.id if user else None,
+            details={"quote_number": quote.quote_number},
+        )
+    )
+    db.session.commit()
+    return redirect("/quotes/")
+
+
 @main_bp.post("/quotes/<int:quote_id>/meta")
 def quote_update_meta(quote_id: int):
-    quote = db.get_or_404(Quote, quote_id)
+    quote = _get_active_quote_or_404(quote_id)
     quote.quote_number = (request.form.get("quote_number") or quote.quote_number).strip() or quote.quote_number
     quote.project_name = (request.form.get("project_name") or "").strip() or None
     quote.notes_customer = (request.form.get("notes_customer") or "").strip() or None
@@ -927,7 +955,7 @@ def quote_update_meta(quote_id: int):
 
 @main_bp.post("/quotes/<int:quote_id>/customer")
 def quote_update_customer(quote_id: int):
-    quote = db.get_or_404(Quote, quote_id)
+    quote = _get_active_quote_or_404(quote_id)
     quote.customer_name_raw = (request.form.get("customer_name_raw") or "").strip() or None
     quote.contact_name = (request.form.get("contact_name") or "").strip() or None
     quote.contact_email = (request.form.get("contact_email") or "").strip() or None
@@ -952,7 +980,7 @@ def quote_update_customer(quote_id: int):
 
 @main_bp.post("/quotes/<int:quote_id>/status")
 def quote_update_status(quote_id: int):
-    quote = db.get_or_404(Quote, quote_id)
+    quote = _get_active_quote_or_404(quote_id)
     raw_status = (request.form.get("status") or "").strip().lower()
     user = _current_user()
     status_map = {
@@ -976,7 +1004,7 @@ def quote_update_status(quote_id: int):
 
 @main_bp.post("/quotes/<int:quote_id>/totals")
 def quote_update_totals(quote_id: int):
-    quote = db.get_or_404(Quote, quote_id)
+    quote = _get_active_quote_or_404(quote_id)
     tax_amount = _quantize_money(_parse_decimal(request.form.get("tax_amount"), _tax_amount_for_quote(quote)))
     quote.tax_amount = float(tax_amount)
 
@@ -1065,7 +1093,7 @@ def quote_update_totals(quote_id: int):
 
 @main_bp.post("/quotes/<int:quote_id>/line-items/add")
 def quote_add_line_item(quote_id: int):
-    quote = db.get_or_404(Quote, quote_id)
+    quote = _get_active_quote_or_404(quote_id)
     _normalize_sort_orders(quote)
     product_type = _resolve_product_type(request.form.get("product_type"), "sleeve")
     auto_shipping_trigger = request.form.get("auto_shipping_trigger") == "1"
@@ -1099,7 +1127,7 @@ def quote_add_line_item(quote_id: int):
 
 @main_bp.post("/quotes/<int:quote_id>/line-items/<int:item_id>/calc-total")
 def quote_calc_line_item_total(quote_id: int, item_id: int):
-    quote = db.get_or_404(Quote, quote_id)
+    quote = _get_active_quote_or_404(quote_id)
     item = db.get_or_404(QuoteLineItem, item_id)
     if item.quote_id != quote.id:
         abort(404)
@@ -1149,7 +1177,7 @@ def quote_calc_line_item_total(quote_id: int, item_id: int):
 
 @main_bp.post("/quotes/<int:quote_id>/line-items/<int:item_id>/update")
 def quote_update_line_item(quote_id: int, item_id: int):
-    quote = db.get_or_404(Quote, quote_id)
+    quote = _get_active_quote_or_404(quote_id)
     item = db.get_or_404(QuoteLineItem, item_id)
     if item.quote_id != quote.id:
         abort(404)
@@ -1305,7 +1333,7 @@ def product_catalog_lookup(sku: str):
 
 @main_bp.post("/quotes/<int:quote_id>/line-items/<int:item_id>/delete")
 def quote_delete_line_item(quote_id: int, item_id: int):
-    quote = db.get_or_404(Quote, quote_id)
+    quote = _get_active_quote_or_404(quote_id)
     item = db.get_or_404(QuoteLineItem, item_id)
     if item.quote_id != quote.id:
         abort(404)
@@ -1319,7 +1347,7 @@ def quote_delete_line_item(quote_id: int, item_id: int):
 
 @main_bp.post("/quotes/<int:quote_id>/line-items/<int:item_id>/move")
 def quote_move_line_item(quote_id: int, item_id: int):
-    quote = db.get_or_404(Quote, quote_id)
+    quote = _get_active_quote_or_404(quote_id)
     direction = (request.form.get("direction") or "").strip().lower()
     _normalize_sort_orders(quote)
     items = _sorted_line_items(quote)
@@ -1547,7 +1575,7 @@ def _generate_pdf_bytes(quote: Quote) -> tuple[bytes, str]:
 @main_bp.get("/quotes/<int:quote_id>/preview-pdf")
 def quote_preview_pdf(quote_id: int):
     """Generate and return the quote PDF for inline browser preview."""
-    quote = db.get_or_404(Quote, quote_id)
+    quote = _get_active_quote_or_404(quote_id)
     pdf_bytes, filename = _generate_pdf_bytes(quote)
     return Response(
         pdf_bytes,
@@ -1559,7 +1587,7 @@ def quote_preview_pdf(quote_id: int):
 @main_bp.get("/quotes/<int:quote_id>/send-form")
 def quote_send_form(quote_id: int):
     """Return the send confirmation form as an HTMX partial."""
-    quote = db.get_or_404(Quote, quote_id)
+    quote = _get_active_quote_or_404(quote_id)
     return render_template(
         "quotes/_send_form.html",
         quote=quote,
@@ -1572,7 +1600,7 @@ def quote_send_form(quote_id: int):
 @main_bp.post("/quotes/<int:quote_id>/send")
 def quote_send(quote_id: int):
     """Generate PDF, send email via Graph API, update quote status."""
-    quote = db.get_or_404(Quote, quote_id)
+    quote = _get_active_quote_or_404(quote_id)
     user = _current_user()
 
     to_email = (request.form.get("to_email") or "").strip()

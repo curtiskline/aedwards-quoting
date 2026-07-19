@@ -169,7 +169,13 @@ def customer_list():
 @customers_bp.get("/<int:customer_id>")
 def customer_detail(customer_id: int):
     customer = db.get_or_404(Customer, customer_id)
-    quotes = db.session.query(Quote).filter_by(customer_id=customer_id).order_by(Quote.created_at.desc()).all()
+    quotes = (
+        db.session.query(Quote)
+        .filter_by(customer_id=customer_id)
+        .filter(Quote.deleted_at.is_(None))
+        .order_by(Quote.created_at.desc())
+        .all()
+    )
     return render_template("customers/detail.html", customer=customer, quotes=quotes)
 
 
