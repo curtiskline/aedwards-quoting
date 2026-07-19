@@ -10,8 +10,9 @@ import pytest
 from app import create_app
 from app.config import Config
 from app.extensions import db
-from app.models import AuditLog, Customer, Contact, Quote as DBQuote, QuoteLineItem as DBQuoteLineItem, QuoteStatus, ShipToAddress
+from app.models import AuditLog, Customer, Contact, Quote as DBQuote, QuoteAttachment, QuoteLineItem as DBQuoteLineItem, QuoteStatus, ShipToAddress
 from allenedwards.db_writer import (
+    MAX_ATTACHMENT_BYTES,
     write_quote_to_db,
     _generate_fiscal_quote_number,
     _normalize_company_name,
@@ -20,6 +21,7 @@ from allenedwards.db_writer import (
     _extract_email_domain,
 )
 from allenedwards.outlook import OutlookMessage
+from allenedwards.outlook import OutlookAttachment
 from allenedwards.parser import ParsedRFQ, ShipTo
 from allenedwards.pricing import Quote as PricingQuote, QuoteLineItem as PricingLineItem
 
@@ -140,7 +142,14 @@ def priced_quote():
 
 def test_write_quote_creates_records(app, msg, rfq, priced_quote):
     with app.app_context():
-        db_quote = write_quote_to_db(msg, rfq, priced_quote, "126-100")
+        attachments = [
+            OutlookAttachment(
+                filename="rfq.pdf",
+                content_bytes=b"%PDF-test",
+                content_type="application/pdf",
+            )
+        ]
+        db_quote = write_quote_to_db(msg, rfq, priced_quote, "126-100", attachments=attachments)
 
         assert db_quote.id is not None
         assert db_quote.quote_number == "126-100"
@@ -168,6 +177,12 @@ def test_write_quote_creates_records(app, msg, rfq, priced_quote):
 
         # 2 real line items (note row skipped)
         assert len(db_quote.line_items) == 2
+        assert len(db_quote.attachments) == 1
+        assert db_quote.attachments[0].filename == "rfq.pdf"
+        assert db_quote.attachments[0].content_type == "application/pdf"
+        assert db_quote.attachments[0].size_bytes == len(b"%PDF-test")
+        assert db_quote.attachments[0].is_stored is True
+        assert db_quote.attachments[0].content_bytes == b"%PDF-test"
         li1 = db_quote.line_items[0]
         assert li1.product_type == "sleeve"
         assert li1.quantity == 100
@@ -180,6 +195,33 @@ def test_write_quote_creates_records(app, msg, rfq, priced_quote):
         audits = AuditLog.query.filter_by(quote_id=db_quote.id).all()
         assert len(audits) == 1
         assert audits[0].action == "created_from_email"
+
+
+def test_write_quote_without_attachments_leaves_attachment_list_empty(app, msg, rfq, priced_quote):
+    with app.app_context():
+        db_quote = write_quote_to_db(msg, rfq, priced_quote, "126-101")
+
+        attachments = QuoteAttachment.query.filter_by(quote_id=db_quote.id).all()
+        assert attachments == []
+
+
+def test_write_quote_stores_metadata_only_for_oversized_attachment(app, msg, rfq, priced_quote):
+    with app.app_context():
+        attachments = [
+            OutlookAttachment(
+                filename="large-step.zip",
+                content_bytes=b"x" * (MAX_ATTACHMENT_BYTES + 1),
+                content_type="application/zip",
+            )
+        ]
+        db_quote = write_quote_to_db(msg, rfq, priced_quote, "126-102", attachments=attachments)
+
+        saved = QuoteAttachment.query.filter_by(quote_id=db_quote.id).one()
+        assert saved.filename == "large-step.zip"
+        assert saved.content_type == "application/zip"
+        assert saved.size_bytes == MAX_ATTACHMENT_BYTES + 1
+        assert saved.is_stored is False
+        assert saved.content_bytes == b""
 
 
 def test_write_zero_quote_sets_needs_pricing(app, msg, rfq, priced_quote):

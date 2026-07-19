@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import io
 import math
 import os
 import re
@@ -12,7 +13,7 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from functools import lru_cache
 from pathlib import Path
 
-from flask import Blueprint, Response, abort, jsonify, redirect, render_template, request
+from flask import Blueprint, Response, abort, jsonify, redirect, render_template, request, send_file
 from flask_login import login_required
 from sqlalchemy import func, inspect, or_
 
@@ -26,6 +27,7 @@ from .models import (
     ProductType,
     ProductCatalog,
     Quote,
+    QuoteAttachment,
     QuoteLineItem,
     QuoteStatus,
     QuoteVersion,
@@ -701,6 +703,7 @@ def _quote_context(quote: Quote) -> dict:
         shipping_mode_note = "Auto shipping needs a valid ship-to ZIP and configured rate data. Type a value to set freight manually."
     return {
         "quote": quote,
+        "attachments": sorted(quote.attachments, key=lambda attachment: (attachment.created_at, attachment.id)),
         "line_items": [_line_item_view(li) for li in line_items],
         "product_type_choices": _product_type_choices(),
         "totals": totals,
@@ -891,6 +894,24 @@ def quote_detail(quote_id: int):
     if request.headers.get("HX-Request") == "true":
         return _render_editor(quote)
     return render_template("quotes/detail.html", **_quote_context(quote))
+
+
+@main_bp.get("/quotes/<int:quote_id>/attachments/<int:attachment_id>")
+@login_required
+def quote_attachment_download(quote_id: int, attachment_id: int):
+    quote = db.get_or_404(Quote, quote_id)
+    attachment = db.session.get(QuoteAttachment, attachment_id)
+    if attachment is None or attachment.quote_id != quote.id:
+        abort(404)
+    if not attachment.is_stored:
+        abort(404, description="Attachment content was not stored because it exceeded the size limit.")
+    as_attachment = request.args.get("download") == "1"
+    return send_file(
+        io.BytesIO(attachment.content_bytes),
+        mimetype=attachment.content_type or "application/octet-stream",
+        as_attachment=as_attachment,
+        download_name=attachment.filename,
+    )
 
 
 @main_bp.post("/quotes/<int:quote_id>/meta")
