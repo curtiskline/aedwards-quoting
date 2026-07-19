@@ -6,6 +6,7 @@ Decisions embedded:
 - Discovery and Data-Readiness step offered as a fixed $2,500, 1 to 2 weeks, creditable against checkpoint 2, and able to start before the full build is signed. [DEVIN: adjust?]
 - Scope tightened around Chip's three asks: look someone up from the parking lot, speak a note in from a phone, and stop company memory from dying in drawers. [DEVIN: adjust?]
 - 30-minute call offered with Curtis invited by name, before the July 30 TimeWarp event, using placeholders because calendar availability was not verified. [DEVIN: adjust?]
+- Calendar check (PM, 7/20): your afternoons are open all week. Suggested fills for [TIME 1]/[TIME 2]: Tuesday July 21 at 2:00 PM or Thursday July 23 at 2:00 PM (Central). Only conflicts before July 30: weekday 9:15 AM standups, TrueVi calls Thu 7/23 5:00 PM and Fri 7/24 10:00 AM, and a 4:45 PM hold on Sun 7/26.
 
 Subject: Re: Knowledge system proposal
 
