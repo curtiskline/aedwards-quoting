@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DRAFT — Reply to Chip: "quote tool" (Email 1 of 2)</title>
+<style>
+  :root {
+    --ink: #1a1d21; --muted: #5c6570; --line: #dde2e8;
+    --accent: #0b5cab; --good: #1a7a3c; --warn: #a15c00; --flag: #b3261e;
+    --bg-soft: #f6f8fa; --bg-mail: #ffffff; --bg-decide: #fff3f0;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0 auto; max-width: 56rem; padding: 2.5rem 1.5rem 5rem;
+         font: 16px/1.55 "Segoe UI", system-ui, -apple-system, sans-serif; color: var(--ink); }
+  h1 { font-size: 1.6rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 { font-size: 1.2rem; margin: 2.6rem 0 .8rem; padding-bottom: .3rem; border-bottom: 2px solid var(--line); }
+  p { margin: .55rem 0; }
+  .sub { color: var(--muted); font-size: .92rem; margin-bottom: 1.4rem; }
+  .banner { background: var(--bg-decide); border: 1px solid #eacfc9; border-left: 4px solid var(--flag);
+            border-radius: 6px; padding: .7rem 1.1rem; margin: 1rem 0 1.6rem; font-size: .95rem; }
+  .banner strong { color: var(--flag); }
+  .mail { background: var(--bg-mail); border: 1px solid var(--line); border-radius: 8px;
+          padding: 1.6rem 2rem; margin: 1rem 0; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+  .mail .meta { font-size: .88rem; color: var(--muted); border-bottom: 1px solid var(--line);
+                padding-bottom: .8rem; margin-bottom: 1.2rem; }
+  .mail .meta div { margin: .15rem 0; }
+  .mail p { margin: .8rem 0; }
+  .mail ol { margin: .6rem 0 .8rem; padding-left: 1.4rem; }
+  .mail li { margin: .5rem 0; }
+  mark.knob { background: #ffe3a3; border: 1px dashed var(--warn); border-radius: 4px;
+              padding: .05rem .3rem; font-weight: 600; }
+  mark.alt { background: #dcebfa; border: 1px dashed var(--accent); border-radius: 4px;
+             padding: .05rem .3rem; }
+  .note { border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 6px;
+          background: var(--bg-soft); padding: .8rem 1.1rem; margin: .8rem 0; font-size: .94rem; }
+  .note .label, .decide .label { display: block; font-size: .74rem; font-weight: 700;
+          letter-spacing: .06em; text-transform: uppercase; margin-bottom: .35rem; }
+  .note .label { color: var(--accent); }
+  .decide { background: var(--bg-decide); border: 1px solid #eacfc9; border-left: 4px solid var(--flag);
+            border-radius: 6px; padding: .8rem 1.1rem; margin: .8rem 0; font-size: .94rem; }
+  .decide .label { color: var(--flag); }
+  ul.check { margin: .4rem 0 .6rem; padding-left: 1.3rem; }
+  ul.check li { margin: .35rem 0; }
+  code { background: var(--bg-soft); border: 1px solid var(--line); border-radius: 4px;
+         padding: .08rem .35rem; font-size: .86em; }
+</style>
+</head>
+<body>
+
+<h1>DRAFT — Reply to Chip: "quote tool"</h1>
+<p class="sub">Email 1 of 2 · Prepared 2026-07-19 · Reply in Chip's "quote tool" thread (gmail 19f763bdddb7efa3) · Send this <em>before</em> the proposal reply, per Chip's one-topic-per-email rule · Companion strategy: <code>chip-response-strategy-2026-07-18.html</code></p>
+
+<div class="banner" style="border-left-color:#1a7a3c;background:#f4faf6"><strong style="color:#1a7a3c">SENT 7/19 16:20</strong> — Devin edited and sent his own version in Chip's thread (msg 19f7c40e4bda05d8); this document is the draft history. His tweaks and the resulting open commitments are recorded in canon I88. Duplicate-quote button: task 290 in progress. Walkthrough video: still owed, no deadline stated.</div>
+
+<h2>The draft</h2>
+<div class="mail">
+  <div class="meta">
+    <div><strong>To:</strong> Chip</div>
+    <div><strong>Subject:</strong> RE: quote tool</div>
+    <div><strong>Topic discipline:</strong> quote tool only — no proposal, no terms, no call scheduling in this one</div>
+  </div>
+
+  <p>Chip,</p>
+
+  <p>This is a good list. You are right about the standard: the tool isn't complete until your people are actually using it. I'll propose changes here to work towards your goal, making a TODO list from your email.</p>
+
+  <p><strong>Opening the files customers send: fixed, no charge.</strong> The file a customer sends is often the whole job. As of this week, it saves with the quote and opens right from the quote page. Nobody has to go digging through email to find it.</p>
+
+  <p><strong>Deleting bad quotes: already promised, still free.</strong> I'll add it this week.</p>
+
+  <p><strong>Quoting the same job to several bidders: I'll make your workaround a button.</strong> Changing the name by hand works, but you shouldn't have to. I'm adding a "Duplicate quote" button. Copy the quote, pick the other customer, done. No charge.</p>
+
+  <p><strong>Oddball items and comments: already in the tool.</strong> Any line on a quote can be typed in free-hand with its own description and price, and there's a comment line for notes that don't carry a price. I'll send you a short screen recording this week that shows both in about a minute.</p>
+
+  <p><strong>Adding new products: you can do part of this yourself today.</strong> Product types you can already add in the admin screen (the recording will show that too). Adding new catalog items <em>with pricing</em> still needs me. Fixing it is one of the three real additions below.</p>
+
+  <p><strong>That leaves the three items that are genuinely new work.</strong> Since you asked me to speak up on cost, here is the answer:</p>
+
+  <ol>
+    <li><strong>Quotes go out from your people, not a robot address.</strong> Nothing has ever gone out without a person reading it and clicking send, but the "from" line should be that person, and the customer's reply should land in their real inbox. I'll make it so. It needs one permission step in your Office 365, which I'll coordinate with Jackson Technical so it's no work for your folks.</li>
+    <li><strong>Revising a quote when the scope changes.</strong> When a customer changes the job, your people hit "Revise," get a new version linked to the original, and the old one closes out as replaced. One project, full history, nothing left hanging open.</li>
+    <li><strong>A catalog your team owns end to end.</strong> Add products and pricing yourselves, no developer in the loop.</li>
+  </ol>
+
+  <p>All three together: <strong>$3,000</strong> fixed, done in about two weeks. Payment works the way you proposed: 25% down to start the work, and I'll invoice the balance at the start as well, on your usual 45 days. Bug fixes and small stuff stay free, like always. That number is only for the new work above, and it doesn't move once we shake on it.</p>
+
+  <p>Last, on eventually moving to a more automated system: agreed. Get the tool solid in your people's daily hands first, then take automation one step at a time while customers get used to it.</p>
+
+  <p>Devin</p>
+</div>
+
+<h2>Annotations — why the draft says what it says</h2>
+
+<div class="note"><span class="label">Opening — verified against Chip's actual words</span>
+Chip's email (7/18, verified 7/19): "I understand it may be complete as per the scope, but as of now it is not being used." His standard, in his words, is <em>complete&nbsp;=&nbsp;being used</em>. The opening mirrors exactly that — an earlier phrasing ("use it without thinking about it") was our embellishment and was removed so "you are right about the standard" only attributes to him what he actually said.</div>
+
+<div class="note"><span class="label">Structure</span>
+Free and already-built items lead; the paid ask comes last and small. The visible shape of the email is "most of your list is done, free, or already in there — three real additions carry one modest fixed number." That's the trust-preserving split from the strategy doc.</div>
+
+<div class="note"><span class="label">Attachments line (his item 3)</span>
+Deliberately forward-facing — no correction of his memory, no explanation of the old mail-forwarding design, no mention of whose mailbox files used to live in. The phrase "nobody has to go digging through email" does the only useful part of the education without a defensive word. Per the 7/19 discussion: educate via the new behavior, not the old architecture.</div>
+
+<div class="note"><span class="label">What's deliberately absent</span>
+<ul class="check">
+  <li>No mention of O365 forwarding rules or adoption being on their side — reads as excuse.</li>
+  <li>No "complete per scope" litigation — we agree with his standard instead.</li>
+  <li>No proposal, terms, discovery, or call scheduling — that's Email 2. One topic per email.</li>
+  <li>No tech vocabulary: no "SendAs," no "tenant," no "workflow," no "data model." Jackson Technical is named because Chip knows who they are.</li>
+</ul></div>
+
+<div class="note"><span class="label">Decided — the v1.1 number</span>
+<strong>$3,000</strong>, set by Devin 7/19. One number, not a range — Chip asked for a number, and ranges invite negotiation on the wrong end. "It doesn't move once we shake on it" is the anti-creep promise in his language; keep that sentence.</div>
+
+<div class="note"><span class="label">Decided — delete pull-forward</span>
+<strong>Yes</strong>, decided by Devin 7/19: delete ships this week with the attachment fix (task 282 in progress). "Both shipped" momentum for the reply.</div>
+
+<div class="note"><span class="label">Terms mention + invoice timing (updated 7/19)</span>
+Full acceptance of Chip's 25%-down / net-45 counter still belongs in Email 2 (the proposal thread, where he raised it — one topic per email). But the v1.1 price line now states Devin's invoicing decision explicitly: <strong>invoice at work start</strong> — 25% down due to begin, balance on net-45 from the same start-dated invoice. For a ~2-week build the balance still falls due weeks after delivery, and saying it plainly in the email means the start-dated invoice arrives expected, not as a surprise to AP. Using "the way you proposed" also quietly pre-accepts his structure ahead of Email 2.</div>
+
+<div class="note"><span class="label">Deploy status</span>
+Attachments (task 286) and quote delete (task 282) deployed to production 7/19 — migrations 20260719_0001 + 20260719_0002 applied, 302 tests green, site verified. The "as of this week" and "goes live this week" lines in the body are statements of fact.</div>
+
+<h2>Pre-send checklist</h2>
+<ul class="check">
+  <li>☑ v1.1 number decided: $3,000, net-45 (in draft).</li>
+  <li>☑ Delete pulled forward — task 282 spawned 7/19.</li>
+  <li>☑ Deployed 7/19: attachments + delete live in production (migrations 20260719_0001 + _0002 applied, 302 tests green). "As of this week" is literally true.</li>
+  <li>☐ Record the walkthrough video promise: committed in this email — oddball/free-text lines, comment lines, product-type admin (~1 minute). Queue it as a task so it ships within days.</li>
+  <li>☑ Gmail draft created 7/19 (draft id r-977266124513247487, subject "RE: quote tool") — Devin edits in Gmail, then copies into Chip's thread and sends manually. No agent send.</li>
+  <li>☐ After sending: Email 2 (proposal reply — accept 25%/net-45, discovery, call proposal) follows as a separate email in the proposal thread.</li>
+</ul>
+
+<p class="sub" style="margin-top:2.5rem">Internal draft — not client-facing. Facts trace to <code>chip-response-strategy-2026-07-18.html</code> (verified against src/app code 7/19); terms decision (accept 25% down / net-45) made by Devin 7/19.</p>
+
+</body>
+</html>

@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chip's July 18 Emails — Concerns &amp; Response Strategy</title>
+<style>
+  :root {
+    --ink: #1a1d21; --muted: #5c6570; --line: #dde2e8;
+    --accent: #0b5cab; --good: #1a7a3c; --warn: #a15c00; --flag: #b3261e;
+    --bg-soft: #f6f8fa; --bg-quote: #fbf7ef; --bg-decide: #fff3f0;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0 auto; max-width: 60rem; padding: 2.5rem 1.5rem 5rem;
+         font: 16px/1.55 "Segoe UI", system-ui, -apple-system, sans-serif; color: var(--ink); }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 .25rem; }
+  h2 { font-size: 1.25rem; margin: 2.8rem 0 .8rem; padding-bottom: .3rem; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 1.02rem; margin: 1.6rem 0 .5rem; }
+  p { margin: .55rem 0; }
+  .sub { color: var(--muted); font-size: .92rem; margin-bottom: 1.6rem; }
+  .tldr { background: var(--bg-soft); border: 1px solid var(--line); border-left: 4px solid var(--accent);
+          border-radius: 6px; padding: 1rem 1.2rem; margin: 1.4rem 0; }
+  .tldr p:first-child { margin-top: 0; }
+  blockquote { background: var(--bg-quote); border-left: 4px solid #d9b86a; margin: .8rem 0;
+               padding: .7rem 1rem; border-radius: 0 6px 6px 0; font-style: italic; color: #4a4433; }
+  blockquote .who { display: block; font-style: normal; font-size: .8rem; color: var(--muted); margin-top: .4rem; }
+  .fact, .msg, .watch {
+    border: 1px solid var(--line); border-radius: 6px; padding: .8rem 1.1rem; margin: .8rem 0; }
+  .fact  { border-left: 4px solid var(--muted); }
+  .msg   { border-left: 4px solid var(--good); background: #f4faf6; }
+  .watch { border-left: 4px solid var(--warn); background: #fdf9f2; }
+  .label { display: block; font-size: .74rem; font-weight: 700; letter-spacing: .06em;
+           text-transform: uppercase; margin-bottom: .35rem; }
+  .fact .label { color: var(--muted); } .msg .label { color: var(--good); } .watch .label { color: var(--warn); }
+  .decide { background: var(--bg-decide); border: 1px solid #eacfc9; border-left: 4px solid var(--flag);
+            border-radius: 6px; padding: .8rem 1.1rem; margin: .8rem 0; }
+  .decide .label { color: var(--flag); display:block; font-size:.74rem; font-weight:700;
+                   letter-spacing:.06em; text-transform:uppercase; margin-bottom:.35rem; }
+  ul { margin: .4rem 0 .6rem; padding-left: 1.3rem; }
+  li { margin: .3rem 0; }
+  table { border-collapse: collapse; width: 100%; margin: .8rem 0; font-size: .93rem; }
+  th, td { border: 1px solid var(--line); padding: .5rem .7rem; text-align: left; vertical-align: top; }
+  th { background: var(--bg-soft); }
+  code { background: var(--bg-soft); border: 1px solid var(--line); border-radius: 4px;
+         padding: .08rem .35rem; font-size: .86em; }
+  .pill { display: inline-block; font-size: .72rem; font-weight: 700; padding: .12rem .55rem;
+          border-radius: 999px; margin-right: .3rem; vertical-align: middle; }
+  .pill.free { background: #e2f3e8; color: var(--good); }
+  .pill.exists { background: #e3edf7; color: var(--accent); }
+  .pill.paid { background: #fbeee2; color: var(--warn); }
+  .toc { columns: 2; font-size: .93rem; }
+  .toc a { color: var(--accent); text-decoration: none; }
+  @media (max-width: 640px) { .toc { columns: 1; } }
+  @media print { body { max-width: none; } .tldr, .msg, .watch, .decide, blockquote { break-inside: avoid; } }
+</style>
+</head>
+<body>
+
+<h1>Chip's July 18 Emails — Concerns &amp; Response Strategy</h1>
+<p class="sub">Prepared 2026-07-19 · Sources: Chip's "quote tool" email (12:17) and "RE: Knowledge system proposal" email (12:26), July 18 · All product claims below verified against the codebase, not memory.</p>
+
+<div class="tldr">
+  <p><strong>Read on the situation: Chip is a yes.</strong> He wrote, in his own words, <em>"Im for this tool and the cost seems on point."</em> Neither email is a rejection — together they are a buying signal plus two gates: <strong>(1)</strong> he wants the quote tool finished-in-practice before a new project starts, and <strong>(2)</strong> he wants terms and scope that fit how Allan Edwards operates (net-45, plain language, no creeping monthly fees, clean starting data).</p>
+  <p><strong>The quote tool email is the real negotiation.</strong> Trust in project #1 is the gate on project #2. The good news: of his seven quote-tool items, <strong>two already exist in the product</strong> (freeform/oddball line items, adding product types via admin), <strong>one is already promised free</strong> (delete), <strong>one is a genuine gap we've already started fixing</strong> (attachments), and only two or three are truly new scope. That list is winnable in one short reply.</p>
+  <p><strong>Recommended reply order</strong> (Chip's own one-topic-per-email rule): quote-tool reply first — own it, split the list, give dates. Proposal reply second — accept his payment counter, embrace the paid deep-dive he offered, propose the call Curtis asked for. Then the call itself, ideally before July 30 (his TimeWarp event in Tulsa).</p>
+</div>
+
+<h2 id="toc">Contents</h2>
+<ul class="toc">
+  <li><a href="#history">Where we actually stand (history)</a></li>
+  <li><a href="#qt">Email 1: quote tool — 7 concerns</a></li>
+  <li><a href="#qt-cost">Quote tool: the cost question</a></li>
+  <li><a href="#prop">Email 2: proposal — 4 concerns</a></li>
+  <li><a href="#terms">Payment terms analysis</a></li>
+  <li><a href="#call">The call: proposed agenda</a></li>
+  <li><a href="#actions">Already in motion / decisions needed</a></li>
+</ul>
+
+<h2 id="history">Where we actually stand — the history that frames the reply</h2>
+<ul>
+  <li><strong>Track record is strong and citable.</strong> The quote tool (~$9k) is live at quotes.allanedwards.io. Chip's March feedback round — 9 items (nominal-OD mapping, part numbers, pallet/bundle rounding, girth-weld pricing, backing strips, weld caps…) — was resolved in full by April. His June corrections (Oversleeve→Sleeve, junk-quote false positives) shipped within days. His July 9 delete request was answered within a day and folded into the proposal at no charge. <em>Every time Chip has spoken, the tool moved.</em> That pattern is the strongest asset in this exchange.</li>
+  <li><strong>Adoption context.</strong> "It is not being used" has a known contributor: routing real RFQ traffic to the tool required O365 forwarding rules on their side (Chip/Michaela), pending as of June. And Chip's own top concern — mail going out from a shared robot-looking address — is itself a reason salespeople wouldn't adopt it. His email is, in effect, telling us the unlock.</li>
+  <li><strong>Curtis.</strong> Outside advisor on a $500/mo retainer with AE; he was involved in the original introduction. He's a friendly gatekeeper, not an obstacle — include him in the call and win him, and Chip follows comfortably.</li>
+  <li><strong>Chip's operating rules</strong> (from the Yale Ave meetings): plain language; one topic per email; relationship-first company; never add admin work to producers; build for "non-Jamies" — systematize the 80%, not every edge case; wary of monthly fees that creep (his MTR portal drifted to $1,000/mo).</li>
+</ul>
+
+<h2 id="qt">Email 1 — "quote tool": his seven concerns, the facts, and the counters</h2>
+
+<h3>1. "Reluctant to move ahead when the first project is not complete… it is not being used."</h3>
+<blockquote>"I understand it may be complete as per the scope, but as of now it is not being used."<span class="who">— Chip, 7/18</span></blockquote>
+<div class="fact"><span class="label">What's true</span>
+The tool is complete per scope and every feedback round has been closed fast (see history above). Daily use has two real blockers, both fixable: mail traffic routing into the tool was waiting on O365 forwarding rules on their side, and outbound mail comes from the shared address he dislikes (item 2).</div>
+<div class="msg"><span class="label">Messaging points</span>
+<ul>
+  <li><strong>Agree with his standard, don't litigate "complete":</strong> "You're right — a tool isn't done until your people use it without thinking about it. Let's define done as 'in daily use,' and here's the short list that gets it there."</li>
+  <li>Present his own email back to him as the punch list, with dates. This reframes the email from complaint to plan — and shows (again) that feedback becomes shipped software in days.</li>
+  <li><strong>Link the two projects instead of letting them compete:</strong> the knowledge system is built <em>on top of</em> the quote database — every quote and customer reply the tool handles becomes the memory the knowledge system searches. "Finishing the quote tool isn't a detour from the knowledge system; it's the first mile of it."</li>
+</ul></div>
+<div class="watch"><span class="label">Watch-out</span> Do not mention the forwarding-rules dependency as a "their side" excuse — it reads defensive. If it comes up on the call, frame it as "one config step we'll do together."</div>
+
+<h3>2. Emails from an unmonitored address — "the customer interface needs to appear to be human"</h3>
+<blockquote>"I do not want emails sent to customers from an unmonitored email address… if the email can come from the person logged in that would be great."<span class="who">— Chip, 7/18</span></blockquote>
+<div class="fact"><span class="label">What's true (verified in code)</span>
+<ul>
+  <li>Nothing is ever auto-sent to a customer. A person reviews a quote and clicks send (<code>routes.py</code> send route behind a confirmation form). The background monitor only creates drafts.</li>
+  <li>But he's right about the sender: outbound quote emails go out as <strong>AEResponder@allanedwards.com</strong> — the same shared mailbox the system watches for inbound RFQs. Customer replies land in a parsing pipeline, not in a person's inbox. Machine-monitored, human-unmonitored. His concern is valid.</li>
+  <li>The fix is feasible: individual user accounts already exist in the tool. Sending <em>as</em> the logged-in person needs per-user send permission in their O365 tenant (SendAs — a Jackson Technical/admin step) plus wiring on our side. Replies then land in the salesperson's real inbox, with a copy retained for the system.</li>
+</ul></div>
+<div class="msg"><span class="label">Messaging points</span>
+<ul>
+  <li><strong>Concede fully and warmly — this is his identity point:</strong> "You're right, and it fits who Allan Edwards is. Quotes should come from your people, not from a robot address. Nothing has ever gone out without a person clicking send — but the <em>from</em> line should be that person, and I'll make it so."</li>
+  <li><strong>Turn it into knowledge-system fuel:</strong> when mail comes from the salesperson and the system keeps a copy, the back-and-forth after the quote — the follow-up conversations Chip mentioned — becomes searchable company memory automatically. "This one change is also what starts capturing those follow-up discussions you mentioned."</li>
+  <li>Note the one dependency plainly: "needs one permission step in your Office 365 — I'll coordinate it with Jackson Technical."</li>
+  <li>Endorse his own phased instinct: he said "eventually we will move to an automated system… slowly train the customer." That is exactly the 80%-first philosophy already agreed — quote it back.</li>
+</ul></div>
+<div class="watch"><span class="label">Watch-out</span> Don't defend AEResponder as "actually monitored (by software)." His word "unmonitored" means "no human reads replies" — and on that he's correct.</div>
+
+<h3>3. "The tool is not even letting files sent to it be opened."</h3>
+<blockquote>"It was at some point but now it doesn't work. a lot of people will submit a file for us to quote from."<span class="who">— Chip, 7/18</span></blockquote>
+<div class="fact"><span class="label">What's true (verified in code)</span>
+The system reads attachments to extract line items, but the web app has <strong>never</strong> stored them or offered a way to open them — there's no attachment table and no download route. (Chip likely remembers opening attachments in Outlook itself.) So: not a regression, a gap — and a legitimate one, since people quote from the attached file. <strong>A fix is already being built</strong> (attachment storage + an open/download link on the quote, started 7/19, task 286).</div>
+<div class="msg"><span class="label">Messaging points</span>
+<ul>
+  <li>"You're right — the file a customer sends is often the whole RFQ. As of this week, attachments are saved with the quote and open right from the quote page. No charge; this belongs in the tool."</li>
+  <li>This is the ideal first bullet of the reply: concrete, already fixed (or days away), free.</li>
+</ul></div>
+<div class="watch"><span class="label">Watch-out</span> Don't correct his memory ("it never worked"). Accept the substance, ship the fix, move on.</div>
+
+<h3>4. Requoting when scope changes — "will appear as a separate project and not close"</h3>
+<div class="fact"><span class="label">What's true (verified in code)</span>
+He's right. There's a version record that increments when a quote is re-sent, but no real revision workflow: editing mutates the quote in place, and a requote today means a brand-new unlinked quote. No link between original and revision, nothing marking the old one superseded.</div>
+<div class="msg"><span class="label">Messaging points</span>
+<ul>
+  <li>"Also right, and it matters for history: when a customer changes scope, you should hit 'Revise,' get a linked new version, and the old one closes as superseded — one project, full trail, nothing dangling open."</li>
+  <li>Sell the CRM tie-in: revision chains are exactly the "project history" the knowledge system will answer questions from ("what did we finally quote them, and how did it change?").</li>
+  <li>This is genuinely new scope — goes in the small paid package (see cost section).</li>
+</ul></div>
+
+<h3>5. Same project quoted to several bidders — "so historically we just change the name"</h3>
+<div class="fact"><span class="label">What's true (verified in code)</span>
+No duplicate/clone feature exists; he did it by hand-editing, which works but is error-prone. A "Duplicate quote" button (copy line items, pick the new customer) is a small build.</div>
+<div class="msg"><span class="label">Messaging points</span>
+<ul>
+  <li>"Good instinct doing it by hand — I'll make it a button: duplicate the quote, pick the other bidder, done. And the system will know these are the same project, which pays off later when we ask 'who else bid this job?'"</li>
+  <li>Small enough to bundle free — a goodwill line item.</li>
+</ul></div>
+
+<h3>6. "Custom field to quote oddball stuff or add comments… can't add new products without involving you"</h3>
+<div class="fact"><span class="label">What's true (verified in code)</span>
+<strong>Mostly already exists — this is a discoverability problem, not a gap.</strong> Line items accept free-text descriptions with any price (not restricted to the catalog), and there's a dedicated "note" line type for non-priced comments. Product <em>types</em> can already be added in the admin screen with no developer. What genuinely needs a developer today: adding new catalog SKUs / new pricing-table rows.</div>
+<div class="msg"><span class="label">Messaging points</span>
+<ul>
+  <li>"Good news — the oddball case is already in there: any line can be free-typed with its own price, and there's a comment line for notes. That's on me for not showing you; I'll send a 60-second walkthrough."</li>
+  <li>"Adding product <em>types</em> you can already do yourself in the admin. Adding new <em>catalog items with pricing</em> currently needs me — I'll add a screen so your team owns the catalog end to end."</li>
+  <li>A short screen-recording walkthrough here is worth more than a paragraph — it demonstrates the tool is deeper than his current picture of it, which directly softens "it's not complete."</li>
+</ul></div>
+
+<h3>7. Delete bad quotes</h3>
+<div class="fact"><span class="label">What's true</span> Requested July 9, committed within a day, already promised in writing (proposal email 7/10) at no charge, scheduled with checkpoint 1 (task 282).</div>
+<div class="msg"><span class="label">Messaging points</span>
+<ul><li>One line: "Delete is already on the board and still free — if you'd like it sooner rather than with the first knowledge-system checkpoint, I'll pull it forward." Pulling it forward is cheap and reads as momentum.</li></ul></div>
+
+<h2 id="qt-cost">Quote tool — answering "let me know if we need to address cost"</h2>
+<p>Chip explicitly opened the door to paying. The move that maximizes trust <em>and</em> preserves the precedent that new scope costs money: split the list visibly into three buckets and put a modest number on only the third.</p>
+<table>
+  <tr><th>Item</th><th>Bucket</th><th>Why</th></tr>
+  <tr><td>Open attachments from the quote</td><td><span class="pill free">No charge</span></td><td>Belongs in the tool; already being built (task 286)</td></tr>
+  <tr><td>Delete quotes</td><td><span class="pill free">No charge</span></td><td>Already promised free 7/10; offer to pull forward</td></tr>
+  <tr><td>Duplicate quote for multi-bidder jobs</td><td><span class="pill free">No charge</span></td><td>Small; goodwill</td></tr>
+  <tr><td>Oddball/freeform lines + comment lines</td><td><span class="pill exists">Already exists</span></td><td>Send walkthrough; no build</td></tr>
+  <tr><td>Add product types yourself</td><td><span class="pill exists">Already exists</span></td><td>Admin screen already live; show it</td></tr>
+  <tr><td>Send from the logged-in person (O365 send-as + reply capture)</td><td><span class="pill paid">Quote Tool v1.1</span></td><td>Real integration work + tenant permissions coordination</td></tr>
+  <tr><td>Revise/requote workflow (linked revisions, supersede + close)</td><td><span class="pill paid">Quote Tool v1.1</span></td><td>New workflow + data model</td></tr>
+  <tr><td>Catalog/pricing self-service admin</td><td><span class="pill paid">Quote Tool v1.1</span></td><td>New admin surface</td></tr>
+</table>
+<div class="decide"><span class="label">Devin decides — pricing knob</span>
+Suggested framing: "Quote Tool v1.1" as one small fixed-price package covering the three paid rows — suggested range <strong>$3,000–$4,500</strong>, delivered in ~2 weeks, invoiced on delivery under whatever terms you land in the proposal thread (i.e., accept net-45 here too). Alternative: fold v1.1 free into the $19k deal to close faster — but a modest number is arguably <em>better</em> for trust: it reinforces that bugs are free, real scope is priced, and nothing creeps. Chip asked for the number; give him one.</div>
+<div class="watch"><span class="label">Watch-out</span> Whatever the number, keep the free column visibly bigger than the paid one. The reply should <em>feel</em> like: "most of your list is either done, free, or already in the tool — and here's a small clean price for the three real additions."</div>
+
+<h2 id="prop">Email 2 — the proposal: his four concerns and the counters</h2>
+
+<h3>A. "Curtis suggested we tighten up the scope a little more and also suggested a call"</h3>
+<div class="fact"><span class="label">What's true</span>
+Our own alignment audit (7/10) reached the same conclusion Curtis did: checkpoint 1 tracks Chip's stated wants closely (parking-lot lookup, phone dictation, warm intros), while parts of checkpoints 2–3 (all-five-libraries ingestion, weekly digest, some field-team machinery) are our expansion of his problem, not his literal asks. Tightening is easy because the internal work was already done.</div>
+<div class="msg"><span class="label">Messaging points</span>
+<ul>
+  <li>"Curtis is right, and I welcome the call." Say yes immediately and propose two concrete times — before July 30 if possible (see agenda below).</li>
+  <li>Tighten by <strong>re-anchoring, not shrinking the promise</strong>: state the three things Chip actually asked for as the spine — (1) look anyone up from a parking lot, (2) speak a note in from a phone, (3) stop company memory from dying in drawers — and describe everything else as how those get delivered. Cut every term he flagged as lost-on-me.</li>
+  <li>Do <strong>not</strong> reopen the price downward. He said cost is on point; tightening should sharpen the deliverable, not discount it.</li>
+</ul></div>
+
+<h3>B. "I don't understand tech language… forgive me but im lost"</h3>
+<div class="msg"><span class="label">Messaging points</span>
+<ul>
+  <li>Own it as a writing failure, not a comprehension failure: "That's on me — if it needs a translator, it isn't written right yet."</li>
+  <li>Offer a <strong>one-page plain-English version</strong>: what your people can do month 1 / month 2 / month 3, what it costs, what it costs monthly, who to call when it breaks. No architecture, no engine talk. (The engine question is already answered in-thread; on the call, one sentence: "it reads your documents, finds the right ones, and answers with the source shown — like a librarian who never forgets.")</li>
+  <li>Adopt this permanently: every future Chip-facing sentence passes the "would a shop foreman nod?" test.</li>
+</ul></div>
+
+<h3>C. Monthly fees — "I get really on guard… our mtr portal has crept up to cost 1000 a month"</h3>
+<div class="fact"><span class="label">What's true</span>
+The $200/mo is real cost, mostly infrastructure: roughly $130 of server/backups/storage (a bigger machine than the quote tool's because it holds the search index), a few dollars of AI usage per month of normal asking, and a small upkeep cushion. The quote tool's own hosting has run for months on exactly this discipline without creeping.</div>
+<div class="msg"><span class="label">Messaging points</span>
+<ul>
+  <li><strong>Itemize it and cap the story:</strong> "I'm on guard about creeping fees too — that's why the proposal has exactly one monthly line: $200, and I'll show you what's inside it. About $130 is the server and backups, a few dollars is the AI answering questions, the rest is my cushion for keeping it patched. It doesn't creep: if my costs change materially, the number changes only after we talk."</li>
+  <li><strong>Use his MTR anchor for contrast, gently:</strong> one-fifth of what the portal drifted to, for the system that holds the company's memory — and unlike the portal, itemized and cancelable. "If you ever stop it, your data comes with you; it's your database."</li>
+  <li><strong>Say yes to the centralization instinct — and make it billable discovery:</strong> "You're probably right that there's overlap to centralize. As part of the deeper dive (below), I'll inventory what you're paying across the portal and cloud tools and flag consolidation candidates. Wouldn't be the first time that review paid for the hosting several times over."</li>
+</ul></div>
+
+<h3>D. Dirty data — "I don't want to start off on wrong foot with corrupt information… paying you a little more on front end to do a deeper dive"</h3>
+<div class="fact"><span class="label">What's true</span>
+He's echoing our own design back to us. The plan already: sequences any SharePoint rebuild <em>first</em>, then ingests, then freezes structure (decision D14); and filters duplicates/stale material before anything is loaded. And a full drive survey (~71,000 files across 5 libraries) was already completed in early July — a paid deep-dive starts from a real map, not from zero. Chip offering to fund discovery is the easiest yes in either email.</div>
+<div class="msg"><span class="label">Messaging points</span>
+<ul>
+  <li>"You've hit on exactly the plan: clean up and archive first, load second, and nothing goes in without passing a filter for duplicates and dead material. Bad marketing decks from 2011 don't become answers."</li>
+  <li>Reassure on timing: "Your archive project doesn't collide with this — it helps it. We ingest <em>after</em> your cleanup settles, against the structure you end up with."</li>
+  <li><strong>Accept the paid deep-dive and shape it:</strong> a fixed-price Discovery &amp; Data-Readiness step — sit with his team, inventory the drive against the survey we already ran, agree keep/archive rules, audit the tech spend (item C), and come back with a firmed plan for the drive checkpoint. Fixed price, short (1–2 weeks), report he can hold in his hand.</li>
+</ul></div>
+<div class="decide"><span class="label">Devin decides — discovery pricing</span>
+Suggested: <strong>$1,500–$3,000 fixed</strong>, positioned as creditable against checkpoint 2 if they proceed ("if we go forward, discovery money isn't extra — it comes off the drive work"). Creditable framing makes it a no-lose purchase for Chip while honoring his own offer to pay more up front. Decide too whether discovery happens <em>before</em> signature (as its own mini-agreement) or as a named first deliverable inside the $19k. Before-signature keeps momentum even if he stalls on the big yes.</div>
+
+<h2 id="terms">Payment terms — he rejected net-15 and made a counter-offer</h2>
+<blockquote>"Payment terms can not accept 15 days. Our whole company is build on 45 and it wont work. What we can do is 25% down payment to start work then pay rest in 45 of invoice."<span class="who">— Chip, 7/18</span></blockquote>
+<div class="fact"><span class="label">Read the counter correctly</span>
+This is Chip negotiating <em>toward</em> the deal, not away from it. Down payments are not their norm — he invented one to meet us. On $19k that's <strong>$4,750 before any work starts</strong>, then checkpoint invoices paid ~45 days after each lands. Worst-case cash exposure at any moment stays under ~$7k of delivered-but-unpaid work, partially offset by the deposit.</div>
+<table>
+  <tr><th>Option</th><th>Shape</th><th>Trade-off</th></tr>
+  <tr><td><strong>1. Accept as offered (recommended)</strong></td><td>$4,750 down; invoice each checkpoint; net-45; deposit credited against checkpoint 1 (so C1 invoice = $1,250, then $7k, $6k)</td><td>Gives up ~4 weeks of float per invoice vs net-15. Buys the signature, honors his company-wide constraint, and banks the goodwill of accepting his own offer unmodified.</td></tr>
+  <tr><td>2. Accept net-45, sweeten deposits</td><td>25% down on <em>each</em> checkpoint, remainder net-45</td><td>Better cash smoothing, but rewrites his offer — invites another round-trip on the topic he's touchiest about.</td></tr>
+  <tr><td>3. Counter net-30</td><td>Split the difference</td><td>He said "45… it wont work" about his whole company's AP process. Countering risks the relationship over float. Not worth it.</td></tr>
+</table>
+<div class="msg"><span class="label">Messaging points (option 1)</span>
+<ul>
+  <li>"Done — 25% to start, balance net-45 of each checkpoint invoice works for me. I appreciate you finding a structure that fits how Allan Edwards pays." Full stop; no hedging. Accepting his counter cleanly is itself a trust move.</li>
+  <li>One mechanical clarification, stated not asked: deposit credits against the first checkpoint's invoice.</li>
+</ul></div>
+<div class="decide"><span class="label">Devin decides — terms</span>
+Recommendation is Option 1. If cash timing genuinely matters this quarter, Option 2 is defensible — but say it as "deposit each checkpoint, same 45 days" in one sentence, not as a counter-offer ceremony.</div>
+
+<h2 id="call">The call Curtis asked for — propose it, own the agenda</h2>
+<p>Offer two times within the week, invite Curtis by name, 30 minutes, and send this agenda in the invite (an agenda in plain English is itself the answer to "I'm lost"):</p>
+<ul>
+  <li><strong>Quote tool finish line (10 min):</strong> walk his list — what's fixed already, what's free, the v1.1 price for the three real additions, and the send-from-your-people change.</li>
+  <li><strong>What the knowledge system does, in English (10 min):</strong> the three promises — parking-lot lookup, talk-a-note-in from a phone, company memory that stops dying in drawers. Live demo of the quote tool answering, if feasible.</li>
+  <li><strong>Money and sequence (10 min):</strong> terms accepted; the $200/mo opened up line by line; the discovery deep-dive he suggested — price, length, and that it credits toward the build.</li>
+</ul>
+<div class="watch"><span class="label">Watch-out</span> July 30 is his TimeWarp unveiling in Tulsa. Two uses: (a) get the call done before it — he'll want loose ends parked before his event; (b) consider attending or at least acknowledging it in the reply ("we'll be cheering TimeWarp on") — relationship-first company, relationship-first vendor.</div>
+
+<h2 id="actions">Already in motion / decisions needed</h2>
+<table>
+  <tr><th>Item</th><th>Status</th></tr>
+  <tr><td>Attachment open/download (Chip item 3)</td><td><strong>Done and merged to main 7/19</strong> (storage, quote-page list, authed open/download, 15&nbsp;MB cap, DB migration; 292 tests pass). Deploy held for your go — one <code>deploy_web.sh</code> run away from "already live."</td></tr>
+  <tr><td>Quote delete (Chip item 7)</td><td>Task 282 queued, promised free. Can pull forward with the attachment fix into one deploy — a same-week "both shipped" line for your reply.</td></tr>
+  <tr><td>Chip's reply captured in canon</td><td>Insight recorded; tasks 235/282 remain gated pending terms.</td></tr>
+</table>
+<div class="decide"><span class="label">Your four decisions before replying</span>
+<ol>
+  <li><strong>Terms:</strong> accept 25% down / net-45 as offered? (Recommended: yes, deposit credited to checkpoint 1.)</li>
+  <li><strong>Quote Tool v1.1 price:</strong> charge (suggested $3,000–$4,500 fixed) or fold in free to accelerate the signature?</li>
+  <li><strong>Discovery deep-dive:</strong> price (suggested $1,500–$3,000, creditable against checkpoint 2) and whether it runs before or after signature.</li>
+  <li><strong>Deploy timing:</strong> greenlight deploying the attachment + delete fixes as soon as ready, so the quote-tool reply can say "already live"?</li>
+</ol></div>
+
+<p class="sub" style="margin-top:2.5rem">Internal strategy document — not client-facing. Verified code facts sourced from src/app (routes.py, monitor.py, models.py, admin_routes.py); history from canon (I47, I81, I70, D14, D17), docs/scope-crm-rag.md, docs/chip-feedback-resolution.md, and docs/research/chip-alignment-gap-analysis.md.</p>
+
+</body>
+</html>
