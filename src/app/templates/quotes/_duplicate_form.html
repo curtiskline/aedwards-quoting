@@ -1,0 +1,42 @@
+<div id="duplicate-modal" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:100;">
+  <div style="background:#fff;border-radius:8px;padding:1.5rem;max-width:480px;width:100%;box-shadow:0 4px 24px rgba(0,0,0,0.15);">
+    <h2 style="margin-top:0;">Duplicate Quote {{ quote.quote_number }}</h2>
+    <p style="margin-top:0;color:#555;">Copies every line item into a new quote. Pick the customer for the copy.</p>
+    <form method="post" action="/quotes/{{ quote.id }}/duplicate">
+      <label style="display:block;margin-bottom:0.75rem;">
+        Existing customer
+        <select name="customer_id" style="width:100%;margin-top:0.25rem;">
+          <option value="">&mdash; Select a customer &mdash;</option>
+          {% for customer in customers %}
+            <option value="{{ customer.id }}">{{ customer.company_name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label style="display:block;margin-bottom:0.75rem;">
+        Or a new customer name
+        <input name="new_customer_name" placeholder="e.g. Northline Pipeline LLC" style="width:100%;margin-top:0.25rem;" />
+      </label>
+      <div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:1rem;">
+        <button type="button" onclick="document.getElementById('duplicate-modal').remove();">Cancel</button>
+        <button type="submit" style="background:#2563eb;color:#fff;border:none;padding:0.5rem 1rem;border-radius:4px;cursor:pointer;">Duplicate Quote</button>
+      </div>
+    </form>
+    <script>
+      (() => {
+        const modal = document.getElementById("duplicate-modal");
+        const form = modal.querySelector("form");
+        const select = form.querySelector("select[name=customer_id]");
+        const nameInput = form.querySelector("input[name=new_customer_name]");
+        // Picking one side clears the other so the choice is unambiguous.
+        select.addEventListener("change", () => { if (select.value) nameInput.value = ""; });
+        nameInput.addEventListener("input", () => { if (nameInput.value.trim()) select.value = ""; });
+        form.addEventListener("submit", (e) => {
+          if (!select.value && !nameInput.value.trim()) {
+            e.preventDefault();
+            alert("Pick an existing customer or enter a new customer name.");
+          }
+        });
+      })();
+    </script>
+  </div>
+</div>

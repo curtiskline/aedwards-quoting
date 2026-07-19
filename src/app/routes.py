@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import csv
 import io
 import math
@@ -16,6 +17,7 @@ from pathlib import Path
 from flask import Blueprint, Response, abort, jsonify, redirect, render_template, request, send_file
 from flask_login import login_required
 from sqlalchemy import func, inspect, or_
+from sqlalchemy.exc import IntegrityError
 
 from allenedwards.pdf_generator import generate_quote_pdf
 from .extensions import db
@@ -48,6 +50,7 @@ from allenedwards.pricing import (
 )
 from allenedwards.pricing import Quote as PricingQuote
 from allenedwards.pricing import QuoteLineItem as PricingLineItem
+from .quotes import _generate_quote_number
 
 main_bp = Blueprint("main", __name__)
 
@@ -940,6 +943,101 @@ def quote_delete(quote_id: int):
     )
     db.session.commit()
     return redirect("/quotes/")
+
+
+@main_bp.get("/quotes/<int:quote_id>/duplicate-form")
+@login_required
+def quote_duplicate_form(quote_id: int):
+    quote = _get_active_quote_or_404(quote_id)
+    customers = db.session.query(Customer).order_by(Customer.company_name).all()
+    return render_template("quotes/_duplicate_form.html", quote=quote, customers=customers)
+
+
+def _copy_line_item(item: QuoteLineItem, new_quote_id: int) -> QuoteLineItem:
+    return QuoteLineItem(
+        quote_id=new_quote_id,
+        product_type=item.product_type,
+        sku=item.sku,
+        description=item.description,
+        quantity=item.quantity,
+        unit_price=item.unit_price,
+        line_total=item.line_total,
+        specs_json=copy.deepcopy(item.specs_json) if item.specs_json is not None else None,
+        part_number=item.part_number,
+        sort_order=item.sort_order,
+    )
+
+
+@main_bp.post("/quotes/<int:quote_id>/duplicate")
+@login_required
+def quote_duplicate(quote_id: int):
+    """Copy a quote's line items and project details into a new quote for another customer."""
+    source = _get_active_quote_or_404(quote_id)
+    customer_id = _parse_int(request.form.get("customer_id"))
+    new_customer_name = (request.form.get("new_customer_name") or "").strip()
+
+    customer = None
+    if customer_id:
+        customer = db.session.get(Customer, customer_id)
+        if customer is None:
+            abort(400, description="Selected customer no longer exists.")
+    elif not new_customer_name:
+        abort(400, description="Pick an existing customer or enter a new customer name.")
+
+    user = _current_user()
+    for _ in range(2):
+        try:
+            new_quote = Quote(
+                quote_number=_generate_quote_number(),
+                status=QuoteStatus.NEW,
+                project_name=source.project_name,
+                notes_customer=source.notes_customer,
+                notes_internal=source.notes_internal,
+                tax_amount=source.tax_amount,
+            )
+            if customer is not None:
+                new_quote.customer_id = customer.id
+                new_quote.customer_name_raw = customer.company_name
+                contact = next(iter(customer.contacts), None)
+                if contact is not None:
+                    new_quote.contact_name = contact.name
+                    new_quote.contact_email = contact.email
+                    new_quote.contact_phone = contact.phone
+                new_quote.ship_to_json = _default_customer_ship_to(customer)
+            else:
+                new_quote.customer_name_raw = new_customer_name
+            db.session.add(new_quote)
+            db.session.flush()
+
+            for item in _sorted_line_items(source):
+                db.session.add(_copy_line_item(item, new_quote.id))
+            db.session.flush()
+
+            # Ship-to changed with the customer, so refresh auto-calculated freight.
+            _apply_auto_shipping_line_item(new_quote)
+            _sync_quote_pricing_status(new_quote)
+
+            db.session.add(
+                AuditLog(
+                    quote_id=new_quote.id,
+                    action="duplicated_from",
+                    user_id=user.id if user else None,
+                    details={"source_quote_id": source.id, "source_quote_number": source.quote_number},
+                )
+            )
+            db.session.add(
+                AuditLog(
+                    quote_id=source.id,
+                    action="duplicated_to",
+                    user_id=user.id if user else None,
+                    details={"new_quote_id": new_quote.id, "new_quote_number": new_quote.quote_number},
+                )
+            )
+            db.session.commit()
+            return redirect(f"/quotes/{new_quote.id}")
+        except IntegrityError:
+            db.session.rollback()
+    abort(500, description="Failed to generate a unique quote number.")
 
 
 @main_bp.post("/quotes/<int:quote_id>/meta")
