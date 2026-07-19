@@ -1,0 +1,32 @@
+<section class="quote-editor-section">
+  <h2>Attachments</h2>
+  {% if attachments %}
+    <table>
+      <thead>
+        <tr>
+          <th>File</th>
+          <th>Type</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for attachment in attachments %}
+          <tr>
+            <td>{{ attachment.filename }}</td>
+            <td>{{ attachment.content_type }}</td>
+            <td>
+              {% if attachment.is_stored %}
+                <a href="/quotes/{{ quote.id }}/attachments/{{ attachment.id }}" target="_blank" rel="noopener noreferrer">Open</a>
+                <a href="/quotes/{{ quote.id }}/attachments/{{ attachment.id }}?download=1">Download</a>
+              {% else %}
+                Too large to store ({{ "{:,}".format(attachment.size_bytes) }} bytes)
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p>No source attachments were saved with this RFQ.</p>
+  {% endif %}
+</section>

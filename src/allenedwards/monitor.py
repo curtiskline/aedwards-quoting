@@ -216,7 +216,7 @@ class InboxMonitor:
             # --- DB write path ---
             if self.enable_db_writes:
                 try:
-                    self._write_to_db(msg, rfq, quote, quote_number)
+                    self._write_to_db(msg, rfq, quote, quote_number, attachments)
                 except Exception:
                     logger.exception("Failed writing quote %s to database", quote_number)
 
@@ -264,6 +264,7 @@ class InboxMonitor:
         rfq: ParsedRFQ,
         quote: Quote,
         quote_number: str,
+        attachments: list[OutlookAttachment],
     ) -> None:
         """Write quote data to the database within Flask app context."""
         from .db_writer import write_quote_to_db
@@ -272,7 +273,7 @@ class InboxMonitor:
             raise RuntimeError("DB writes enabled but no Flask app provided")
 
         with self._flask_app.app_context():
-            write_quote_to_db(msg, rfq, quote, quote_number)
+            write_quote_to_db(msg, rfq, quote, quote_number, attachments=attachments)
 
     def _write_rejected_email(self, msg: EmailMessage, reason: str | None) -> None:
         """Write a rejected email record to the database."""

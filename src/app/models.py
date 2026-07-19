@@ -157,6 +157,9 @@ class Quote(db.Model):
     line_items: Mapped[list["QuoteLineItem"]] = relationship(
         back_populates="quote", cascade="all, delete-orphan"
     )
+    attachments: Mapped[list["QuoteAttachment"]] = relationship(
+        back_populates="quote", cascade="all, delete-orphan"
+    )
     versions: Mapped[list["QuoteVersion"]] = relationship(back_populates="quote", cascade="all, delete-orphan")
     audit_logs: Mapped[list["AuditLog"]] = relationship(back_populates="quote", cascade="all, delete-orphan")
 
@@ -177,6 +180,20 @@ class QuoteLineItem(db.Model):
     sort_order: Mapped[int] = mapped_column(default=0, nullable=False)
 
     quote: Mapped[Quote] = relationship(back_populates="line_items")
+
+
+class QuoteAttachment(TimestampMixin, db.Model):
+    __tablename__ = "quote_attachment"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    quote_id: Mapped[int] = mapped_column(ForeignKey("quote.id"), nullable=False, index=True)
+    filename: Mapped[str] = mapped_column(nullable=False)
+    content_type: Mapped[str] = mapped_column(nullable=False, default="application/octet-stream")
+    size_bytes: Mapped[int] = mapped_column(nullable=False, default=0)
+    is_stored: Mapped[bool] = mapped_column(nullable=False, default=True)
+    content_bytes: Mapped[bytes] = mapped_column(db.LargeBinary, nullable=False)
+
+    quote: Mapped[Quote] = relationship(back_populates="attachments")
 
 
 class QuoteVersion(db.Model):

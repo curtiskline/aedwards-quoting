@@ -8,7 +8,7 @@ import pytest
 
 from app import create_app
 from app.extensions import db as _db
-from app.models import Contact, Customer, Quote, QuoteLineItem, QuoteStatus, ShipToAddress, User
+from app.models import Contact, Customer, Quote, QuoteAttachment, QuoteLineItem, QuoteStatus, ShipToAddress, User
 
 
 @pytest.fixture()
@@ -71,6 +71,15 @@ def quote_with_items(app):
             )
             _db.session.add(li)
 
+        _db.session.add(
+            QuoteAttachment(
+                quote_id=q.id,
+                filename="rfq.pdf",
+                content_type="application/pdf",
+                content_bytes=b"%PDF-test",
+            )
+        )
+
         _db.session.commit()
         yield q.id
 
@@ -122,6 +131,57 @@ def test_detail_page_renders(client, quote_with_items):
     assert resp.status_code == 200
     assert b"QU-2026-9001" in resp.data
     assert b"Test sleeve 1" in resp.data
+    assert b"rfq.pdf" in resp.data
+    assert f'href="/quotes/{quote_with_items}/attachments/'.encode() in resp.data
+
+
+def test_attachment_route_requires_auth(app, quote_with_items):
+    client = app.test_client()
+    resp = client.get(f"/quotes/{quote_with_items}/attachments/1")
+    assert resp.status_code in {302, 401}
+
+
+def test_attachment_route_supports_open_and_download(client, quote_with_items):
+    resp = client.get(f"/quotes/{quote_with_items}/attachments/1")
+    assert resp.status_code == 200
+    assert resp.mimetype == "application/pdf"
+    assert resp.data == b"%PDF-test"
+    assert "attachment" not in resp.headers.get("Content-Disposition", "").lower()
+    assert "filename=rfq.pdf" in resp.headers.get("Content-Disposition", "")
+
+    download_resp = client.get(f"/quotes/{quote_with_items}/attachments/1?download=1")
+    assert download_resp.status_code == 200
+    assert "attachment" in download_resp.headers.get("Content-Disposition", "").lower()
+    assert 'filename=rfq.pdf' in download_resp.headers.get("Content-Disposition", "")
+
+
+def test_detail_marks_oversized_attachment_as_unavailable(client, app):
+    with app.app_context():
+        q = Quote(
+            quote_number="QU-2026-9005",
+            status=QuoteStatus.NEW,
+            customer_name_raw="Large Attachment Corp",
+        )
+        _db.session.add(q)
+        _db.session.flush()
+        attachment = QuoteAttachment(
+            quote_id=q.id,
+            filename="large-cad.zip",
+            content_type="application/zip",
+            size_bytes=20 * 1024 * 1024,
+            is_stored=False,
+            content_bytes=b"",
+        )
+        _db.session.add(attachment)
+        _db.session.commit()
+        quote_id = q.id
+        attachment_id = attachment.id
+
+    resp = client.get(f"/quotes/{quote_id}")
+    assert resp.status_code == 200
+    assert b"Too large to store" in resp.data
+    blocked = client.get(f"/quotes/{quote_id}/attachments/{attachment_id}")
+    assert blocked.status_code == 404
 
 
 def test_detail_hydrates_ship_to_from_linked_customer(client, linked_customer_quote, app):

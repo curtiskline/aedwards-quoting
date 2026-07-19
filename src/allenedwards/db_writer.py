@@ -23,15 +23,19 @@ from app.models import (
     Contact,
     Customer,
     Quote as DBQuote,
+    QuoteAttachment as DBQuoteAttachment,
     QuoteLineItem as DBQuoteLineItem,
     QuoteStatus,
     ShipToAddress,
 )
 from .email_provider import EmailMessage
+from .outlook import OutlookAttachment
 from .parser import ParsedRFQ
 from .pricing import Quote as PricingQuote
 
 logger = logging.getLogger(__name__)
+
+MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024
 
 # Legal suffixes to strip during company name normalization
 _LEGAL_SUFFIXES = re.compile(
@@ -295,6 +299,7 @@ def write_quote_to_db(
     rfq: ParsedRFQ,
     priced_quote: PricingQuote,
     quote_number: str,
+    attachments: list[OutlookAttachment] | None = None,
 ) -> DBQuote:
     """Write a priced quote into the database.
 
@@ -337,6 +342,21 @@ def write_quote_to_db(
     )
     db.session.add(db_quote)
     db.session.flush()  # get db_quote.id
+
+    for attachment in attachments or []:
+        content_bytes = attachment.content_bytes or b""
+        size_bytes = len(content_bytes)
+        should_store = size_bytes <= MAX_ATTACHMENT_BYTES
+        db.session.add(
+            DBQuoteAttachment(
+                quote_id=db_quote.id,
+                filename=attachment.filename or "attachment",
+                content_type=attachment.content_type or "application/octet-stream",
+                size_bytes=size_bytes,
+                is_stored=should_store,
+                content_bytes=content_bytes if should_store else b"",
+            )
+        )
 
     for li in priced_quote.line_items:
         if li.is_note:
