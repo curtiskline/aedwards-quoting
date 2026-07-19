@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from flask import Blueprint, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, abort, jsonify, redirect, render_template, request, url_for
 from flask_login import login_required
 from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
@@ -22,6 +22,7 @@ def _new_quote_count() -> int:
     """Count quotes with status NEW — used for nav badge."""
     return db.session.query(func.count(Quote.id)).filter(
         Quote.status == QuoteStatus.NEW,
+        Quote.deleted_at.is_(None),
     ).scalar() or 0
 
 
@@ -30,6 +31,7 @@ def _quote_query(status_filter: str | None, search: str | None):
     q = (
         db.session.query(Quote)
         .outerjoin(Quote.line_items)
+        .filter(Quote.deleted_at.is_(None))
         .group_by(Quote.id)
     )
 
@@ -112,7 +114,10 @@ def queue():
 
     # Status counts for tabs
     status_counts = dict(
-        db.session.query(Quote.status, func.count(Quote.id)).group_by(Quote.status).all()
+        db.session.query(Quote.status, func.count(Quote.id))
+        .filter(Quote.deleted_at.is_(None))
+        .group_by(Quote.status)
+        .all()
     )
     total_count = sum(status_counts.values())
 
@@ -192,6 +197,8 @@ def create():
 def claim(quote_id: int):
     """Mark a quote as in_review by current user (team awareness lock)."""
     quote = db.get_or_404(Quote, quote_id)
+    if quote.deleted_at is not None:
+        abort(404)
     # For now, use user_id=1 as placeholder until auth is wired up
     user_id = request.form.get("user_id", 1, type=int)
     user = db.session.get(User, user_id)
@@ -209,6 +216,8 @@ def claim(quote_id: int):
 def release(quote_id: int):
     """Release the review lock on a quote."""
     quote = db.get_or_404(Quote, quote_id)
+    if quote.deleted_at is not None:
+        abort(404)
     quote.reviewed_by = None
     quote.review_started_at = None
     db.session.commit()

@@ -149,6 +149,7 @@ class Quote(db.Model):
     po_number: Mapped[str | None]
     ship_to_json: Mapped[dict | None] = mapped_column(db.JSON)
     tax_amount: Mapped[float] = mapped_column(Numeric(12, 2), default=0, nullable=False)
+    deleted_at: Mapped[datetime | None] = mapped_column(nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 

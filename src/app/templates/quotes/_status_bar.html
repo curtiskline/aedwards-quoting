@@ -26,5 +26,9 @@
             hx-get="/quotes/{{ quote.id }}/send-form"
             hx-target="body"
             hx-swap="beforeend">Send Quote</button>
+    <form method="post" action="/quotes/{{ quote.id }}/delete"
+          onsubmit="return confirm('Delete quote {{ quote.quote_number }}? It will be removed from the quote list.');">
+      <button type="submit" class="danger">Delete</button>
+    </form>
   </div>
 </div>
