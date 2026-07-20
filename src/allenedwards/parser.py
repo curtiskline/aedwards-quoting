@@ -74,6 +74,13 @@ Key domain knowledge:
 - GTW = Girth Weld bands/bags
 - Milling (-M) and Painting (-P) are optional services
 
+Bag pricing options:
+- When an RFQ asks to price bags empty and also asks for filling on site, return TWO items:
+  1. a product_type "bag" item for the empty bags, with the requested pipe diameter and quantity; and
+  2. a product_type "service" item whose description says "On-site bag filling" and has the same quantity.
+- Do not merge empty-bag and on-site-fill requests into one item. The fill item is a separate option and may need manual pricing when no fill basis (for example bag weight) is provided.
+- Do not apply a per-pound fill rate unless the RFQ provides the required weight basis.
+
 Wall thickness notation conversions:
 - "1/4" or "14" -> 0.25
 - "5/16" or "516" -> 0.3125
@@ -456,7 +463,79 @@ def _parse_items(items_data: list) -> list[ParsedItem]:
             sku=(str(item_data.get("sku")).strip() or None) if item_data.get("sku") is not None else None,
         )
         items.append(item)
-    return items
+    return _split_bag_empty_and_fill_options(items)
+
+
+def _item_request_text(item: ParsedItem) -> str:
+    """Return the free-text fields that describe a parsed request."""
+    return " ".join(value for value in (item.description, item.notes) if value).lower()
+
+
+def _is_on_site_fill_item(item: ParsedItem) -> bool:
+    """Return whether an item already represents the on-site bag-fill option."""
+    text = _item_request_text(item)
+    return item.product_type == "service" and "fill" in text and (
+        "on site" in text or "on-site" in text
+    )
+
+
+def _split_bag_empty_and_fill_options(items: list[ParsedItem]) -> list[ParsedItem]:
+    """Preserve separate empty-bag and on-site-fill options from a combined request.
+
+    The parser prompt requests two items, but this normalization keeps a combined
+    LLM response from collapsing the priced bag and the fill work into one line.
+    On-site filling has no safe automatic price without a bag-weight basis, so it
+    is represented as a service item that the pricing layer flags for review.
+    """
+    has_on_site_fill = any(_is_on_site_fill_item(item) for item in items)
+    normalized: list[ParsedItem] = []
+
+    for item in items:
+        text = _item_request_text(item)
+        requests_empty_and_fill = (
+            item.product_type == "bag"
+            and "empty" in text
+            and "fill" in text
+            and ("on site" in text or "on-site" in text)
+        )
+        if not requests_empty_and_fill:
+            normalized.append(item)
+            continue
+
+        empty_description = item.description.strip() if item.description else "Geotextile bags"
+        if "empty" not in empty_description.lower():
+            empty_description = f"{empty_description} (empty bags)"
+        normalized.append(
+            ParsedItem(
+                product_type=item.product_type,
+                quantity=item.quantity,
+                description=empty_description,
+                diameter=item.diameter,
+                wall_thickness=item.wall_thickness,
+                grade=item.grade,
+                length_ft=item.length_ft,
+                milling=item.milling,
+                painting=item.painting,
+                notes=item.notes,
+                sku=item.sku,
+            )
+        )
+
+        if not has_on_site_fill:
+            pipe_description = f' for {item.diameter:g}" pipe' if item.diameter is not None else ""
+            normalized.append(
+                ParsedItem(
+                    product_type="service",
+                    quantity=item.quantity,
+                    description=(
+                        f"On-site bag filling{pipe_description} — pricing requires fill basis"
+                    ),
+                    notes="Separate option requested with empty bags",
+                )
+            )
+            has_on_site_fill = True
+
+    return normalized
 
 
 def _load_active_sku_prompt_block() -> str:

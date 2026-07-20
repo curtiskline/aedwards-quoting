@@ -1214,6 +1214,8 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
         rounded_qty, num_pallets = pallet_round(item.quantity, pieces_per_pallet)
         total = price_per_bag * Decimal(str(rounded_qty))
         desc = f'Geotextile Bag, {part_number}, {int(item.diameter)}" pipe'
+        if "empty" in item.description.lower():
+            desc += " (Empty)"
         notes = None
         if rounded_qty != item.quantity and pieces_per_pallet > 0:
             notes = f"{item.quantity} pcs rounded to {num_pallets} pallet{'s' if num_pallets != 1 else ''} ({rounded_qty} pcs)"

@@ -78,18 +78,54 @@ class QuotePDFBuilder:
         quote_date: date | None = None,
         expires_date: date | None = None,
         logo_path: Path | None = None,
+        banner_text: str | None = None,
     ):
         self.quote = quote
         self.output_path = output_path
         self.quote_date = quote_date or date.today()
         self.expires_date = expires_date or (self.quote_date + timedelta(days=7))
         self.logo_path = logo_path or DEFAULT_LOGO_PATH
+        self.banner_text = banner_text
         self.page_width = letter[0]
         self.page_height = letter[1]
         self.margin = 0.5 * inch
         self.content_width = self.page_width - 2 * self.margin
 
         self._init_styles()
+
+    def _build_banner(self) -> list:
+        """Build an internal-only warning displayed above an unsafe preview."""
+        if not self.banner_text:
+            return []
+        banner = Table(
+            [
+                [
+                    Paragraph(
+                        self.banner_text,
+                        ParagraphStyle(
+                            "NeedsPricingBanner",
+                            fontName="Helvetica-Bold",
+                            fontSize=13,
+                            leading=16,
+                            alignment=1,
+                            textColor=WHITE,
+                        ),
+                    )
+                ]
+            ],
+            colWidths=[self.content_width],
+        )
+        banner.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, -1), colors.red),
+                    ("BOX", (0, 0), (-1, -1), 1, BLACK),
+                    ("TOPPADDING", (0, 0), (-1, -1), 7),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                ]
+            )
+        )
+        return [banner, Spacer(1, 10)]
 
     def _init_styles(self):
         """Initialize paragraph styles."""
@@ -499,6 +535,7 @@ class QuotePDFBuilder:
         )
 
         elements = []
+        elements.extend(self._build_banner())
         elements.extend(self._build_header())
         elements.extend(self._build_bill_ship_to())
         # Template A: No details grid (reserved for Template B concrete coating quotes)
@@ -518,6 +555,7 @@ def generate_quote_pdf(
     quote_date: date | None = None,
     expires_date: date | None = None,
     logo_path: Path | None = None,
+    banner_text: str | None = None,
 ) -> Path:
     """Generate a PDF quote document.
 
@@ -527,6 +565,7 @@ def generate_quote_pdf(
         quote_date: Date for the quote (defaults to today)
         expires_date: Expiration date (defaults to 7 days after quote_date)
         logo_path: Path to logo image (optional)
+        banner_text: Prominent internal-only warning shown above the quote (optional)
 
     Returns:
         Path to the generated PDF
@@ -537,5 +576,6 @@ def generate_quote_pdf(
         quote_date=quote_date,
         expires_date=expires_date,
         logo_path=logo_path,
+        banner_text=banner_text,
     )
     return builder.build()
