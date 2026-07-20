@@ -318,9 +318,6 @@ def test_parse_prompt_requires_separate_empty_and_on_site_fill_bag_options():
     assert "per-pound fill rate" in prompt
 
 
-@pytest.mark.xfail(
-    reason="Depends on task 298: PDF attachment text must reach the RFQ parser prompt.",
-)
 def test_duke_butler_pdf_attachment_supplies_16in_bag_spec(tmp_path):
     """The Duke–Butler PDF must provide the size used for the empty bag line."""
     corpus_email = (
@@ -383,7 +380,7 @@ def test_duke_butler_pdf_attachment_supplies_16in_bag_spec(tmp_path):
     rfq = parse_rfq(eml_path, provider)
 
     assert "attachment: 26-58 sub rfp form.pdf" in provider.parse_prompt.lower()
-    assert "16-inch" in provider.parse_prompt.lower()
+    assert "install 5.1 miles of 16" in provider.parse_prompt.lower()
     assert rfq.items[0].diameter == 16
     assert generate_quote(rfq, "126-064").line_items[0].part_number == "GTW 16"
 
