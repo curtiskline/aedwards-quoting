@@ -2,10 +2,13 @@
 
 import tempfile
 from email.message import EmailMessage
+from io import BytesIO
 from pathlib import Path
 
 import pytest
+from pypdf import PdfWriter
 
+from allenedwards import parser
 from allenedwards.parser import (
     CLASSIFY_SYSTEM_PROMPT,
     PARSE_SYSTEM_PROMPT,
@@ -83,6 +86,67 @@ def test_extract_email_text_includes_embedded_rfc822():
     finally:
         if eml_path.exists():
             eml_path.unlink()
+
+
+def _write_pdf_email(tmp_path: Path, attachments: list[tuple[str, bytes]]) -> Path:
+    """Write a multipart email containing the supplied PDF attachments."""
+    message = EmailMessage()
+    message.set_content("Please see the attached RFQ.")
+    for filename, content in attachments:
+        message.add_attachment(content, maintype="application", subtype="pdf", filename=filename)
+    path = tmp_path / "rfq.eml"
+    path.write_bytes(message.as_bytes())
+    return path
+
+
+def test_extract_email_text_includes_duke_butler_pdf_text(tmp_path):
+    """The RFQ parser includes the attachment text that contains the 16-inch specification."""
+    fixture = Path(__file__).parents[1] / "data/investigations/duke-butler/26-58-sub-rfp-form.pdf"
+    eml_path = _write_pdf_email(tmp_path, [(fixture.name, fixture.read_bytes())])
+
+    _, body = extract_email_text(eml_path)
+
+    assert f"--- Attachment: {fixture.name} ---" in body
+    assert "Install 5.1 miles of 16”" in body
+    assert f"--- End Attachment: {fixture.name} ---" in body
+
+
+def test_extract_email_text_includes_multiple_pdf_attachments(tmp_path):
+    fixture = Path(__file__).parents[1] / "data/investigations/duke-butler/26-58-sub-rfp-form.pdf"
+    contents = fixture.read_bytes()
+    eml_path = _write_pdf_email(
+        tmp_path,
+        [("primary-rfp.pdf", contents), ("supplemental-rfp.pdf", contents)],
+    )
+
+    _, body = extract_email_text(eml_path)
+
+    assert "--- Attachment: primary-rfp.pdf ---" in body
+    assert "--- Attachment: supplemental-rfp.pdf ---" in body
+    assert body.count("Install 5.1 miles of 16”") == 2
+
+
+def test_extract_email_text_notes_pdf_with_no_text(tmp_path):
+    writer = PdfWriter()
+    writer.add_blank_page(width=72, height=72)
+    pdf = BytesIO()
+    writer.write(pdf)
+    eml_path = _write_pdf_email(tmp_path, [("scanned.pdf", pdf.getvalue())])
+
+    _, body = extract_email_text(eml_path)
+
+    assert "--- Attachment: scanned.pdf ---" in body
+    assert "No extractable text found" in body
+
+
+def test_extract_email_text_truncates_long_pdf_text(tmp_path, monkeypatch):
+    fixture = Path(__file__).parents[1] / "data/investigations/duke-butler/26-58-sub-rfp-form.pdf"
+    monkeypatch.setattr(parser, "MAX_PDF_EXTRACTION_CHARS", 100)
+    eml_path = _write_pdf_email(tmp_path, [(fixture.name, fixture.read_bytes())])
+
+    _, body = extract_email_text(eml_path)
+
+    assert "[Text truncated at 100 characters.]" in body
 
 
 def test_parse_rfq_uses_llm_po_number():
@@ -254,9 +318,6 @@ def test_parse_prompt_requires_separate_empty_and_on_site_fill_bag_options():
     assert "per-pound fill rate" in prompt
 
 
-@pytest.mark.xfail(
-    reason="Depends on task 298: PDF attachment text must reach the RFQ parser prompt.",
-)
 def test_duke_butler_pdf_attachment_supplies_16in_bag_spec(tmp_path):
     """The Duke–Butler PDF must provide the size used for the empty bag line."""
     corpus_email = (
@@ -319,7 +380,7 @@ def test_duke_butler_pdf_attachment_supplies_16in_bag_spec(tmp_path):
     rfq = parse_rfq(eml_path, provider)
 
     assert "attachment: 26-58 sub rfp form.pdf" in provider.parse_prompt.lower()
-    assert "16-inch" in provider.parse_prompt.lower()
+    assert "install 5.1 miles of 16" in provider.parse_prompt.lower()
     assert rfq.items[0].diameter == 16
     assert generate_quote(rfq, "126-064").line_items[0].part_number == "GTW 16"
 

@@ -5,16 +5,21 @@ import re
 from dataclasses import dataclass
 from email.message import Message
 from email.utils import parseaddr
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 
 from flask import has_app_context
+from pypdf import PdfReader
 from sqlalchemy import inspect
 
 from .providers.base import LLMProvider
 
 QUOTE_NUMBER_PATTERN = re.compile(r"\b(?:QUO|SO|INV)-\d+-\d+\b", re.IGNORECASE)
 DEFAULT_RFQ_CLASSIFY_BODY_CHARS = 500
+MAX_PDF_ATTACHMENT_BYTES = 15 * 1024 * 1024
+MAX_PDF_EXTRACTION_PAGES = 10
+MAX_PDF_EXTRACTION_CHARS = 30_000
 INTERNAL_EMAIL_DOMAINS = {"allanedwards.com"}
 GENERIC_EMAIL_DOMAINS = {
     "aol.com",
@@ -261,9 +266,79 @@ def extract_email_text(eml_path: Path) -> tuple[Message, str]:
     return msg, body
 
 
+def _is_pdf_attachment(msg: Message) -> bool:
+    """Return whether a MIME part is a PDF attachment."""
+    filename = msg.get_filename() or ""
+    return msg.get_content_type() == "application/pdf" or filename.lower().endswith(".pdf")
+
+
+def _extract_pdf_attachment_text(msg: Message) -> str:
+    """Extract bounded text from a PDF MIME part for the RFQ prompt."""
+    filename = msg.get_filename() or "attachment.pdf"
+    payload = msg.get_payload(decode=True) or b""
+
+    if len(payload) > MAX_PDF_ATTACHMENT_BYTES:
+        content = (
+            f"[PDF exceeds the {MAX_PDF_ATTACHMENT_BYTES // (1024 * 1024)} MB extraction limit.]"
+        )
+    elif not payload:
+        content = "[No extractable text found (possibly a scanned/image-only PDF).]"
+    else:
+        try:
+            reader = PdfReader(BytesIO(payload))
+        except Exception:
+            content = "[No extractable text found (possibly a scanned/image-only PDF).]"
+        else:
+            parts: list[str] = []
+            remaining_chars = MAX_PDF_EXTRACTION_CHARS
+            text_truncated = False
+            page_count = len(reader.pages)
+
+            for page in reader.pages[:MAX_PDF_EXTRACTION_PAGES]:
+                try:
+                    page_text = page.extract_text() or ""
+                except Exception:
+                    page_text = ""
+
+                if not page_text:
+                    continue
+
+                separator_chars = 1 if parts else 0
+                if len(page_text) + separator_chars > remaining_chars:
+                    allowed_chars = max(remaining_chars - separator_chars, 0)
+                    if allowed_chars:
+                        parts.append(page_text[:allowed_chars])
+                    text_truncated = True
+                    break
+
+                parts.append(page_text)
+                remaining_chars -= len(page_text) + separator_chars
+
+            content = "\n".join(parts).strip()
+            truncation_notes: list[str] = []
+            if page_count > MAX_PDF_EXTRACTION_PAGES:
+                truncation_notes.append(
+                    f"[Text truncated after the first {MAX_PDF_EXTRACTION_PAGES} pages.]"
+                )
+            if text_truncated:
+                truncation_notes.append(
+                    f"[Text truncated at {MAX_PDF_EXTRACTION_CHARS:,} characters.]"
+                )
+
+            if not content:
+                content = "[No extractable text found (possibly a scanned/image-only PDF).]"
+            if truncation_notes:
+                content = "\n".join([content, *truncation_notes])
+
+    return f"--- Attachment: {filename} ---\n{content}\n--- End Attachment: {filename} ---"
+
+
 def _extract_message_text(msg: Message) -> str:
     """Recursively extract readable text from an email message tree."""
     content_type = msg.get_content_type()
+
+    if _is_pdf_attachment(msg):
+        return _extract_pdf_attachment_text(msg)
 
     if content_type in {"text/plain", "text/html"}:
         payload = msg.get_payload(decode=True)
