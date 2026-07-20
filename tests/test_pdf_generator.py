@@ -359,6 +359,21 @@ def test_notes_empty_when_blank():
     assert builder._build_notes() == []
 
 
+def test_needs_pricing_banner_is_rendered_above_pdf_contents():
+    quote = _make_quote()
+    builder = QuotePDFBuilder(
+        quote=quote,
+        output_path=Path("/tmp/test.pdf"),
+        banner_text="NEEDS PRICING — NOT FOR CUSTOMER SEND",
+    )
+
+    banner_elements = builder._build_banner()
+
+    assert len(banner_elements) == 2
+    assert "NEEDS PRICING" in banner_elements[0]._cellvalues[0][0].text
+    assert "NOT FOR CUSTOMER SEND" in banner_elements[0]._cellvalues[0][0].text
+
+
 def test_notes_title_line_skipped():
     """If first line looks like a title (contains ':'), only remaining lines render."""
     quote = _make_quote(notes="Project: HM999\nDeliver ASAP")

@@ -212,6 +212,72 @@ def test_send_form_returns_html(tmp_path):
         assert "126-300" in html
 
 
+@patch("app.routes.generate_quote_pdf")
+def test_preview_pdf_adds_needs_pricing_banner(mock_generate_quote_pdf, tmp_path):
+    app = _make_app(tmp_path)
+    quote_id, user_id = _seed_quote(app)
+    with app.app_context():
+        quote = db.session.get(Quote, quote_id)
+        assert quote is not None
+        quote.status = QuoteStatus.NEEDS_PRICING
+        db.session.commit()
+
+    def _fake_generate(pricing_quote, output_path, **_kwargs):
+        output_path.write_bytes(b"%PDF-1.4\n")
+
+    mock_generate_quote_pdf.side_effect = _fake_generate
+    with app.test_client() as client:
+        _login(client, user_id)
+        resp = client.get(f"/quotes/{quote_id}/preview-pdf")
+
+    assert resp.status_code == 200
+    assert mock_generate_quote_pdf.call_args.kwargs["banner_text"] == "NEEDS PRICING — NOT FOR CUSTOMER SEND"
+
+
+@patch("app.routes.generate_quote_pdf")
+def test_send_blocks_needs_pricing_quote_before_generating_pdf(mock_generate_quote_pdf, tmp_path):
+    app = _make_app(tmp_path)
+    quote_id, user_id = _seed_quote(app)
+    with app.app_context():
+        quote = db.session.get(Quote, quote_id)
+        assert quote is not None
+        quote.status = QuoteStatus.NEEDS_PRICING
+        db.session.commit()
+
+    with app.test_client() as client:
+        _login(client, user_id)
+        resp = client.post(
+            f"/quotes/{quote_id}/send",
+            data={"to_email": "customer@example.com", "subject": "Test Quote"},
+        )
+
+    assert resp.status_code == 200
+    assert "needs pricing before it can be sent" in resp.data.decode().lower()
+    mock_generate_quote_pdf.assert_not_called()
+
+
+@patch("app.routes.generate_quote_pdf")
+def test_send_blocks_tbd_line_even_when_quote_status_is_ready(mock_generate_quote_pdf, tmp_path):
+    app = _make_app(tmp_path)
+    quote_id, user_id = _seed_quote(app)
+    with app.app_context():
+        item = db.session.query(QuoteLineItem).filter_by(quote_id=quote_id).first()
+        assert item is not None
+        item.part_number = "TBD"
+        db.session.commit()
+
+    with app.test_client() as client:
+        _login(client, user_id)
+        resp = client.post(
+            f"/quotes/{quote_id}/send",
+            data={"to_email": "customer@example.com", "subject": "Test Quote"},
+        )
+
+    assert resp.status_code == 200
+    assert "needs pricing before it can be sent" in resp.data.decode().lower()
+    mock_generate_quote_pdf.assert_not_called()
+
+
 def test_send_without_o365_creds_shows_error(tmp_path):
     app = _make_app(tmp_path)
     quote_id, user_id = _seed_quote(app)

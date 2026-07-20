@@ -723,6 +723,7 @@ def _quote_context(quote: Quote) -> dict:
         "shipping_mode_note": shipping_mode_note,
         "shipping_amount": totals["shipping"],
         "tax_amount": totals["tax"],
+        "quote_needs_pricing": _quote_needs_pricing(quote),
     }
 
 
@@ -875,8 +876,28 @@ def _quote_has_unpriced_items(quote: Quote) -> bool:
     return False
 
 
+def _quote_has_tbd_items(quote: Quote) -> bool:
+    """Return whether a material line still contains an explicit TBD marker."""
+    for item in quote.line_items:
+        if item.product_type == "note":
+            continue
+        values = (item.sku, item.part_number, item.description)
+        if any("tbd" in str(value or "").lower() for value in values):
+            return True
+    return False
+
+
+def _quote_needs_pricing(quote: Quote) -> bool:
+    """Return whether a quote is unsafe to send to a customer."""
+    return (
+        quote.status == QuoteStatus.NEEDS_PRICING
+        or _quote_has_unpriced_items(quote)
+        or _quote_has_tbd_items(quote)
+    )
+
+
 def _sync_quote_pricing_status(quote: Quote) -> None:
-    if _quote_has_unpriced_items(quote):
+    if _quote_has_unpriced_items(quote) or _quote_has_tbd_items(quote):
         quote.status = QuoteStatus.NEEDS_PRICING
 
 
@@ -1662,7 +1683,13 @@ def _generate_pdf_bytes(quote: Quote) -> tuple[bytes, str]:
         tmp_path = tmp.name
     try:
         from pathlib import Path
-        generate_quote_pdf(pricing_quote, Path(tmp_path))
+        banner_text = (
+            "NEEDS PRICING — NOT FOR CUSTOMER SEND" if _quote_needs_pricing(quote) else None
+        )
+        if banner_text:
+            generate_quote_pdf(pricing_quote, Path(tmp_path), banner_text=banner_text)
+        else:
+            generate_quote_pdf(pricing_quote, Path(tmp_path))
         with open(tmp_path, "rb") as f:
             pdf_bytes = f.read()
     finally:
@@ -1686,6 +1713,13 @@ def quote_preview_pdf(quote_id: int):
 def quote_send_form(quote_id: int):
     """Return the send confirmation form as an HTMX partial."""
     quote = _get_active_quote_or_404(quote_id)
+    if _quote_needs_pricing(quote):
+        return render_template(
+            "quotes/_send_result.html",
+            success=False,
+            error="This quote needs pricing before it can be sent.",
+            quote=quote,
+        )
     return render_template(
         "quotes/_send_form.html",
         quote=quote,
@@ -1700,6 +1734,14 @@ def quote_send(quote_id: int):
     """Generate PDF, send email via Graph API, update quote status."""
     quote = _get_active_quote_or_404(quote_id)
     user = _current_user()
+
+    if _quote_needs_pricing(quote):
+        return render_template(
+            "quotes/_send_result.html",
+            success=False,
+            error="This quote needs pricing before it can be sent.",
+            quote=quote,
+        )
 
     to_email = (request.form.get("to_email") or "").strip()
     subject = (request.form.get("subject") or "").strip()
