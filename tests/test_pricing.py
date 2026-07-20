@@ -401,6 +401,23 @@ def test_price_item_bag_exact_pallet():
     assert result.notes is None  # no rounding note
 
 
+def test_price_item_empty_bag_option_is_labeled_and_priced():
+    """Empty bags remain the catalog-priced option when fill is separate."""
+    item = ParsedItem(
+        product_type="bag",
+        quantity=20,
+        description='20 empty bags for 16" pipe',
+        diameter=16,
+    )
+
+    result = price_item(item, sort_order=1)
+
+    assert result is not None
+    assert result.part_number == "GTW 16"
+    assert result.unit_price == Decimal("80.77")
+    assert "(Empty)" in result.description
+
+
 def test_price_item_bag_small():
     """Test bag pricing for small diameter with pallet rounding."""
     # 12" pipe -> GTW 10-12 range, $52.08/bag, 110 pcs/pallet

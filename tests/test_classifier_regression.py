@@ -37,6 +37,11 @@ POSITIVE_CASES = [
         "pipe weights / buoyancy product request",
     ),
     (
+        "duke_butler_bag_rfq",
+        "20260715_112200_cedwards_FW_Duke-Butler.eml",
+        "Duke - Butler empty-bag and on-site-fill RFQ",
+    ),
+    (
         "sleeve_rfq_explicit",
         "20250207_130029_jhamilton_RFQ - _B_ Sleeve for 8_ pipeline.eml",
         "explicit B sleeve RFQ with pipe size",
