@@ -1,4 +1,9 @@
 <div id="editor-status-bar" class="quote-editor-status-bar">
+  {% if quote_needs_pricing %}
+    <div role="alert" style="width:100%;margin-bottom:0.75rem;padding:0.75rem 1rem;border:2px solid #b91c1c;background:#fef2f2;color:#991b1b;font-weight:700;">
+      NEEDS PRICING — Preview only. This quote cannot be sent to a customer.
+    </div>
+  {% endif %}
   <div>
     <strong>Status:</strong> {{ quote.status.value.replace('_', ' ').title() }}
     {% if review_user and quote.status.value == 'in_review' %}
