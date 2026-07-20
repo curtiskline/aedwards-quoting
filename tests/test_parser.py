@@ -1,10 +1,14 @@
 """Tests for the parser module."""
 
 import tempfile
+from email.message import EmailMessage
 from pathlib import Path
+
+import pytest
 
 from allenedwards.parser import (
     CLASSIFY_SYSTEM_PROMPT,
+    PARSE_SYSTEM_PROMPT,
     classify_rfq,
     extract_email_text,
     parse_rfq,
@@ -12,6 +16,7 @@ from allenedwards.parser import (
     _extract_quote_number,
     _resolve_quote_number,
 )
+from allenedwards.pricing import generate_quote
 from allenedwards.providers.base import LLMProvider
 from allenedwards.providers.mock import MockProvider, SAMPLE_MULTI_QUOTE_RESPONSE
 
@@ -186,6 +191,137 @@ def test_parse_rfq_normalizes_oversleeve_product_type_to_sleeve():
     finally:
         if eml_path.exists():
             eml_path.unlink()
+
+
+def test_duke_butler_bag_request_splits_empty_and_on_site_fill_options():
+    """Duke–Butler must retain the catalog bag line and flag fill for review."""
+    corpus_email = (
+        Path(__file__).resolve().parents[1]
+        / "data"
+        / "test-corpus"
+        / "emails"
+        / "20260715_112200_cedwards_FW_Duke-Butler.eml"
+    )
+    provider = MockProvider(
+        {
+            "customer_name": "Price Gregory International, LLC",
+            "contact_name": "Nina Durr",
+            "contact_email": "NDurr@pricegregory.com",
+            "ship_to": {"company": "Duke - Butler", "state": "OH"},
+            "items": [
+                {
+                    "product_type": "bag",
+                    "quantity": 20,
+                    "diameter": 16,
+                    "description": (
+                        "Geotextile bag weights. Price as empty and include separate "
+                        "pricing to have them filled on site."
+                    ),
+                }
+            ],
+            "urgency": "normal",
+            "confidence": 0.95,
+        }
+    )
+
+    rfq = parse_rfq(corpus_email, provider)
+
+    assert [(item.product_type, item.quantity) for item in rfq.items] == [
+        ("bag", 20),
+        ("service", 20),
+    ]
+    assert rfq.items[0].diameter == 16
+    assert "empty" in rfq.items[0].description.lower()
+    assert "on-site bag filling" in rfq.items[1].description.lower()
+
+    quote = generate_quote(rfq, "126-064")
+    material_lines = [line for line in quote.line_items if not line.is_note]
+
+    assert material_lines[0].part_number == "GTW 16"
+    assert material_lines[0].unit_price > 0
+    assert "empty" in material_lines[0].description.lower()
+    assert material_lines[1].part_number == "TBD"
+    assert material_lines[1].unit_price == 0
+    assert "on-site bag filling" in material_lines[1].description.lower()
+
+
+def test_parse_prompt_requires_separate_empty_and_on_site_fill_bag_options():
+    prompt = PARSE_SYSTEM_PROMPT.lower()
+
+    assert "return two items" in prompt
+    assert "empty bags" in prompt
+    assert "on-site bag filling" in prompt
+    assert "per-pound fill rate" in prompt
+
+
+@pytest.mark.xfail(
+    reason="Depends on task 298: PDF attachment text must reach the RFQ parser prompt.",
+)
+def test_duke_butler_pdf_attachment_supplies_16in_bag_spec(tmp_path):
+    """The Duke–Butler PDF must provide the size used for the empty bag line."""
+    corpus_email = (
+        Path(__file__).resolve().parents[1]
+        / "data"
+        / "test-corpus"
+        / "emails"
+        / "20260715_112200_cedwards_FW_Duke-Butler.eml"
+    )
+    source_pdf = (
+        Path(__file__).resolve().parents[1]
+        / "data"
+        / "test-corpus"
+        / "attachments"
+        / "20260715_duke-butler-26-58-sub-rfp-form.pdf"
+    )
+    _, body = extract_email_text(corpus_email)
+    message = EmailMessage()
+    message["From"] = "Chip Edwards <cedwards@allanedwards.com>"
+    message["Subject"] = "Fwd: Duke - Butler"
+    message.set_content(body)
+    message.add_attachment(
+        source_pdf.read_bytes(),
+        maintype="application",
+        subtype="pdf",
+        filename="26-58 Sub RFP Form.pdf",
+    )
+    eml_path = tmp_path / "duke-butler-with-rfp.eml"
+    eml_path.write_bytes(message.as_bytes())
+
+    class RecordingProvider(MockProvider):
+        def __init__(self, response):
+            super().__init__(response)
+            self.parse_prompt = ""
+
+        def complete_json(self, prompt: str, system: str | None = None) -> dict:
+            if prompt.startswith("Parse this RFQ email"):
+                self.parse_prompt = prompt
+            return super().complete_json(prompt, system)
+
+    provider = RecordingProvider(
+        {
+            "customer_name": "Price Gregory International, LLC",
+            "contact_name": "Nina Durr",
+            "contact_email": "NDurr@pricegregory.com",
+            "ship_to": {"company": "Duke - Butler", "state": "OH"},
+            "items": [
+                {
+                    "product_type": "bag",
+                    "quantity": 20,
+                    "diameter": 16,
+                    "description": "Price as empty and separately filled on site.",
+                }
+            ],
+            "urgency": "normal",
+            "confidence": 0.95,
+        }
+    )
+
+    rfq = parse_rfq(eml_path, provider)
+
+    assert "attachment: 26-58 sub rfp form.pdf" in provider.parse_prompt.lower()
+    assert "16-inch" in provider.parse_prompt.lower()
+    assert rfq.items[0].diameter == 16
+    assert generate_quote(rfq, "126-064").line_items[0].part_number == "GTW 16"
 
 
 def test_parse_rfq_fills_missing_contact_from_external_from_header():
