@@ -134,6 +134,7 @@ deploy/
 | `O365_PASSWORD` | Yes | Mailbox password (ROPC auth) |
 | `O365_CLIENT_ID` | No | Azure AD client ID (default: MS Office public client) |
 | `O365_SCOPES` | No | Graph API scopes (default: `https://graph.microsoft.com/.default`) |
+| `O365_SEND_AS_USER` | No | When `true`, outbound quote emails send from the logged-in user's own mailbox (requires client-credentials auth and tenant permission to send as company users; default `false` = send as `O365_EMAIL`) |
 | `ANTHROPIC_API_KEY` | Yes | Anthropic API key for Claude |
 | `LLM_PROVIDER` | No | `claude` or `minimax` (default: `claude`) |
 | `MINIMAX_API_KEY` | If using MiniMax | MiniMax API key |

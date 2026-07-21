@@ -2173,9 +2173,16 @@ def quote_send(quote_id: int):
             quote=quote,
         )
 
+    # Behind O365_SEND_AS_USER: send from the logged-in user's own mailbox so
+    # customer replies reach their inbox; falls back to the shared sender.
+    from .email_service import resolve_quote_sender
+    send_from = resolve_quote_sender(
+        user.email if user else None, sender_email, client_secret
+    )
+
     scopes = [s.strip() for s in scopes_raw.split(",") if s.strip()] or None
     client = OutlookClient(
-        email_address=sender_email,
+        email_address=send_from,
         password=sender_password,
         client_id=client_id,
         scopes=scopes,
@@ -2241,7 +2248,7 @@ def quote_send(quote_id: int):
         quote_id=quote.id,
         action="sent",
         user_id=user.id if user else None,
-        details={"to": to_email, "cc": cc_email, "subject": subject},
+        details={"to": to_email, "cc": cc_email, "subject": subject, "from": send_from},
     )
     db.session.add(audit)
     db.session.commit()
