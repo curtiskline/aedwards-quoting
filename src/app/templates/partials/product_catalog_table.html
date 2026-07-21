@@ -1,0 +1,82 @@
+<section id="product-catalog-card" class="quote-editor-section">
+  <h2>Product Catalog</h2>
+  <p class="field-help">Add the products your team can select while building quotes. Removing an item makes it inactive and preserves quote history.</p>
+
+  <details class="catalog-add-form" {% if not catalog_items %}open{% endif %}>
+    <summary>Add product</summary>
+    <form method="post" action="/admin/catalog/add" hx-post="/admin/catalog/add" hx-target="#product-catalog-card" hx-swap="outerHTML" class="catalog-form">
+      <label>SKU
+        <input name="sku" maxlength="255" required />
+      </label>
+      <label>Description
+        <input name="description" maxlength="1000" required />
+      </label>
+      <label>Product family
+        <select name="product_family" required>
+          {% for family in product_families %}
+            <option value="{{ family.value }}">{{ family.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <button type="submit" class="save-btn">Add product</button>
+      {% if catalog_just_saved %}<span class="save-confirmation">Saved</span>{% endif %}
+    </form>
+  </details>
+
+  {% if not catalog_items %}
+    <p>No catalog products yet.</p>
+  {% else %}
+    <div class="catalog-scroll">
+      <table class="pricing-table">
+        <thead>
+          <tr>
+            <th>SKU</th>
+            <th>Description</th>
+            <th>Family</th>
+            <th>Active</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in catalog_items %}
+            <tr id="catalog-item-{{ item.id }}" class="{% if not item.is_active %}catalog-inactive{% endif %}">
+              <td colspan="5">
+                <form method="post" action="/admin/catalog/{{ item.id }}/update" hx-post="/admin/catalog/{{ item.id }}/update" hx-target="#product-catalog-card" hx-swap="outerHTML" class="catalog-form catalog-form-row">
+                  <input name="sku" value="{{ item.sku }}" aria-label="SKU" maxlength="255" required />
+                  <input name="description" value="{{ item.description }}" aria-label="Description" maxlength="1000" required />
+                  <select name="product_family" aria-label="Product family" required>
+                    {% for family in product_families %}
+                      <option value="{{ family.value }}" {% if item.product_family.value == family.value %}selected{% endif %}>{{ family.label }}</option>
+                    {% endfor %}
+                  </select>
+                  <label class="checkbox-row"><input type="checkbox" name="is_active" {% if item.is_active %}checked{% endif %} /> Active</label>
+                  <button type="submit" class="save-btn">Save</button>
+                </form>
+                {% if item.is_active %}
+                  <form method="post" action="/admin/catalog/{{ item.id }}/delete" hx-post="/admin/catalog/{{ item.id }}/delete" hx-target="#product-catalog-card" hx-swap="outerHTML" class="catalog-remove-form" onsubmit="return confirm('Remove {{ item.sku }} from the active product catalog? Existing quotes will not change.');">
+                    <button type="submit" class="delete-btn">Remove</button>
+                  </form>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+</section>
+
+<style>
+  .catalog-add-form { margin-bottom: 1rem; }
+  .catalog-add-form summary { cursor: pointer; font-weight: 600; }
+  .catalog-form { display: flex; flex-wrap: wrap; align-items: end; gap: 0.6rem; margin: 0.7rem 0; }
+  .catalog-form label { display: grid; gap: 0.25rem; }
+  .catalog-form input, .catalog-form select { min-height: 2.2rem; padding: 0.35rem 0.45rem; border: 1px solid #cbd5e1; border-radius: 6px; }
+  .catalog-form-row { margin: 0; }
+  .catalog-form-row input[name="description"] { flex: 1 1 250px; }
+  .catalog-remove-form { display: inline-block; margin: 0.25rem 0 0; }
+  .catalog-inactive { opacity: 0.6; }
+  .delete-btn { border: 1px solid #b91c1c; background: #fff; color: #b91c1c; border-radius: 6px; padding: 0.35rem 0.7rem; cursor: pointer; }
+  .catalog-scroll { overflow-x: auto; }
+  @media (max-width: 640px) { .catalog-form-row { min-width: 650px; } }
+</style>

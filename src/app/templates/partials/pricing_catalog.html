@@ -1,8 +1,41 @@
 <section id="pricing-catalog-card" class="quote-editor-section">
   <h2>Pricing Catalog</h2>
+  <p class="field-help">Add and maintain the rates used for each product type. A new product type appears here even before it has its first rate.</p>
   {% if not sections %}
-    <p>No pricing rows found.</p>
+    <p>Add a product type before creating pricing rates.</p>
   {% else %}
+    <details class="pricing-add-form">
+      <summary>Add pricing rate</summary>
+      <form method="post" action="/admin/pricing/add" hx-post="/admin/pricing/add" hx-target="#pricing-catalog-card" hx-swap="outerHTML" class="pricing-key-form" id="pricing-add-rate-form">
+        <label>Product type
+          <select name="product_type" id="new-pricing-product-type" required>
+            {% for section in sections %}
+              <option value="{{ section.product_type }}">{{ section.title }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <span class="pricing-key-inputs" data-pricing-kind="sleeve">
+          <label>Wall thickness <input name="wall_thickness" type="number" min="0" step="0.0001" /></label>
+          <label>Grade <input name="grade" type="number" min="0" step="1" /></label>
+        </span>
+        <span class="pricing-key-inputs" data-pricing-kind="girth_weld">
+          <label>Min diameter <input name="min_diameter" type="number" min="0" step="0.01" /></label>
+          <label>Max diameter <input name="max_diameter" type="number" min="0" step="0.01" /></label>
+        </span>
+        <span class="pricing-key-inputs" data-pricing-kind="bag">
+          <label>Part number <input name="part_number" /></label>
+          <label>Min pipe size <input name="pipe_size_min" type="number" min="0" step="0.01" /></label>
+          <label>Max pipe size <input name="pipe_size_max" type="number" min="0" step="0.01" /></label>
+          <label>Pieces/pallet <input name="pieces_per_pallet" type="number" min="0" step="1" /></label>
+        </span>
+        <span class="pricing-key-inputs" data-pricing-kind="generic">
+          <label>Rate name <input name="key" /></label>
+          <label>Unit <input name="unit" placeholder="e.g. per set" /></label>
+        </span>
+        <label>Price <input class="price-input" name="price" type="number" min="0" step="0.01" required /></label>
+        <button class="save-btn" type="submit">Add rate</button>
+      </form>
+    </details>
     <div class="tabbar">
       {% for section in sections %}
         <button
@@ -32,6 +65,9 @@
             {% endfor %}
           </tbody>
         </table>
+        {% if not section.entries %}
+          <p class="empty-pricing-section">No pricing rates yet. Use “Add pricing rate” above to create the first one.</p>
+        {% endif %}
       </section>
     {% endfor %}
   {% endif %}
@@ -76,6 +112,16 @@
     border-radius: 6px;
     font-size: 0.95rem;
   }
+  .pricing-add-form { margin-bottom: 1rem; }
+  .pricing-add-form summary, .pricing-edit-details summary { cursor: pointer; font-weight: 600; }
+  .pricing-key-form { display: flex; flex-wrap: wrap; align-items: end; gap: 0.6rem; margin: 0.65rem 0; }
+  .pricing-key-form label, .pricing-key-inputs label { display: inline-grid; gap: 0.25rem; }
+  .pricing-key-form input, .pricing-key-form select { min-height: 2.2rem; padding: 0.35rem 0.45rem; border: 1px solid #cbd5e1; border-radius: 6px; }
+  .pricing-key-inputs { display: none; gap: 0.6rem; flex-wrap: wrap; }
+  .pricing-key-inputs.active { display: inline-flex; }
+  .pricing-edit-details { margin-top: 0.45rem; }
+  .pricing-delete-form { display: inline-block; margin-left: 0.5rem; }
+  .empty-pricing-section { color: #64748b; }
   .save-btn {
     border: 1px solid #0f766e;
     background: #0f766e;
@@ -111,5 +157,21 @@
         if (panel) panel.classList.add("active");
       });
     });
+
+    const rateType = root.querySelector("#new-pricing-product-type");
+    const rateInputGroups = root.querySelectorAll(".pricing-key-inputs");
+    const setRateInputs = () => {
+      if (!rateType) return;
+      const selectedKind = ["sleeve", "girth_weld", "bag"].includes(rateType.value) ? rateType.value : "generic";
+      rateInputGroups.forEach((group) => {
+        const active = group.dataset.pricingKind === selectedKind;
+        group.classList.toggle("active", active);
+        group.querySelectorAll("input").forEach((input) => { input.disabled = !active; });
+      });
+    };
+    if (rateType) {
+      rateType.addEventListener("change", setRateInputs);
+      setRateInputs();
+    }
   })();
 </script>
