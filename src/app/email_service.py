@@ -11,6 +11,41 @@ class EmailDeliveryError(RuntimeError):
     """Raised when magic-link email delivery fails."""
 
 
+def send_as_user_enabled() -> bool:
+    """Whether the O365_SEND_AS_USER feature flag is on (default off)."""
+    return os.getenv("O365_SEND_AS_USER", "").strip().lower() in ("1", "true", "yes")
+
+
+def resolve_quote_sender(
+    user_email: str | None,
+    default_sender: str,
+    client_secret: str | None,
+) -> str:
+    """Pick the Graph mailbox address that an outbound quote sends from.
+
+    When O365_SEND_AS_USER is on, quotes go out as the logged-in user so the
+    customer's reply lands in their real inbox. Falls back to the shared
+    default sender (AEResponder) unless all of these hold:
+    - client-credentials auth is configured (ROPC password auth can only
+      authenticate the shared mailbox itself, not other users), and
+    - the user has an email address, and
+    - it is in the same domain as the default sender (the tenant permission
+      granted to the app only covers company mailboxes).
+    """
+    if not send_as_user_enabled():
+        return default_sender
+    if not client_secret:
+        return default_sender
+    candidate = (user_email or "").strip()
+    if not candidate or "@" not in candidate:
+        return default_sender
+    default_domain = default_sender.rsplit("@", 1)[-1].lower()
+    candidate_domain = candidate.rsplit("@", 1)[-1].lower()
+    if candidate_domain != default_domain:
+        return default_sender
+    return candidate
+
+
 def send_magic_link_email(*, to_email: str, magic_link: str) -> None:
     """Send a sign-in link through O365 Graph."""
     sender_email = os.getenv("O365_EMAIL")
