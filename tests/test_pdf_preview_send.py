@@ -278,6 +278,40 @@ def test_send_blocks_tbd_line_even_when_quote_status_is_ready(mock_generate_quot
     mock_generate_quote_pdf.assert_not_called()
 
 
+@patch("allenedwards.outlook.OutlookClient")
+def test_send_allows_editor_created_no_charge_line(mock_outlook_class, tmp_path):
+    app = _make_app(tmp_path)
+    quote_id, user_id = _seed_quote(app)
+    mock_client = MagicMock()
+    mock_outlook_class.return_value = mock_client
+
+    with app.test_client() as client:
+        _login(client, user_id)
+        add_response = client.post(
+            f"/quotes/{quote_id}/line-items/add",
+            data={"product_type": "service", "description": "Delivery", "quantity": "1", "unit_price": "0"},
+        )
+        assert add_response.status_code == 200
+        assert b"Needs Pricing" not in add_response.data
+
+        os.environ["O365_EMAIL"] = "test@allanedwards.com"
+        os.environ["O365_PASSWORD"] = "testpass"
+        os.environ["ENABLE_OUTLOOK_DRAFTS"] = "false"
+        try:
+            response = client.post(
+                f"/quotes/{quote_id}/send",
+                data={"to_email": "customer@example.com", "subject": "Quote 126-300"},
+            )
+        finally:
+            os.environ.pop("O365_EMAIL", None)
+            os.environ.pop("O365_PASSWORD", None)
+            os.environ.pop("ENABLE_OUTLOOK_DRAFTS", None)
+
+    assert response.status_code == 200
+    assert "Quote Sent" in response.data.decode()
+    mock_client.send_mail.assert_called_once()
+
+
 def test_send_without_o365_creds_shows_error(tmp_path):
     app = _make_app(tmp_path)
     quote_id, user_id = _seed_quote(app)

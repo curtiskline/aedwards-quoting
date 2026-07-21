@@ -202,6 +202,97 @@ def test_girth_weld_update_preserves_part_number_without_length_spec(tmp_path):
         assert updated.description == "Updated GTW description"
 
 
+def test_quantity_update_preserves_existing_part_number_without_regenerable_specs(tmp_path):
+    app = _make_app(tmp_path)
+    with app.app_context():
+        db.create_all()
+        user = User(email="quantity@example.com", name="Quantity User", password_hash="x")
+        db.session.add(user)
+        quote = Quote(quote_number="126-201B", status=QuoteStatus.IN_REVIEW)
+        db.session.add(quote)
+        db.session.flush()
+        li = QuoteLineItem(
+            quote_id=quote.id,
+            product_type="service",
+            description="Field service",
+            part_number="SVC-FIELD",
+            quantity=5,
+            unit_price=100,
+            line_total=500,
+            specs_json={},
+            sort_order=1,
+        )
+        db.session.add(li)
+        db.session.commit()
+        quote_id = quote.id
+        item_id = li.id
+        user_id = user.id
+
+    client = app.test_client()
+    _login(client, user_id)
+    response = client.post(
+        f"/quotes/{quote_id}/line-items/{item_id}/update",
+        data={
+            "product_type": "service",
+            "description": "Field service",
+            "quantity": "10",
+            "unit_price": "100",
+        },
+    )
+    assert response.status_code == 200
+
+    with app.app_context():
+        updated = db.session.get(QuoteLineItem, item_id)
+        assert updated is not None
+        assert float(updated.quantity) == 10.0
+        assert float(updated.line_total) == 1000.0
+        assert updated.part_number == "SVC-FIELD"
+
+
+def test_add_manual_no_charge_line_is_allowed(tmp_path):
+    app = _make_app(tmp_path)
+    with app.app_context():
+        db.create_all()
+        user = User(email="delivery@example.com", name="Delivery User", password_hash="x")
+        db.session.add(user)
+        quote = Quote(quote_number="126-201C", status=QuoteStatus.IN_REVIEW)
+        db.session.add(quote)
+        db.session.flush()
+        db.session.add(
+            QuoteLineItem(
+                quote_id=quote.id,
+                product_type="service",
+                description="Priced service",
+                quantity=1,
+                unit_price=100,
+                line_total=100,
+                sort_order=1,
+            )
+        )
+        db.session.commit()
+        quote_id = quote.id
+        user_id = user.id
+
+    client = app.test_client()
+    _login(client, user_id)
+    response = client.post(
+        f"/quotes/{quote_id}/line-items/add",
+        data={"product_type": "service", "description": "Delivery", "quantity": "1", "unit_price": "0"},
+    )
+    assert response.status_code == 200
+    assert b"No charge" in response.data
+    assert b"Needs Pricing" not in response.data
+
+    with app.app_context():
+        quote = db.session.get(Quote, quote_id)
+        delivery = db.session.query(QuoteLineItem).filter_by(quote_id=quote_id, description="Delivery").one()
+        assert quote is not None
+        assert quote.status == QuoteStatus.IN_REVIEW
+        assert float(delivery.unit_price) == 0.0
+        assert float(delivery.line_total) == 0.0
+        assert dict(delivery.specs_json or {}).get("manual_no_charge") is True
+
+
 def test_line_item_calc_total_returns_partial_without_db_write(tmp_path):
     app = _make_app(tmp_path)
     with app.app_context():
@@ -300,7 +391,7 @@ def test_add_remove_move_and_status_transitions(tmp_path):
         data={"product_type": "service", "description": "New service", "quantity": "1", "unit_price": "0"},
     )
     assert add_resp.status_code == 200
-    assert b"Needs Pricing" in add_resp.data
+    assert b"No charge" in add_resp.data
 
     with app.app_context():
         line_items = db.session.query(QuoteLineItem).filter_by(quote_id=quote_id).order_by(QuoteLineItem.sort_order.asc()).all()

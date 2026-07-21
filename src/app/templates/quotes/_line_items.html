@@ -56,6 +56,7 @@
               <div>{{ item.pricing_source }}</div>
               {% if item.rounding_indicator %}<div class="pricing-note-warn">{{ item.rounding_indicator }}</div>{% endif %}
               {% if item.note %}<div class="pricing-note">{{ item.note }}</div>{% endif %}
+              {% if item.no_charge %}<div class="pricing-note">No charge</div>{% endif %}
               {% if item.needs_pricing %}<div class="pricing-note-critical">Needs Pricing</div>{% endif %}
             </div>
           </div>

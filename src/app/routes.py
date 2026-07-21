@@ -652,6 +652,7 @@ def _line_item_view(item: QuoteLineItem) -> dict:
     line_total = Decimal(str(item.line_total))
     original_qty = specs.get("original_qty")
     display_qty = Decimal(str(original_qty)) if original_qty else quantity
+    no_charge = _line_item_is_manual_no_charge(item)
     return {
         "id": item.id,
         "product_type": item.product_type,
@@ -666,7 +667,8 @@ def _line_item_view(item: QuoteLineItem) -> dict:
         "spec_fields": _line_item_spec_fields(item.product_type, specs),
         "pricing_source": _line_item_pricing_source(item, specs),
         "rounding_indicator": _line_item_rounding(item, specs),
-        "needs_pricing": unit_price <= 0 or line_total <= 0,
+        "no_charge": no_charge,
+        "needs_pricing": not no_charge and (unit_price <= 0 or line_total <= 0),
         "note": specs.get("notes"),
         "shipping_breakdown": _shipping_breakdown_for_item(item),
     }
@@ -867,9 +869,17 @@ def _render_line_items(quote: Quote):
     return render_template("quotes/_line_items.html", **_quote_context(quote))
 
 
+def _line_item_is_manual_no_charge(item: QuoteLineItem) -> bool:
+    """Return whether an editor user deliberately made this non-shipping line free."""
+    return (
+        item.product_type not in {"note", "shipping"}
+        and bool(dict(item.specs_json or {}).get("manual_no_charge"))
+    )
+
+
 def _quote_has_unpriced_items(quote: Quote) -> bool:
     for item in quote.line_items:
-        if item.product_type == "note":
+        if item.product_type == "note" or _line_item_is_manual_no_charge(item):
             continue
         if Decimal(str(item.unit_price)) <= 0 or Decimal(str(item.line_total)) <= 0:
             return True
@@ -881,10 +891,14 @@ def _quote_has_tbd_items(quote: Quote) -> bool:
     for item in quote.line_items:
         if item.product_type == "note":
             continue
-        values = (item.sku, item.part_number, item.description)
-        if any("tbd" in str(value or "").lower() for value in values):
+        if _line_item_has_tbd_marker(item):
             return True
     return False
+
+
+def _line_item_has_tbd_marker(item: QuoteLineItem) -> bool:
+    values = (item.sku, item.part_number, item.description)
+    return any("tbd" in str(value or "").lower() for value in values)
 
 
 def _quote_needs_pricing(quote: Quote) -> bool:
@@ -899,6 +913,8 @@ def _quote_needs_pricing(quote: Quote) -> bool:
 def _sync_quote_pricing_status(quote: Quote) -> None:
     if _quote_has_unpriced_items(quote) or _quote_has_tbd_items(quote):
         quote.status = QuoteStatus.NEEDS_PRICING
+    elif quote.status == QuoteStatus.NEEDS_PRICING:
+        quote.status = QuoteStatus.IN_REVIEW
 
 
 def _product_types_admin_data(just_saved: bool = False) -> dict:
@@ -1216,15 +1232,21 @@ def quote_add_line_item(quote_id: int):
     _normalize_sort_orders(quote)
     product_type = _resolve_product_type(request.form.get("product_type"), "sleeve")
     auto_shipping_trigger = request.form.get("auto_shipping_trigger") == "1"
+    unit_price = _parse_decimal(request.form.get("unit_price"), Decimal("0"))
+    is_manual_no_charge = (
+        not auto_shipping_trigger
+        and product_type != "shipping"
+        and unit_price <= 0
+    )
     line_item = QuoteLineItem(
         quote=quote,
         product_type=product_type,
         sku=(request.form.get("sku") or "").strip() or None,
         description=(request.form.get("description") or "New line item").strip() or "New line item",
         quantity=float(_parse_decimal(request.form.get("quantity"), Decimal("1"))),
-        unit_price=float(_parse_decimal(request.form.get("unit_price"), Decimal("0"))),
+        unit_price=float(unit_price),
         line_total=0,
-        specs_json={},
+        specs_json={"manual_no_charge": True} if is_manual_no_charge else {},
         sort_order=len(quote.line_items) + 1,
     )
     line_item.line_total = float(
@@ -1290,7 +1312,7 @@ def quote_calc_line_item_total(quote_id: int, item_id: int):
         line_total=line_total,
         rounding_indicator=_line_item_rounding(preview_item, specs),
         quantity=rounded_qty,
-        needs_pricing=unit_price <= 0,
+        needs_pricing=unit_price <= 0 and not _line_item_is_manual_no_charge(item),
     )
 
 
@@ -1306,7 +1328,12 @@ def quote_update_line_item(quote_id: int, item_id: int):
     item.sku = (request.form.get("sku") or "").strip() or None
     item.description = (request.form.get("description") or item.description).strip() or item.description
     quantity = _parse_decimal(request.form.get("quantity"), Decimal(str(item.quantity)))
-    unit_price = _parse_decimal(request.form.get("unit_price"), Decimal(str(item.unit_price)))
+    raw_unit_price = request.form.get("unit_price")
+    unit_price = (
+        Decimal("0")
+        if raw_unit_price is not None and not raw_unit_price.strip()
+        else _parse_decimal(raw_unit_price, Decimal(str(item.unit_price)))
+    )
     item.unit_price = float(_quantize_money(unit_price))
 
     specs = dict(item.specs_json or {})
@@ -1321,11 +1348,19 @@ def quote_update_line_item(quote_id: int, item_id: int):
             specs[key] = raw
     specs["milling"] = request.form.get("spec_milling") == "on"
     specs["painting"] = request.form.get("spec_painting") == "on"
+    if (
+        not auto_shipping_trigger
+        and item.product_type != "shipping"
+        and unit_price <= 0
+        and not _line_item_has_tbd_marker(item)
+    ):
+        specs["manual_no_charge"] = True
+    else:
+        specs.pop("manual_no_charge", None)
 
     # Apply pallet/bundle rounding to quantity
     requested_qty = int(math.ceil(float(quantity)))
     rounded_qty = requested_qty
-    item.part_number = None
     if item.product_type == "sleeve":
         diameter = _parse_float(str(specs.get("diameter", "")))
         length_ft = _parse_float(str(specs.get("length_ft", "")))
