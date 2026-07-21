@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta
 
 from flask import Blueprint, abort, jsonify, redirect, render_template, request, url_for
@@ -10,7 +11,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 
 from .extensions import db
-from .models import AuditLog, Quote, QuoteLineItem, QuoteStatus, User
+from .models import AuditLog, Quote, QuoteStatus, User
 
 quotes_bp = Blueprint("quotes", __name__, url_prefix="/quotes")
 
@@ -32,6 +33,7 @@ def _quote_query(status_filter: str | None, search: str | None):
         db.session.query(Quote)
         .outerjoin(Quote.line_items)
         .filter(Quote.deleted_at.is_(None))
+        .filter(Quote.status != QuoteStatus.REPLACED)
         .group_by(Quote.id)
     )
 
@@ -116,6 +118,7 @@ def queue():
     status_counts = dict(
         db.session.query(Quote.status, func.count(Quote.id))
         .filter(Quote.deleted_at.is_(None))
+        .filter(Quote.status != QuoteStatus.REPLACED)
         .group_by(Quote.status)
         .all()
     )
@@ -127,6 +130,7 @@ def queue():
         {"key": s.value, "label": s.value.replace("_", " ").title(),
          "count": status_counts.get(s, 0)}
         for s in QuoteStatus
+        if s != QuoteStatus.REPLACED
     ]
 
     if request.headers.get("HX-Request"):
@@ -162,16 +166,15 @@ def _generate_quote_number() -> str:
     """Generate next fiscal-year quote number (e.g. 126-001 for 2026)."""
     year = datetime.utcnow().year
     prefix = f"1{year % 100}"
-    result = db.session.query(func.max(Quote.quote_number)).filter(
-        Quote.quote_number.like(f"{prefix}-%")
-    ).scalar()
-    if result:
-        try:
-            seq = int(result.split("-")[-1]) + 1
-        except (ValueError, IndexError):
-            seq = 1
-    else:
-        seq = 1
+    pattern = re.compile(rf"^{re.escape(prefix)}-(\d+)$")
+    sequences = (
+        int(match.group(1))
+        for (quote_number,) in db.session.query(Quote.quote_number)
+        .filter(Quote.quote_number.like(f"{prefix}-%"))
+        .all()
+        if (match := pattern.match(quote_number))
+    )
+    seq = max(sequences, default=0) + 1
     return f"{prefix}-{seq:03d}"
 
 

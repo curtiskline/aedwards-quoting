@@ -3,6 +3,21 @@
 
   {% include "quotes/_status_bar.html" %}
 
+  {% if revision_chain | length > 1 %}
+  <section class="quote-editor-section" aria-label="Revision history">
+    <h2>Revision History</h2>
+    <ol style="margin:0.5rem 0 0;padding-left:1.25rem;">
+      {% for revision in revision_chain %}
+      <li{% if revision.id == quote.id %} style="font-weight:700"{% endif %}>
+        <a href="/quotes/{{ revision.id }}">{{ revision.quote_number }}</a>
+        — {{ revision.status.value.replace('_', ' ').title() }}
+        {% if revision.id == quote.id %}(current){% endif %}
+      </li>
+      {% endfor %}
+    </ol>
+  </section>
+  {% endif %}
+
   {% include "quotes/_quote_fields.html" %}
 
   {% include "quotes/_customer_info.html" %}

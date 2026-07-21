@@ -22,6 +22,7 @@ class QuoteStatus(str, Enum):
     READY = "ready"
     SENT = "sent"
     ARCHIVED = "archived"
+    REPLACED = "replaced"
 
 
 class ProductFamily(str, Enum):
@@ -150,6 +151,10 @@ class Quote(db.Model):
     ship_to_json: Mapped[dict | None] = mapped_column(db.JSON)
     tax_amount: Mapped[float] = mapped_column(Numeric(12, 2), default=0, nullable=False)
     deleted_at: Mapped[datetime | None] = mapped_column(nullable=True, index=True)
+    replaces_quote_id: Mapped[int | None] = mapped_column(
+        ForeignKey("quote.id"), nullable=True, unique=True, index=True
+    )
+    revision_number: Mapped[int] = mapped_column(default=0, nullable=False)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -160,6 +165,12 @@ class Quote(db.Model):
     )
     attachments: Mapped[list["QuoteAttachment"]] = relationship(
         back_populates="quote", cascade="all, delete-orphan"
+    )
+    replaces: Mapped["Quote | None"] = relationship(
+        foreign_keys=[replaces_quote_id], remote_side=[id], back_populates="replaced_by"
+    )
+    replaced_by: Mapped["Quote | None"] = relationship(
+        foreign_keys=[replaces_quote_id], back_populates="replaces", uselist=False
     )
     versions: Mapped[list["QuoteVersion"]] = relationship(back_populates="quote", cascade="all, delete-orphan")
     audit_logs: Mapped[list["AuditLog"]] = relationship(back_populates="quote", cascade="all, delete-orphan")
