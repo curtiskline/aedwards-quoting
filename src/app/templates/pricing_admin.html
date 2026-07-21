@@ -6,6 +6,7 @@
   <div class="tabbar">
     <button type="button" class="tab-btn {% if active_tab == 'shipping' %}active{% endif %}" data-tab-target="admin-tab-shipping">Shipping</button>
     <button type="button" class="tab-btn {% if active_tab == 'pricing' %}active{% endif %}" data-tab-target="admin-tab-pricing">Pricing</button>
+    <button type="button" class="tab-btn {% if active_tab == 'catalog' %}active{% endif %}" data-tab-target="admin-tab-catalog">Product Catalog</button>
     <button type="button" class="tab-btn {% if active_tab == 'types' %}active{% endif %}" data-tab-target="admin-tab-types">Product Types</button>
   </div>
 
@@ -15,6 +16,10 @@
 
   <section id="admin-tab-pricing" class="tab-panel {% if active_tab == 'pricing' %}active{% endif %}">
     {% include "partials/pricing_catalog.html" %}
+  </section>
+
+  <section id="admin-tab-catalog" class="tab-panel {% if active_tab == 'catalog' %}active{% endif %}">
+    {% include "partials/product_catalog_table.html" %}
   </section>
 
   <section id="admin-tab-types" class="tab-panel {% if active_tab == 'types' %}active{% endif %}">

@@ -11,7 +11,6 @@ from app.config import Config
 from app.extensions import db
 from app.models import User
 
-
 ALEMBIC_CMD = [sys.executable, "-m", "alembic"]
 
 
@@ -36,18 +35,21 @@ def test_migrations_create_tables(tmp_path: Path) -> None:
     db_path = tmp_path / "migrations.db"
     env = _alembic_env(db_path)
 
-    subprocess.run([*ALEMBIC_CMD, "upgrade", "head"], check=True, cwd=Path(__file__).resolve().parents[1], env=env)
+    subprocess.run(
+        [*ALEMBIC_CMD, "upgrade", "head"],
+        check=True,
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+    )
 
     conn = sqlite3.connect(db_path)
     try:
         tables = {
             row[0]
-            for row in conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            ).fetchall()
+            for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
     finally:
-      conn.close()
+        conn.close()
 
     assert "user" in tables
     assert "quote" in tables
@@ -62,7 +64,12 @@ def test_migrations_seed_pricing_rows(tmp_path: Path) -> None:
     db_path = tmp_path / "seeded.db"
     env = _alembic_env(db_path)
 
-    subprocess.run([*ALEMBIC_CMD, "upgrade", "head"], check=True, cwd=Path(__file__).resolve().parents[1], env=env)
+    subprocess.run(
+        [*ALEMBIC_CMD, "upgrade", "head"],
+        check=True,
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+    )
 
     conn = sqlite3.connect(db_path)
     try:
@@ -107,6 +114,7 @@ def test_pricing_admin_page_and_inline_update(tmp_path: Path) -> None:
         assert b"Admin" in page.data
         assert b"Auto-Ship Pricing Defaults" in page.data
         assert b"Product Types" in page.data
+        assert b"Product Catalog" in page.data
 
         conn = sqlite3.connect(db_path)
         try:
@@ -178,6 +186,86 @@ def test_pricing_admin_page_and_inline_update(tmp_path: Path) -> None:
         assert row is not None
         assert row[0] == "Field Service Team"
         assert int(row[1]) == 0
+
+        pricing_page = client.get("/admin/pricing?tab=pricing")
+        assert pricing_page.status_code == 200
+        assert b"Field Service Team" in pricing_page.data
+        assert b"No pricing rates yet" in pricing_page.data
+
+        added_rate = client.post(
+            "/admin/pricing/add",
+            data={
+                "product_type": "field_service",
+                "key": "site_visit",
+                "unit": "per day",
+                "price": "1250",
+            },
+        )
+        assert added_rate.status_code == 200
+        assert b"Site Visit" in added_rate.data
+        assert b"1250.00" in added_rate.data
+
+        conn = sqlite3.connect(db_path)
+        try:
+            pricing_row = conn.execute(
+                "SELECT id, key_fields, price FROM pricing_table WHERE product_type = 'field_service'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert pricing_row is not None
+        pricing_row_id = pricing_row[0]
+        assert "site_visit" in pricing_row[1]
+        assert abs(float(pricing_row[2]) - 1250) < 0.01
+
+        edited_rate = client.post(
+            f"/admin/pricing/{pricing_row_id}",
+            data={
+                "edit_key_fields": "true",
+                "key": "field_visit",
+                "unit": "per day",
+                "price": "1300",
+            },
+        )
+        assert edited_rate.status_code == 200
+        assert b"Field Visit" in edited_rate.data
+        assert b"1300.00" in edited_rate.data
+        assert client.post(f"/admin/pricing/{pricing_row_id}/delete").status_code == 200
+
+        added_catalog_item = client.post(
+            "/admin/catalog/add",
+            data={"sku": "FS-001", "description": "Field service visit", "product_family": "other"},
+        )
+        assert added_catalog_item.status_code == 200
+        assert b"FS-001" in added_catalog_item.data
+
+        conn = sqlite3.connect(db_path)
+        try:
+            catalog_row = conn.execute(
+                "SELECT id FROM product_catalog WHERE sku = 'FS-001'"
+            ).fetchone()
+        finally:
+            conn.close()
+        assert catalog_row is not None
+        catalog_item_id = catalog_row[0]
+
+        updated_catalog_item = client.post(
+            f"/admin/catalog/{catalog_item_id}/update",
+            data={
+                "sku": "FS-002",
+                "description": "Updated field service visit",
+                "product_family": "other",
+                "is_active": "on",
+            },
+        )
+        assert updated_catalog_item.status_code == 200
+        assert b"FS-002" in updated_catalog_item.data
+
+        search_before_removal = client.get("/api/product-catalog/search?q=FS-002")
+        assert search_before_removal.get_json()[0]["sku"] == "FS-002"
+        removed_catalog_item = client.post(f"/admin/catalog/{catalog_item_id}/delete")
+        assert removed_catalog_item.status_code == 200
+        assert b"Remove FS-002 from the active product catalog" not in removed_catalog_item.data
+        assert client.get("/api/product-catalog/search?q=FS-002").get_json() == []
     finally:
         Config.SQLALCHEMY_DATABASE_URI = previous_config_database_url
         if previous_database_url is None:

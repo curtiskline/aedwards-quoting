@@ -14,29 +14,22 @@ from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from functools import lru_cache
 from pathlib import Path
 
-from flask import Blueprint, Response, abort, jsonify, redirect, render_template, request, send_file
+from flask import (
+    Blueprint,
+    Response,
+    abort,
+    jsonify,
+    make_response,
+    redirect,
+    render_template,
+    request,
+    send_file,
+)
 from flask_login import login_required
 from sqlalchemy import func, inspect, or_
 from sqlalchemy.exc import IntegrityError
 
 from allenedwards.pdf_generator import generate_quote_pdf
-from .extensions import db
-from .models import (
-    AuditLog,
-    Contact,
-    Customer,
-    PricingTable,
-    ProductType,
-    ProductCatalog,
-    Quote,
-    QuoteAttachment,
-    QuoteLineItem,
-    QuoteStatus,
-    QuoteVersion,
-    ShippingConfig,
-    ShipToAddress,
-    User,
-)
 from allenedwards.pricing import (
     DEFAULT_LENGTH_SLEEVE,
     STANDARD_BUNDLE_PIECES,
@@ -50,6 +43,25 @@ from allenedwards.pricing import (
 )
 from allenedwards.pricing import Quote as PricingQuote
 from allenedwards.pricing import QuoteLineItem as PricingLineItem
+
+from .extensions import db
+from .models import (
+    AuditLog,
+    Contact,
+    Customer,
+    PricingTable,
+    ProductCatalog,
+    ProductFamily,
+    ProductType,
+    Quote,
+    QuoteAttachment,
+    QuoteLineItem,
+    QuoteStatus,
+    QuoteVersion,
+    ShippingConfig,
+    ShipToAddress,
+    User,
+)
 from .quotes import _generate_quote_number
 
 main_bp = Blueprint("main", __name__)
@@ -91,7 +103,7 @@ def _describe_key_fields(product_type: str, key_fields: dict) -> str:
         return f'{key_fields.get("min_diameter")}-{key_fields.get("max_diameter")}" diameter'
     if product_type == "bag":
         return (
-            f'{key_fields.get("part_number")} ({key_fields.get("pipe_size_min")}-'
+            f"{key_fields.get('part_number')} ({key_fields.get('pipe_size_min')}-"
             f'{key_fields.get("pipe_size_max")}" pipe, {key_fields.get("pieces_per_pallet")} pcs/pallet)'
         )
     if "key" in key_fields:
@@ -114,10 +126,13 @@ def _pricing_section_order(product_type: str) -> int:
 
 
 def _group_pricing_rows() -> list[dict]:
-    if not inspect(db.engine).has_table("pricing_table"):
-        return []
-
-    rows = db.session.query(PricingTable).order_by(PricingTable.product_type, PricingTable.id).all()
+    rows = []
+    if inspect(db.engine).has_table("pricing_table"):
+        rows = (
+            db.session.query(PricingTable)
+            .order_by(PricingTable.product_type, PricingTable.id)
+            .all()
+        )
     grouped: dict[str, list[dict]] = {}
 
     for row in rows:
@@ -130,16 +145,99 @@ def _group_pricing_rows() -> list[dict]:
             }
         )
 
+    product_type_labels = {row.name: row.display_label for row in _all_product_types()}
+    all_product_types = set(grouped) | set(product_type_labels)
     sections: list[dict] = []
-    for product_type, entries in sorted(grouped.items(), key=lambda pair: _pricing_section_order(pair[0])):
+    for product_type in sorted(all_product_types, key=_pricing_section_order):
         sections.append(
             {
                 "product_type": product_type,
-                "title": _format_product_label(product_type),
-                "entries": entries,
+                "title": product_type_labels.get(product_type, _format_product_label(product_type)),
+                "entries": grouped.get(product_type, []),
             }
         )
     return sections
+
+
+def _pricing_key_fields(product_type: str, form: dict) -> dict:
+    """Build validated, pricing-engine-compatible key fields from an admin form."""
+
+    def required_text(name: str, label: str) -> str:
+        value = (form.get(name) or "").strip()
+        if not value:
+            abort(400, description=f"{label} is required")
+        return value
+
+    def required_number(name: str, label: str, *, integer: bool = False) -> int | float:
+        raw = required_text(name, label)
+        try:
+            value = int(raw) if integer else float(raw)
+        except ValueError:
+            abort(400, description=f"{label} must be a number")
+        if value < 0:
+            abort(400, description=f"{label} cannot be negative")
+        return value
+
+    if product_type == "sleeve":
+        return {
+            "wall_thickness": required_text("wall_thickness", "Wall thickness"),
+            "grade": required_number("grade", "Grade", integer=True),
+        }
+    if product_type == "girth_weld":
+        minimum = required_number("min_diameter", "Minimum diameter")
+        maximum = required_number("max_diameter", "Maximum diameter")
+        if minimum > maximum:
+            abort(400, description="Minimum diameter cannot exceed maximum diameter")
+        return {"min_diameter": minimum, "max_diameter": maximum}
+    if product_type == "bag":
+        minimum = required_number("pipe_size_min", "Minimum pipe size")
+        maximum = required_number("pipe_size_max", "Maximum pipe size")
+        if minimum > maximum:
+            abort(400, description="Minimum pipe size cannot exceed maximum pipe size")
+        return {
+            "part_number": required_text("part_number", "Part number"),
+            "pipe_size_min": minimum,
+            "pipe_size_max": maximum,
+            "pieces_per_pallet": required_number(
+                "pieces_per_pallet", "Pieces per pallet", integer=True
+            ),
+        }
+    key_fields = {"key": required_text("key", "Rate name")}
+    unit = (form.get("unit") or "").strip()
+    if unit:
+        key_fields["unit"] = unit
+    return key_fields
+
+
+def _pricing_row_data(row: PricingTable) -> dict:
+    return {
+        "id": row.id,
+        "product_type": row.product_type,
+        "price": Decimal(str(row.price)),
+        "key_fields": dict(row.key_fields or {}),
+        "label": _describe_key_fields(row.product_type, row.key_fields or {}),
+    }
+
+
+def _parse_price(raw_value: str | None) -> Decimal:
+    try:
+        price = Decimal((raw_value or "").strip())
+    except InvalidOperation:
+        abort(400, description="Invalid price value")
+    if not price.is_finite() or price < 0:
+        abort(400, description="Price must be a non-negative number")
+    return price.quantize(Decimal("0.01"))
+
+
+def _catalog_items() -> list[ProductCatalog]:
+    return db.session.query(ProductCatalog).order_by(ProductCatalog.sku.asc()).all()
+
+
+def _product_family_choices() -> list[dict[str, str]]:
+    return [
+        {"value": family.value, "label": family.value.replace("_", " ").title()}
+        for family in ProductFamily
+    ]
 
 
 def _quantize_money(value: Decimal) -> Decimal:
@@ -328,7 +426,9 @@ def _shipping_config() -> ShippingConfig:
 
 
 def _shipping_rates(cfg: ShippingConfig) -> tuple[Decimal, dict[str, Decimal]]:
-    default_rate = _quantize_rate(_decimal_from_raw(cfg.default_rate_per_lb_mile) or Decimal("0.0006"))
+    default_rate = _quantize_rate(
+        _decimal_from_raw(cfg.default_rate_per_lb_mile) or Decimal("0.0006")
+    )
     overrides: dict[str, Decimal] = {}
     for key, value in dict(cfg.rate_overrides_json or {}).items():
         rate = _decimal_from_raw(value)
@@ -471,7 +571,10 @@ def _apply_auto_shipping_line_item(quote: Quote) -> dict | None:
         db.session.add(shipping_item)
     else:
         current_specs = dict(shipping_item.specs_json or {})
-        if current_specs.get("auto_calculated_shipping") or not (shipping_item.description or "").strip():
+        if (
+            current_specs.get("auto_calculated_shipping")
+            or not (shipping_item.description or "").strip()
+        ):
             shipping_item.description = AUTO_SHIPPING_DESCRIPTION
         shipping_item.quantity = 1
         shipping_item.unit_price = float(breakdown["total_cost"])
@@ -490,7 +593,9 @@ def _apply_auto_shipping_line_item(quote: Quote) -> dict | None:
 
 
 def _shipping_config_form_data(cfg: ShippingConfig) -> dict:
-    default_rate = _quantize_rate(_decimal_from_raw(cfg.default_rate_per_lb_mile) or Decimal("0.0006"))
+    default_rate = _quantize_rate(
+        _decimal_from_raw(cfg.default_rate_per_lb_mile) or Decimal("0.0006")
+    )
     default_length = _quantize_money(_decimal_from_raw(cfg.default_length_ft) or Decimal("10"))
     origins = _shipping_origin_zips(cfg)
     overrides = dict(cfg.rate_overrides_json or {})
@@ -590,14 +695,22 @@ def _line_item_rounding(item: QuoteLineItem, specs: dict) -> str | None:
                 check_qty = original_qty if original_qty is not None else quantity
                 rounded, pallets = pallet_round(check_qty, pcs_per_pallet)
                 if rounded != check_qty:
-                    return f"Priced as {pallets} pallet{'s' if pallets != 1 else ''} ({rounded} pcs)"
+                    return (
+                        f"Priced as {pallets} pallet{'s' if pallets != 1 else ''} ({rounded} pcs)"
+                    )
     return None
 
 
 def _line_item_spec_fields(product_type: str, specs: dict) -> list[dict]:
     if product_type == "sleeve":
         return [
-            {"key": "diameter", "label": "Diameter", "type": "number", "step": "0.125", "value": specs.get("diameter", "")},
+            {
+                "key": "diameter",
+                "label": "Diameter",
+                "type": "number",
+                "step": "0.125",
+                "value": specs.get("diameter", ""),
+            },
             {
                 "key": "wall_thickness",
                 "label": "Wall",
@@ -605,20 +718,66 @@ def _line_item_spec_fields(product_type: str, specs: dict) -> list[dict]:
                 "step": "0.0625",
                 "value": specs.get("wall_thickness", ""),
             },
-            {"key": "grade", "label": "Grade", "type": "number", "step": "1", "value": specs.get("grade", "")},
-            {"key": "length_ft", "label": "Length (ft)", "type": "number", "step": "0.5", "value": specs.get("length_ft", DEFAULT_LENGTH_SLEEVE)},
-            {"key": "milling", "label": "Milling", "type": "checkbox", "checked": bool(specs.get("milling"))},
-            {"key": "painting", "label": "Painting", "type": "checkbox", "checked": bool(specs.get("painting"))},
+            {
+                "key": "grade",
+                "label": "Grade",
+                "type": "number",
+                "step": "1",
+                "value": specs.get("grade", ""),
+            },
+            {
+                "key": "length_ft",
+                "label": "Length (ft)",
+                "type": "number",
+                "step": "0.5",
+                "value": specs.get("length_ft", DEFAULT_LENGTH_SLEEVE),
+            },
+            {
+                "key": "milling",
+                "label": "Milling",
+                "type": "checkbox",
+                "checked": bool(specs.get("milling")),
+            },
+            {
+                "key": "painting",
+                "label": "Painting",
+                "type": "checkbox",
+                "checked": bool(specs.get("painting")),
+            },
         ]
     if product_type == "bag":
         return [
-            {"key": "diameter", "label": "GTW Size", "type": "number", "step": "0.125", "value": specs.get("diameter", "")}
+            {
+                "key": "diameter",
+                "label": "GTW Size",
+                "type": "number",
+                "step": "0.125",
+                "value": specs.get("diameter", ""),
+            }
         ]
     if product_type == "girth_weld":
         return [
-            {"key": "diameter", "label": "GTW Size", "type": "number", "step": "0.125", "value": specs.get("diameter", "")},
-            {"key": "wall_thickness", "label": "Wall", "type": "number", "step": "0.0625", "value": specs.get("wall_thickness", "")},
-            {"key": "grade", "label": "Grade", "type": "number", "step": "1", "value": specs.get("grade", "")},
+            {
+                "key": "diameter",
+                "label": "GTW Size",
+                "type": "number",
+                "step": "0.125",
+                "value": specs.get("diameter", ""),
+            },
+            {
+                "key": "wall_thickness",
+                "label": "Wall",
+                "type": "number",
+                "step": "0.0625",
+                "value": specs.get("wall_thickness", ""),
+            },
+            {
+                "key": "grade",
+                "label": "Grade",
+                "type": "number",
+                "step": "1",
+                "value": specs.get("grade", ""),
+            },
         ]
     return []
 
@@ -708,14 +867,18 @@ def _quote_context(quote: Quote) -> dict:
     totals = _quote_totals(quote)
     shipping_manual_override = _is_manual_shipping_override(shipping_line)
     if shipping_manual_override:
-        shipping_mode_note = "Manual override active. Clear the field and save to return to auto shipping."
+        shipping_mode_note = (
+            "Manual override active. Clear the field and save to return to auto shipping."
+        )
     elif shipping_breakdown:
         shipping_mode_note = "Auto-calculated from shipping config. Leave it as-is to stay auto, or type a value to override."
     else:
         shipping_mode_note = "Auto shipping needs a valid ship-to ZIP and configured rate data. Type a value to set freight manually."
     return {
         "quote": quote,
-        "attachments": sorted(quote.attachments, key=lambda attachment: (attachment.created_at, attachment.id)),
+        "attachments": sorted(
+            quote.attachments, key=lambda attachment: (attachment.created_at, attachment.id)
+        ),
         "line_items": [_line_item_view(li) for li in line_items],
         "product_type_choices": _product_type_choices(),
         "totals": totals,
@@ -784,7 +947,9 @@ def _sync_customer_contact_from_quote(customer: Customer, quote: Quote) -> None:
     contact = None
     if quote.contact_email:
         normalized = quote.contact_email.strip().lower()
-        contact = next((c for c in customer.contacts if (c.email or "").strip().lower() == normalized), None)
+        contact = next(
+            (c for c in customer.contacts if (c.email or "").strip().lower() == normalized), None
+        )
     if contact is None and customer.contacts:
         contact = customer.contacts[0]
 
@@ -825,7 +990,12 @@ def _sync_customer_ship_to_from_quote(customer: Customer, quote: Quote) -> None:
         address.is_default = True
 
     if address is None:
-        if not (incoming["address_line1"] and incoming["city"] and incoming["state"] and incoming["postal_code"]):
+        if not (
+            incoming["address_line1"]
+            and incoming["city"]
+            and incoming["state"]
+            and incoming["postal_code"]
+        ):
             return
         address = ShipToAddress(
             customer_id=customer.id,
@@ -871,9 +1041,8 @@ def _render_line_items(quote: Quote):
 
 def _line_item_is_manual_no_charge(item: QuoteLineItem) -> bool:
     """Return whether an editor user deliberately made this non-shipping line free."""
-    return (
-        item.product_type not in {"note", "shipping"}
-        and bool(dict(item.specs_json or {}).get("manual_no_charge"))
+    return item.product_type not in {"note", "shipping"} and bool(
+        dict(item.specs_json or {}).get("manual_no_charge")
     )
 
 
@@ -951,7 +1120,9 @@ def quote_attachment_download(quote_id: int, attachment_id: int):
     if attachment is None or attachment.quote_id != quote.id:
         abort(404)
     if not attachment.is_stored:
-        abort(404, description="Attachment content was not stored because it exceeded the size limit.")
+        abort(
+            404, description="Attachment content was not stored because it exceeded the size limit."
+        )
     as_attachment = request.args.get("download") == "1"
     return send_file(
         io.BytesIO(attachment.content_bytes),
@@ -1059,7 +1230,10 @@ def quote_duplicate(quote_id: int):
                     quote_id=new_quote.id,
                     action="duplicated_from",
                     user_id=user.id if user else None,
-                    details={"source_quote_id": source.id, "source_quote_number": source.quote_number},
+                    details={
+                        "source_quote_id": source.id,
+                        "source_quote_number": source.quote_number,
+                    },
                 )
             )
             db.session.add(
@@ -1067,7 +1241,10 @@ def quote_duplicate(quote_id: int):
                     quote_id=source.id,
                     action="duplicated_to",
                     user_id=user.id if user else None,
-                    details={"new_quote_id": new_quote.id, "new_quote_number": new_quote.quote_number},
+                    details={
+                        "new_quote_id": new_quote.id,
+                        "new_quote_number": new_quote.quote_number,
+                    },
                 )
             )
             db.session.commit()
@@ -1080,7 +1257,9 @@ def quote_duplicate(quote_id: int):
 @main_bp.post("/quotes/<int:quote_id>/meta")
 def quote_update_meta(quote_id: int):
     quote = _get_active_quote_or_404(quote_id)
-    quote.quote_number = (request.form.get("quote_number") or quote.quote_number).strip() or quote.quote_number
+    quote.quote_number = (
+        request.form.get("quote_number") or quote.quote_number
+    ).strip() or quote.quote_number
     quote.project_name = (request.form.get("project_name") or "").strip() or None
     quote.notes_customer = (request.form.get("notes_customer") or "").strip() or None
     quote.notes_internal = (request.form.get("notes_internal") or "").strip() or None
@@ -1140,14 +1319,18 @@ def quote_update_status(quote_id: int):
 @main_bp.post("/quotes/<int:quote_id>/totals")
 def quote_update_totals(quote_id: int):
     quote = _get_active_quote_or_404(quote_id)
-    tax_amount = _quantize_money(_parse_decimal(request.form.get("tax_amount"), _tax_amount_for_quote(quote)))
+    tax_amount = _quantize_money(
+        _parse_decimal(request.form.get("tax_amount"), _tax_amount_for_quote(quote))
+    )
     quote.tax_amount = float(tax_amount)
 
     shipping_item = _shipping_line_item(quote)
     shipping_manual_override = _is_manual_shipping_override(shipping_item)
     raw_shipping_amount = request.form.get("shipping_amount")
     baseline_shipping_amount = _quantize_money(
-        _parse_decimal(request.form.get("shipping_amount_baseline"), _shipping_amount_for_quote(quote))
+        _parse_decimal(
+            request.form.get("shipping_amount_baseline"), _shipping_amount_for_quote(quote)
+        )
     )
     if raw_shipping_amount is not None and not raw_shipping_amount.strip():
         if shipping_item is None:
@@ -1212,9 +1395,9 @@ def quote_update_totals(quote_id: int):
                 )
                 db.session.add(shipping_item)
             else:
-                if not (shipping_item.description or "").strip() or dict(shipping_item.specs_json or {}).get(
-                    "auto_calculated_shipping"
-                ):
+                if not (shipping_item.description or "").strip() or dict(
+                    shipping_item.specs_json or {}
+                ).get("auto_calculated_shipping"):
                     shipping_item.description = "Manual freight / shipping"
                 shipping_item.quantity = 1
                 shipping_item.unit_price = float(shipping_amount)
@@ -1234,9 +1417,7 @@ def quote_add_line_item(quote_id: int):
     auto_shipping_trigger = request.form.get("auto_shipping_trigger") == "1"
     unit_price = _parse_decimal(request.form.get("unit_price"), Decimal("0"))
     is_manual_no_charge = (
-        not auto_shipping_trigger
-        and product_type != "shipping"
-        and unit_price <= 0
+        not auto_shipping_trigger and product_type != "shipping" and unit_price <= 0
     )
     line_item = QuoteLineItem(
         quote=quote,
@@ -1253,7 +1434,10 @@ def quote_add_line_item(quote_id: int):
         _quantize_money(Decimal(str(line_item.quantity)) * Decimal(str(line_item.unit_price)))
     )
     if line_item.product_type == "shipping":
-        line_item.specs_json = {"manual_override": not auto_shipping_trigger, "auto_calculated_shipping": False}
+        line_item.specs_json = {
+            "manual_override": not auto_shipping_trigger,
+            "auto_calculated_shipping": False,
+        }
         if auto_shipping_trigger:
             line_item.description = AUTO_SHIPPING_DESCRIPTION
             line_item.quantity = 1
@@ -1274,7 +1458,9 @@ def quote_calc_line_item_total(quote_id: int, item_id: int):
         abort(404)
 
     quantity = _parse_decimal(request.form.get("quantity"), Decimal(str(item.quantity)))
-    unit_price = _quantize_money(_parse_decimal(request.form.get("unit_price"), Decimal(str(item.unit_price))))
+    unit_price = _quantize_money(
+        _parse_decimal(request.form.get("unit_price"), Decimal(str(item.unit_price)))
+    )
 
     specs = dict(item.specs_json or {})
     requested_qty = int(math.ceil(float(quantity)))
@@ -1326,7 +1512,9 @@ def quote_update_line_item(quote_id: int, item_id: int):
     item.product_type = _resolve_product_type(request.form.get("product_type"), item.product_type)
     auto_shipping_trigger = request.form.get("auto_shipping_trigger") == "1"
     item.sku = (request.form.get("sku") or "").strip() or None
-    item.description = (request.form.get("description") or item.description).strip() or item.description
+    item.description = (
+        request.form.get("description") or item.description
+    ).strip() or item.description
     quantity = _parse_decimal(request.form.get("quantity"), Decimal(str(item.quantity)))
     raw_unit_price = request.form.get("unit_price")
     unit_price = (
@@ -1380,7 +1568,9 @@ def quote_update_line_item(quote_id: int, item_id: int):
         specs.pop("original_qty", None)
 
     item.quantity = float(rounded_qty)
-    item.line_total = float(_quantize_money(Decimal(str(rounded_qty)) * Decimal(str(item.unit_price))))
+    item.line_total = float(
+        _quantize_money(Decimal(str(rounded_qty)) * Decimal(str(item.unit_price)))
+    )
 
     if item.product_type == "sleeve":
         diameter = _parse_float(str(specs.get("diameter", "")))
@@ -1464,14 +1654,24 @@ def product_catalog_search():
     like = f"%{query.lower()}%"
     rows = (
         db.session.query(ProductCatalog)
-        .filter(or_(func.lower(ProductCatalog.sku).like(like), func.lower(ProductCatalog.description).like(like)))
+        .filter(ProductCatalog.is_active.is_(True))
+        .filter(
+            or_(
+                func.lower(ProductCatalog.sku).like(like),
+                func.lower(ProductCatalog.description).like(like),
+            )
+        )
         .order_by(ProductCatalog.sku.asc())
         .limit(10)
         .all()
     )
     return jsonify(
         [
-            {"sku": row.sku, "description": row.description, "product_family": row.product_family.value}
+            {
+                "sku": row.sku,
+                "description": row.description,
+                "product_family": row.product_family.value,
+            }
             for row in rows
         ]
     )
@@ -1479,10 +1679,16 @@ def product_catalog_search():
 
 @main_bp.get("/api/product-catalog/lookup/<string:sku>")
 def product_catalog_lookup(sku: str):
-    row = db.session.query(ProductCatalog).filter(func.lower(ProductCatalog.sku) == sku.lower()).one_or_none()
+    row = (
+        db.session.query(ProductCatalog)
+        .filter(ProductCatalog.is_active.is_(True), func.lower(ProductCatalog.sku) == sku.lower())
+        .one_or_none()
+    )
     if row is None:
         abort(404)
-    return jsonify({"sku": row.sku, "description": row.description, "product_family": row.product_family.value})
+    return jsonify(
+        {"sku": row.sku, "description": row.description, "product_family": row.product_family.value}
+    )
 
 
 @main_bp.post("/quotes/<int:quote_id>/line-items/<int:item_id>/delete")
@@ -1509,9 +1715,15 @@ def quote_move_line_item(quote_id: int, item_id: int):
     if idx is None:
         abort(404)
     if direction == "up" and idx > 0:
-        items[idx].sort_order, items[idx - 1].sort_order = items[idx - 1].sort_order, items[idx].sort_order
+        items[idx].sort_order, items[idx - 1].sort_order = (
+            items[idx - 1].sort_order,
+            items[idx].sort_order,
+        )
     elif direction == "down" and idx < len(items) - 1:
-        items[idx].sort_order, items[idx + 1].sort_order = items[idx + 1].sort_order, items[idx].sort_order
+        items[idx].sort_order, items[idx + 1].sort_order = (
+            items[idx + 1].sort_order,
+            items[idx].sort_order,
+        )
     _apply_auto_shipping_line_item(quote)
     db.session.commit()
     return _render_line_items(quote)
@@ -1522,12 +1734,14 @@ def quote_move_line_item(quote_id: int, item_id: int):
 def pricing_admin():
     sections = _group_pricing_rows()
     active_tab = (request.args.get("tab") or "shipping").strip().lower()
-    if active_tab not in {"shipping", "pricing", "types"}:
+    if active_tab not in {"shipping", "pricing", "catalog", "types"}:
         active_tab = "shipping"
     return render_template(
         "pricing_admin.html",
         sections=sections,
         shipping_config=_shipping_config_form_data(_shipping_config()),
+        catalog_items=_catalog_items(),
+        product_families=_product_family_choices(),
         active_tab=active_tab,
         **_product_types_admin_data(),
     )
@@ -1540,13 +1754,9 @@ def update_pricing_row(row_id: int):
     if row is None:
         abort(404)
 
-    raw_value = (request.form.get("price") or "").strip()
-    try:
-        price = Decimal(raw_value)
-    except InvalidOperation:
-        abort(400, description="Invalid price value")
-
-    row.price = price.quantize(Decimal("0.01"))
+    row.price = _parse_price(request.form.get("price"))
+    if request.form.get("edit_key_fields") == "true":
+        row.key_fields = _pricing_key_fields(row.product_type, request.form)
     db.session.commit()
     try:
         from allenedwards.pricing import _clear_pricing_cache
@@ -1558,12 +1768,133 @@ def update_pricing_row(row_id: int):
 
     return render_template(
         "partials/pricing_row.html",
-        row={
-            "id": row.id,
-            "price": Decimal(str(row.price)),
-            "key_fields": dict(row.key_fields or {}),
-            "label": _describe_key_fields(row.product_type, row.key_fields or {}),
-        },
+        row=_pricing_row_data(row),
+    )
+
+
+@main_bp.post("/admin/pricing/add")
+@login_required
+def add_pricing_row():
+    product_type = (request.form.get("product_type") or "").strip()
+    valid_product_types = {section["product_type"] for section in _group_pricing_rows()}
+    if product_type not in valid_product_types:
+        abort(400, description="Select a valid product type")
+
+    db.session.add(
+        PricingTable(
+            product_type=product_type,
+            key_fields=_pricing_key_fields(product_type, request.form),
+            price=_parse_price(request.form.get("price")),
+        )
+    )
+    db.session.commit()
+    try:
+        from allenedwards.pricing import _clear_pricing_cache
+
+        _clear_pricing_cache()
+    except Exception:
+        pass
+    return render_template("partials/pricing_catalog.html", sections=_group_pricing_rows())
+
+
+@main_bp.post("/admin/pricing/<int:row_id>/delete")
+@login_required
+def delete_pricing_row(row_id: int):
+    row = db.session.get(PricingTable, row_id)
+    if row is None:
+        abort(404)
+    db.session.delete(row)
+    db.session.commit()
+    try:
+        from allenedwards.pricing import _clear_pricing_cache
+
+        _clear_pricing_cache()
+    except Exception:
+        pass
+    return render_template("partials/pricing_catalog.html", sections=_group_pricing_rows())
+
+
+@main_bp.post("/admin/catalog/add")
+@login_required
+def add_catalog_item():
+    sku = (request.form.get("sku") or "").strip()
+    description = (request.form.get("description") or "").strip()
+    family_value = (request.form.get("product_family") or "").strip()
+    if not sku or not description:
+        abort(400, description="SKU and description are required")
+    try:
+        product_family = ProductFamily(family_value)
+    except ValueError:
+        abort(400, description="Select a valid product family")
+    if (
+        db.session.query(ProductCatalog)
+        .filter(func.lower(ProductCatalog.sku) == sku.lower())
+        .first()
+        is not None
+    ):
+        abort(400, description="A catalog item with this SKU already exists")
+    db.session.add(
+        ProductCatalog(
+            sku=sku, description=description, product_family=product_family, is_active=True
+        )
+    )
+    db.session.commit()
+    return render_template(
+        "partials/product_catalog_table.html",
+        catalog_items=_catalog_items(),
+        product_families=_product_family_choices(),
+        catalog_just_saved=True,
+    )
+
+
+@main_bp.post("/admin/catalog/<int:item_id>/update")
+@login_required
+def update_catalog_item(item_id: int):
+    item = db.session.get(ProductCatalog, item_id)
+    if item is None:
+        abort(404)
+    sku = (request.form.get("sku") or "").strip()
+    description = (request.form.get("description") or "").strip()
+    family_value = (request.form.get("product_family") or "").strip()
+    if not sku or not description:
+        abort(400, description="SKU and description are required")
+    try:
+        product_family = ProductFamily(family_value)
+    except ValueError:
+        abort(400, description="Select a valid product family")
+    duplicate = (
+        db.session.query(ProductCatalog)
+        .filter(func.lower(ProductCatalog.sku) == sku.lower(), ProductCatalog.id != item.id)
+        .first()
+    )
+    if duplicate is not None:
+        abort(400, description="A catalog item with this SKU already exists")
+    item.sku = sku
+    item.description = description
+    item.product_family = product_family
+    item.is_active = request.form.get("is_active") == "on"
+    db.session.commit()
+    return render_template(
+        "partials/product_catalog_table.html",
+        catalog_items=_catalog_items(),
+        product_families=_product_family_choices(),
+        catalog_just_saved=True,
+    )
+
+
+@main_bp.post("/admin/catalog/<int:item_id>/delete")
+@login_required
+def delete_catalog_item(item_id: int):
+    item = db.session.get(ProductCatalog, item_id)
+    if item is None:
+        abort(404)
+    item.is_active = False
+    db.session.commit()
+    return render_template(
+        "partials/product_catalog_table.html",
+        catalog_items=_catalog_items(),
+        product_families=_product_family_choices(),
+        catalog_just_saved=True,
     )
 
 
@@ -1621,7 +1952,15 @@ def add_product_type():
         )
     )
     db.session.commit()
-    return render_template("partials/product_types_table.html", **_product_types_admin_data(just_saved=True))
+    response = make_response(
+        render_template(
+            "partials/product_types_table.html", **_product_types_admin_data(just_saved=True)
+        )
+    )
+    if request.headers.get("HX-Request"):
+        # Refresh the pricing tab so the new type immediately has an empty rate section.
+        response.headers["HX-Refresh"] = "true"
+    return response
 
 
 @main_bp.post("/admin/product-types/<int:type_id>/update")
@@ -1637,7 +1976,9 @@ def update_product_type(type_id: int):
     row.display_label = display_label
     row.is_active = request.form.get("is_active") == "on"
     db.session.commit()
-    return render_template("partials/product_types_table.html", **_product_types_admin_data(just_saved=True))
+    return render_template(
+        "partials/product_types_table.html", **_product_types_admin_data(just_saved=True)
+    )
 
 
 @main_bp.post("/admin/product-types/<int:type_id>/move")
@@ -1653,11 +1994,19 @@ def move_product_type(type_id: int):
     if idx is None:
         abort(404)
     if direction == "up" and idx > 0:
-        rows[idx].sort_order, rows[idx - 1].sort_order = rows[idx - 1].sort_order, rows[idx].sort_order
+        rows[idx].sort_order, rows[idx - 1].sort_order = (
+            rows[idx - 1].sort_order,
+            rows[idx].sort_order,
+        )
     elif direction == "down" and idx < len(rows) - 1:
-        rows[idx].sort_order, rows[idx + 1].sort_order = rows[idx + 1].sort_order, rows[idx].sort_order
+        rows[idx].sort_order, rows[idx + 1].sort_order = (
+            rows[idx + 1].sort_order,
+            rows[idx].sort_order,
+        )
     db.session.commit()
-    return render_template("partials/product_types_table.html", **_product_types_admin_data(just_saved=True))
+    return render_template(
+        "partials/product_types_table.html", **_product_types_admin_data(just_saved=True)
+    )
 
 
 def _db_quote_to_pricing_quote(quote: Quote) -> PricingQuote:
@@ -1667,15 +2016,17 @@ def _db_quote_to_pricing_quote(quote: Quote) -> PricingQuote:
     for li in line_items:
         if li.product_type == "shipping":
             continue
-        pricing_items.append(PricingLineItem(
-            sort_order=len(pricing_items) + 1,
-            product_type=li.product_type,
-            part_number=li.part_number or "",
-            description=li.description,
-            quantity=int(math.ceil(float(li.quantity))),
-            unit_price=Decimal(str(li.unit_price)),
-            total=Decimal(str(li.line_total)),
-        ))
+        pricing_items.append(
+            PricingLineItem(
+                sort_order=len(pricing_items) + 1,
+                product_type=li.product_type,
+                part_number=li.part_number or "",
+                description=li.description,
+                quantity=int(math.ceil(float(li.quantity))),
+                unit_price=Decimal(str(li.unit_price)),
+                total=Decimal(str(li.line_total)),
+            )
+        )
     subtotal = _quantize_money(sum((item.total for item in pricing_items), Decimal("0.00")))
     shipping_value = _shipping_amount_for_quote(quote)
     shipping_total = shipping_value if shipping_value > 0 else None
@@ -1718,6 +2069,7 @@ def _generate_pdf_bytes(quote: Quote) -> tuple[bytes, str]:
         tmp_path = tmp.name
     try:
         from pathlib import Path
+
         banner_text = (
             "NEEDS PRICING — NOT FOR CUSTOMER SEND" if _quote_needs_pricing(quote) else None
         )
@@ -1805,6 +2157,7 @@ def quote_send(quote_id: int):
 
     # Send via OutlookClient
     from allenedwards.outlook import OutlookAuthError, OutlookClient
+
     sender_email = os.getenv("O365_EMAIL")
     sender_password = os.getenv("O365_PASSWORD")
     client_id = os.getenv("O365_CLIENT_ID")
@@ -1843,7 +2196,11 @@ def quote_send(quote_id: int):
         f"Thank you,\nAllan Edwards, Inc.\n(918) 583-7184\nwww.allanedwards.com"
     )
 
-    enable_drafts = os.environ.get("ENABLE_OUTLOOK_DRAFTS", "true").lower() not in ("0", "false", "no")
+    enable_drafts = os.environ.get("ENABLE_OUTLOOK_DRAFTS", "true").lower() not in (
+        "0",
+        "false",
+        "no",
+    )
 
     try:
         client.send_mail(
