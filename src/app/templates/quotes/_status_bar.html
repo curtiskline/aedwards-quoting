@@ -4,12 +4,22 @@
       NEEDS PRICING — Preview only. This quote cannot be sent to a customer.
     </div>
   {% endif %}
+  {% if quote.status.value == 'replaced' and quote.replaced_by %}
+    <div role="status" style="width:100%;margin-bottom:0.75rem;padding:0.75rem 1rem;background:#eff6ff;color:#1d4ed8;font-weight:600;">
+      This quote was replaced by <a href="/quotes/{{ quote.replaced_by.id }}">{{ quote.replaced_by.quote_number }}</a>.
+    </div>
+  {% elif quote.replaces %}
+    <div role="status" style="width:100%;margin-bottom:0.75rem;padding:0.75rem 1rem;background:#eff6ff;color:#1d4ed8;font-weight:600;">
+      Revision of <a href="/quotes/{{ quote.replaces.id }}">{{ quote.replaces.quote_number }}</a>.
+    </div>
+  {% endif %}
   <div>
     <strong>Status:</strong> {{ quote.status.value.replace('_', ' ').title() }}
     {% if review_user and quote.status.value == 'in_review' %}
       <span class="pill" style="margin-left:0.5rem;">by {{ review_user.name }}</span>
     {% endif %}
   </div>
+  {% if quote.status.value != 'replaced' %}
   <div class="quote-editor-status-actions">
     <form method="post" action="/quotes/{{ quote.id }}/status" hx-post="/quotes/{{ quote.id }}/status" hx-target="#editor-status-bar" hx-swap="outerHTML">
       <input type="hidden" name="status" value="in_review" />
@@ -35,9 +45,14 @@
             hx-get="/quotes/{{ quote.id }}/duplicate-form"
             hx-target="body"
             hx-swap="beforeend">Duplicate</button>
+    <form method="post" action="/quotes/{{ quote.id }}/revise"
+          onsubmit="return confirm('Create a revised quote? This quote will close as replaced.');">
+      <button type="submit">Revise</button>
+    </form>
     <form method="post" action="/quotes/{{ quote.id }}/delete"
           onsubmit="return confirm('Delete quote {{ quote.quote_number }}? It will be removed from the quote list.');">
       <button type="submit" class="danger">Delete</button>
     </form>
   </div>
+  {% endif %}
 </div>

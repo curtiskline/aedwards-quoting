@@ -889,6 +889,7 @@ def _quote_context(quote: Quote) -> dict:
         "shipping_amount": totals["shipping"],
         "tax_amount": totals["tax"],
         "quote_needs_pricing": _quote_needs_pricing(quote),
+        "revision_chain": _revision_chain(quote),
     }
 
 
@@ -907,6 +908,28 @@ def _render_quote_fields(quote: Quote):
 
 def _render_customer_info(quote: Quote):
     return render_template("quotes/_customer_info.html", **_quote_context(quote))
+
+
+def _revision_chain(quote: Quote) -> list[Quote]:
+    """Return every revision in this quote's single-successor chain."""
+    root = quote
+    ancestors_seen: set[int] = set()
+    while root.replaces is not None and root.id not in ancestors_seen:
+        ancestors_seen.add(root.id)
+        root = root.replaces
+
+    chain = [root]
+    chain_ids = {root.id}
+    while chain[-1].replaced_by is not None and chain[-1].replaced_by.id not in chain_ids:
+        chain.append(chain[-1].replaced_by)
+        chain_ids.add(chain[-1].id)
+    return chain
+
+
+def _revision_quote_number(source: Quote) -> str:
+    """Generate the next revision number from the root quote's number."""
+    root = _revision_chain(source)[0]
+    return f"{root.quote_number}-R{source.revision_number + 1}"
 
 
 def _default_customer_ship_to(customer: Customer) -> dict | None:
@@ -1174,6 +1197,75 @@ def _copy_line_item(item: QuoteLineItem, new_quote_id: int) -> QuoteLineItem:
         part_number=item.part_number,
         sort_order=item.sort_order,
     )
+
+
+@main_bp.post("/quotes/<int:quote_id>/revise")
+@login_required
+def quote_revise(quote_id: int):
+    """Create the next linked revision and close the quote it replaces."""
+    source = _get_active_quote_or_404(quote_id)
+    if source.status == QuoteStatus.REPLACED or source.replaced_by is not None:
+        abort(
+            409,
+            description="This quote has already been replaced. Revise its latest version instead.",
+        )
+
+    user = _current_user()
+    now = datetime.utcnow()
+    new_quote = Quote(
+        quote_number=_revision_quote_number(source),
+        status=QuoteStatus.IN_REVIEW,
+        customer_id=source.customer_id,
+        customer_name_raw=source.customer_name_raw,
+        contact_name=source.contact_name,
+        contact_email=source.contact_email,
+        contact_phone=source.contact_phone,
+        project_name=source.project_name,
+        notes_customer=source.notes_customer,
+        notes_internal=source.notes_internal,
+        po_number=source.po_number,
+        ship_to_json=(
+            copy.deepcopy(source.ship_to_json) if source.ship_to_json is not None else None
+        ),
+        tax_amount=source.tax_amount,
+        replaces_quote_id=source.id,
+        revision_number=source.revision_number + 1,
+        reviewed_by=user.id if user else None,
+        review_started_at=now if user else None,
+    )
+    db.session.add(new_quote)
+    db.session.flush()
+
+    for item in _sorted_line_items(source):
+        db.session.add(_copy_line_item(item, new_quote.id))
+
+    source.status = QuoteStatus.REPLACED
+    source.reviewed_by = None
+    source.review_started_at = None
+    db.session.add_all(
+        [
+            AuditLog(
+                quote_id=source.id,
+                action="revised_by",
+                user_id=user.id if user else None,
+                details={
+                    "replacement_quote_id": new_quote.id,
+                    "replacement_quote_number": new_quote.quote_number,
+                },
+            ),
+            AuditLog(
+                quote_id=new_quote.id,
+                action="revised_from",
+                user_id=user.id if user else None,
+                details={
+                    "replaced_quote_id": source.id,
+                    "replaced_quote_number": source.quote_number,
+                },
+            ),
+        ]
+    )
+    db.session.commit()
+    return redirect(f"/quotes/{new_quote.id}")
 
 
 @main_bp.post("/quotes/<int:quote_id>/duplicate")
