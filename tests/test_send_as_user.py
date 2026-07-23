@@ -173,6 +173,30 @@ def test_send_flag_on_uses_logged_in_users_mailbox(mock_outlook_class, tmp_path,
 
 
 @patch("allenedwards.outlook.OutlookClient")
+def test_send_flag_on_uses_session_user_not_first_database_user(
+    mock_outlook_class, tmp_path, monkeypatch
+):
+    app = _make_app(tmp_path)
+    with app.app_context():
+        db.create_all()
+        db.session.add(User(email="devin@918.software", name="Devin", password_hash="x"))
+        db.session.commit()
+    quote_id, user_id = _seed_quote(app, "chip@allanedwards.com")
+    mock_outlook_class.return_value = MagicMock()
+    _o365_env(monkeypatch, send_as_user="true")
+
+    resp = _post_send(app, quote_id, user_id)
+
+    assert resp.status_code == 200
+    assert "Quote Sent" in resp.data.decode()
+    assert mock_outlook_class.call_args.kwargs["email_address"] == "chip@allanedwards.com"
+    with app.app_context():
+        log = db.session.query(AuditLog).filter_by(quote_id=quote_id, action="sent").one()
+        assert log.user_id == user_id
+        assert log.details["from"] == "chip@allanedwards.com"
+
+
+@patch("allenedwards.outlook.OutlookClient")
 def test_send_flag_on_external_user_falls_back_to_shared_mailbox(
     mock_outlook_class, tmp_path, monkeypatch
 ):

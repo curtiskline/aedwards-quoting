@@ -25,7 +25,7 @@ from flask import (
     request,
     send_file,
 )
-from flask_login import login_required
+from flask_login import current_user, login_required
 from sqlalchemy import func, inspect, or_
 from sqlalchemy.exc import IntegrityError
 
@@ -343,6 +343,8 @@ def _get_active_quote_or_404(quote_id: int) -> Quote:
 
 
 def _current_user() -> User | None:
+    if current_user.is_authenticated:
+        return current_user
     user_id = request.headers.get("X-User-Id") or request.args.get("user_id")
     if user_id:
         user = db.session.get(User, int(user_id))
