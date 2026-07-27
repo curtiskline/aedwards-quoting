@@ -260,12 +260,58 @@ def test_pricing_admin_page_and_inline_update(tmp_path: Path) -> None:
         assert updated_catalog_item.status_code == 200
         assert b"FS-002" in updated_catalog_item.data
 
-        search_before_removal = client.get("/api/product-catalog/search?q=FS-002")
-        assert search_before_removal.get_json()[0]["sku"] == "FS-002"
+        search_before_deactivation = client.get("/api/product-catalog/search?q=FS-002")
+        assert search_before_deactivation.get_json()[0]["sku"] == "FS-002"
+        deactivated_catalog_item = client.post(
+            f"/admin/catalog/{catalog_item_id}/update",
+            data={
+                "sku": "FS-002",
+                "description": "Updated field service visit",
+                "product_family": "other",
+                "catalog_filter": "active",
+            },
+        )
+        assert deactivated_catalog_item.status_code == 200
+        assert b"FS-002 moved to Inactive" in deactivated_catalog_item.data
+        assert b"FS-002" in deactivated_catalog_item.data
+        assert client.get("/api/product-catalog/search?q=FS-002").get_json() == []
+
         removed_catalog_item = client.post(f"/admin/catalog/{catalog_item_id}/delete")
         assert removed_catalog_item.status_code == 200
         assert b"Remove FS-002 from the active product catalog" not in removed_catalog_item.data
-        assert client.get("/api/product-catalog/search?q=FS-002").get_json() == []
+
+        assert (
+            client.post(
+                "/admin/catalog/add",
+                data={"sku": "ZZ-001", "description": "Zulu active", "product_family": "other"},
+            ).status_code
+            == 200
+        )
+        assert (
+            client.post(
+                "/admin/catalog/add",
+                data={"sku": "AA-001", "description": "Alpha active", "product_family": "other"},
+            ).status_code
+            == 200
+        )
+
+        active_catalog = client.get("/admin/pricing?tab=catalog")
+        assert active_catalog.status_code == 200
+        assert b"catalog_filter=active" in active_catalog.data
+        assert b"FS-002" not in active_catalog.data
+        assert b"AA-001" in active_catalog.data
+        assert b"ZZ-001" in active_catalog.data
+
+        all_catalog = client.get("/admin/pricing?tab=catalog&catalog_filter=all")
+        assert all_catalog.status_code == 200
+        assert all_catalog.data.index(b"AA-001") < all_catalog.data.index(b"ZZ-001")
+        assert all_catalog.data.index(b"ZZ-001") < all_catalog.data.index(b"FS-002")
+
+        inactive_catalog = client.get("/admin/pricing?tab=catalog&catalog_filter=inactive")
+        assert inactive_catalog.status_code == 200
+        assert b"FS-002" in inactive_catalog.data
+        assert b"AA-001" not in inactive_catalog.data
+        assert b'id="catalog-search"' in inactive_catalog.data
     finally:
         Config.SQLALCHEMY_DATABASE_URI = previous_config_database_url
         if previous_database_url is None:
