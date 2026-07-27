@@ -2,9 +2,25 @@
   <h2>Product Catalog</h2>
   <p class="field-help">Add the products your team can select while building quotes. Removing an item makes it inactive and preserves quote history.</p>
 
+  <div class="catalog-controls">
+    <div class="catalog-filter-pills" aria-label="Catalog status filter">
+      {% for value, label in [('all', 'All'), ('active', 'Active'), ('inactive', 'Inactive')] %}
+        <a href="/admin/pricing?tab=catalog&amp;catalog_filter={{ value }}" class="catalog-filter-pill {% if catalog_filter == value %}active{% endif %}">{{ label }}</a>
+      {% endfor %}
+    </div>
+    <label class="catalog-search-label">Search catalog
+      <input id="catalog-search" type="search" placeholder="SKU or description" autocomplete="off" />
+    </label>
+  </div>
+
+  {% if catalog_transition_note %}
+    <p class="catalog-transition-note" role="status">{{ catalog_transition_note }}</p>
+  {% endif %}
+
   <details class="catalog-add-form" {% if not catalog_items %}open{% endif %}>
     <summary>Add product</summary>
     <form method="post" action="/admin/catalog/add" hx-post="/admin/catalog/add" hx-target="#product-catalog-card" hx-swap="outerHTML" class="catalog-form">
+      <input type="hidden" name="catalog_filter" value="{{ catalog_filter }}" />
       <label>SKU
         <input name="sku" maxlength="255" required />
       </label>
@@ -39,9 +55,10 @@
         </thead>
         <tbody>
           {% for item in catalog_items %}
-            <tr id="catalog-item-{{ item.id }}" class="{% if not item.is_active %}catalog-inactive{% endif %}">
+            <tr id="catalog-item-{{ item.id }}" class="{% if not item.is_active %}catalog-inactive{% endif %}" data-catalog-search="{{ item.sku|lower }} {{ item.description|lower }}">
               <td colspan="5">
                 <form method="post" action="/admin/catalog/{{ item.id }}/update" hx-post="/admin/catalog/{{ item.id }}/update" hx-target="#product-catalog-card" hx-swap="outerHTML" class="catalog-form catalog-form-row">
+                  <input type="hidden" name="catalog_filter" value="{{ catalog_filter }}" />
                   <input name="sku" value="{{ item.sku }}" aria-label="SKU" maxlength="255" required />
                   <input name="description" value="{{ item.description }}" aria-label="Description" maxlength="1000" required />
                   <select name="product_family" aria-label="Product family" required>
@@ -54,6 +71,7 @@
                 </form>
                 {% if item.is_active %}
                   <form method="post" action="/admin/catalog/{{ item.id }}/delete" hx-post="/admin/catalog/{{ item.id }}/delete" hx-target="#product-catalog-card" hx-swap="outerHTML" class="catalog-remove-form" onsubmit="return confirm('Remove {{ item.sku }} from the active product catalog? Existing quotes will not change.');">
+                    <input type="hidden" name="catalog_filter" value="{{ catalog_filter }}" />
                     <button type="submit" class="delete-btn">Remove</button>
                   </form>
                 {% endif %}
@@ -69,6 +87,13 @@
 <style>
   .catalog-add-form { margin-bottom: 1rem; }
   .catalog-add-form summary { cursor: pointer; font-weight: 600; }
+  .catalog-controls { display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: end; margin: 1rem 0; }
+  .catalog-filter-pills { display: flex; gap: 0.35rem; }
+  .catalog-filter-pill { border: 1px solid #cbd5e1; border-radius: 999px; color: inherit; padding: 0.3rem 0.7rem; text-decoration: none; }
+  .catalog-filter-pill.active { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
+  .catalog-search-label { display: grid; gap: 0.25rem; font-size: 0.9rem; }
+  .catalog-search-label input { min-height: 2.2rem; padding: 0.35rem 0.45rem; border: 1px solid #cbd5e1; border-radius: 6px; }
+  .catalog-transition-note { background: #eff6ff; border-left: 4px solid #2563eb; margin: 0.75rem 0; padding: 0.6rem 0.75rem; }
   .catalog-form { display: flex; flex-wrap: wrap; align-items: end; gap: 0.6rem; margin: 0.7rem 0; }
   .catalog-form label { display: grid; gap: 0.25rem; }
   .catalog-form input, .catalog-form select { min-height: 2.2rem; padding: 0.35rem 0.45rem; border: 1px solid #cbd5e1; border-radius: 6px; }
@@ -80,3 +105,16 @@
   .catalog-scroll { overflow-x: auto; }
   @media (max-width: 640px) { .catalog-form-row { min-width: 650px; } }
 </style>
+<script>
+  (function() {
+    const search = document.getElementById("catalog-search");
+    if (!search) return;
+    const rows = document.querySelectorAll("#product-catalog-card [data-catalog-search]");
+    search.addEventListener("input", () => {
+      const query = search.value.trim().toLowerCase();
+      rows.forEach((row) => {
+        row.hidden = Boolean(query) && !row.dataset.catalogSearch.includes(query);
+      });
+    });
+  })();
+</script>

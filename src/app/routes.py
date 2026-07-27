@@ -229,8 +229,36 @@ def _parse_price(raw_value: str | None) -> Decimal:
     return price.quantize(Decimal("0.01"))
 
 
-def _catalog_items() -> list[ProductCatalog]:
-    return db.session.query(ProductCatalog).order_by(ProductCatalog.sku.asc()).all()
+CATALOG_FILTERS = {"all", "active", "inactive"}
+
+
+def _catalog_filter(value: str | None = None) -> str:
+    catalog_filter = (
+        (value if value is not None else request.args.get("catalog_filter") or "active")
+        .strip()
+        .lower()
+    )
+    return catalog_filter if catalog_filter in CATALOG_FILTERS else "active"
+
+
+def _catalog_items(
+    catalog_filter: str = "active", *, include_item_id: int | None = None
+) -> list[ProductCatalog]:
+    query = db.session.query(ProductCatalog)
+    if catalog_filter == "active":
+        condition = ProductCatalog.is_active.is_(True)
+        query = query.filter(
+            or_(condition, ProductCatalog.id == include_item_id) if include_item_id else condition
+        )
+    elif catalog_filter == "inactive":
+        condition = ProductCatalog.is_active.is_(False)
+        query = query.filter(
+            or_(condition, ProductCatalog.id == include_item_id) if include_item_id else condition
+        )
+
+    if catalog_filter == "all":
+        return query.order_by(ProductCatalog.is_active.desc(), ProductCatalog.sku.asc()).all()
+    return query.order_by(ProductCatalog.sku.asc()).all()
 
 
 def _product_family_choices() -> list[dict[str, str]]:
@@ -1830,11 +1858,13 @@ def pricing_admin():
     active_tab = (request.args.get("tab") or "shipping").strip().lower()
     if active_tab not in {"shipping", "pricing", "catalog", "types"}:
         active_tab = "shipping"
+    catalog_filter = _catalog_filter()
     return render_template(
         "pricing_admin.html",
         sections=sections,
         shipping_config=_shipping_config_form_data(_shipping_config()),
-        catalog_items=_catalog_items(),
+        catalog_items=_catalog_items(catalog_filter),
+        catalog_filter=catalog_filter,
         product_families=_product_family_choices(),
         active_tab=active_tab,
         **_product_types_admin_data(),
@@ -1935,7 +1965,8 @@ def add_catalog_item():
     db.session.commit()
     return render_template(
         "partials/product_catalog_table.html",
-        catalog_items=_catalog_items(),
+        catalog_items=_catalog_items("active"),
+        catalog_filter="active",
         product_families=_product_family_choices(),
         catalog_just_saved=True,
     )
@@ -1966,13 +1997,25 @@ def update_catalog_item(item_id: int):
     item.sku = sku
     item.description = description
     item.product_family = product_family
+    catalog_filter = _catalog_filter(request.form.get("catalog_filter"))
+    was_active = item.is_active
     item.is_active = request.form.get("is_active") == "on"
     db.session.commit()
+    transition_note = None
+    if was_active != item.is_active and catalog_filter != "all":
+        destination = "Active" if item.is_active else "Inactive"
+        transition_note = (
+            f"{item.sku} moved to {destination}; it will leave this view after the next reload."
+        )
     return render_template(
         "partials/product_catalog_table.html",
-        catalog_items=_catalog_items(),
+        catalog_items=_catalog_items(
+            catalog_filter, include_item_id=item.id if transition_note else None
+        ),
+        catalog_filter=catalog_filter,
         product_families=_product_family_choices(),
         catalog_just_saved=True,
+        catalog_transition_note=transition_note,
     )
 
 
@@ -1982,13 +2025,22 @@ def delete_catalog_item(item_id: int):
     item = db.session.get(ProductCatalog, item_id)
     if item is None:
         abort(404)
+    catalog_filter = _catalog_filter(request.form.get("catalog_filter"))
     item.is_active = False
     db.session.commit()
     return render_template(
         "partials/product_catalog_table.html",
-        catalog_items=_catalog_items(),
+        catalog_items=_catalog_items(
+            catalog_filter, include_item_id=item.id if catalog_filter == "active" else None
+        ),
+        catalog_filter=catalog_filter,
         product_families=_product_family_choices(),
         catalog_just_saved=True,
+        catalog_transition_note=(
+            f"{item.sku} moved to Inactive; it will leave this view after the next reload."
+            if catalog_filter == "active"
+            else None
+        ),
     )
 
 
