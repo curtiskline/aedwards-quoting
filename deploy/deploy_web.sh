@@ -175,6 +175,9 @@ if ! id "${APP_USER}" >/dev/null 2>&1; then
   sudo useradd --system --create-home --home-dir "${APP_DIR}" --shell /bin/bash "${APP_USER}"
 fi
 
+# Wipe the old source tree first: extracting over it leaves stale build/ and
+# egg-info artifacts that poison the wheel build with old module versions.
+sudo rm -rf "${APP_DIR}/src"
 sudo mkdir -p "${APP_DIR}/src" "${APP_DIR}/instance"
 sudo tar -xzf /tmp/aedwards-src.tgz -C "${APP_DIR}/src"
 sudo chown -R "${APP_USER}:${APP_USER}" "${APP_DIR}"
@@ -189,7 +192,7 @@ if [[ ! -x "${APP_DIR}/venv/bin/python" ]]; then
 fi
 
 sudo -u "${APP_USER}" "${APP_DIR}/venv/bin/pip" install --upgrade pip setuptools wheel
-sudo -u "${APP_USER}" "${APP_DIR}/venv/bin/pip" install --upgrade "${APP_DIR}/src"
+sudo -u "${APP_USER}" "${APP_DIR}/venv/bin/pip" install --upgrade --no-cache-dir "${APP_DIR}/src"
 
 if [[ -f "${APP_DIR}/.env" ]]; then
   sudo cp "${APP_DIR}/.env" /tmp/aedwards-existing.env
