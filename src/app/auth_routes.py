@@ -5,14 +5,23 @@ from __future__ import annotations
 import secrets
 from datetime import datetime, timedelta
 
-from flask import Blueprint, current_app, flash, jsonify, redirect, render_template, request, session, url_for
-from flask_login import login_required, login_user, logout_user
+from flask import (
+    Blueprint,
+    current_app,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
+from flask_login import current_user, login_required, login_user, logout_user
 from sqlalchemy.exc import SQLAlchemyError
 
 from .email_service import EmailDeliveryError, send_magic_link_email
 from .extensions import db
 from .models import AuthToken, User
-
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 
@@ -169,6 +178,29 @@ def password_login():
     login_user(user, remember=remember_me, duration=remember_duration)
     flash("Signed in successfully.", "success")
     return redirect(url_for("main.dashboard"))
+
+
+@auth_bp.route("/set-password", methods=["GET", "POST"])
+@login_required
+def set_password() -> str:
+    if request.method == "POST":
+        password = request.form.get("password", "")
+        password_confirmation = request.form.get("password_confirmation", "")
+
+        if len(password) < 8:
+            flash("Password must be at least 8 characters.", "error")
+            return render_template("auth/set_password.html"), 400
+
+        if password != password_confirmation:
+            flash("Passwords do not match.", "error")
+            return render_template("auth/set_password.html"), 400
+
+        current_user.set_password(password)
+        db.session.commit()
+        flash("Password set. You can now sign in with your email and password.", "success")
+        return redirect(url_for("main.dashboard"))
+
+    return render_template("auth/set_password.html")
 
 
 @auth_bp.post("/logout")

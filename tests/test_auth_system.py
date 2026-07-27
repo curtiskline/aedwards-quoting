@@ -82,6 +82,76 @@ def test_password_login_required_dashboard(client, app) -> None:
     assert b"Dashboard" in signed_in.data
 
 
+def test_authenticated_user_can_set_password_and_use_it_to_sign_in(client, app) -> None:
+    with app.app_context():
+        user = _create_user(password="temporary-password")
+        user_id = user.id
+
+    client.post(
+        "/auth/password",
+        data={"email": "owner@example.com", "password": "temporary-password"},
+        follow_redirects=True,
+    )
+
+    set_password = client.post(
+        "/auth/set-password",
+        data={"password": "new-password", "password_confirmation": "new-password"},
+        follow_redirects=True,
+    )
+    assert set_password.status_code == 200
+    assert b"Password set" in set_password.data
+    assert b"Set password" in set_password.data
+
+    with app.app_context():
+        user = db.session.get(User, user_id)
+        assert user is not None
+        assert user.check_password("new-password")
+        assert not user.check_password("temporary-password")
+
+    client.post("/auth/logout", follow_redirects=True)
+    signed_in = client.post(
+        "/auth/password",
+        data={"email": "owner@example.com", "password": "new-password"},
+        follow_redirects=True,
+    )
+    assert signed_in.status_code == 200
+    assert b"Dashboard" in signed_in.data
+
+
+@pytest.mark.parametrize(
+    ("password", "password_confirmation", "message"),
+    [
+        ("short", "short", b"Password must be at least 8 characters"),
+        ("valid-password", "different-password", b"Passwords do not match"),
+    ],
+)
+def test_set_password_rejects_invalid_values(client, app, password, password_confirmation, message) -> None:
+    with app.app_context():
+        _create_user()
+
+    client.post(
+        "/auth/password",
+        data={"email": "owner@example.com", "password": "secret123"},
+        follow_redirects=True,
+    )
+
+    response = client.post(
+        "/auth/set-password",
+        data={"password": password, "password_confirmation": password_confirmation},
+    )
+    assert response.status_code == 400
+    assert message in response.data
+
+
+def test_set_password_requires_authentication(client, app) -> None:
+    with app.app_context():
+        _create_user()
+
+    response = client.get("/auth/set-password", follow_redirects=False)
+    assert response.status_code == 302
+    assert "/auth/login" in response.headers["Location"]
+
+
 def test_magic_link_login(client, app, monkeypatch) -> None:
     """Magic link: request -> waiting page -> consume link -> dashboard."""
     delivered: dict[str, str] = {}
