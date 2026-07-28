@@ -25,6 +25,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_GRADE = 50
 DEFAULT_LENGTH_SLEEVE = 10.0
 DEFAULT_LENGTH_GIRTH_WELD = 6.0
+DEFAULT_WALL_THICKNESS = 0.375
 
 # Price per pound lookup table
 # wall_thickness -> (GR50 price, GR65 price)
@@ -850,6 +851,7 @@ def _apply_item_defaults(item: ParsedItem) -> tuple[ParsedItem, list[str]]:
     notes: list[str] = []
     grade = item.grade
     length_ft = item.length_ft
+    wall_thickness = item.wall_thickness
 
     if grade is None:
         grade = DEFAULT_GRADE
@@ -858,6 +860,14 @@ def _apply_item_defaults(item: ParsedItem) -> tuple[ParsedItem, list[str]]:
             "Item '%s' missing grade — defaulting to GR%d",
             item.description or item.product_type,
             DEFAULT_GRADE,
+        )
+
+    if wall_thickness is None and item.product_type in ("sleeve", "oversleeve"):
+        wall_thickness = DEFAULT_WALL_THICKNESS
+        notes.append('wall thickness defaulted to 3/8"')
+        logger.warning(
+            "Item '%s' missing wall_thickness — defaulting to 3/8\"",
+            item.description or item.product_type,
         )
 
     if length_ft is None:
@@ -875,7 +885,7 @@ def _apply_item_defaults(item: ParsedItem) -> tuple[ParsedItem, list[str]]:
     if notes:
         # Return a copy with defaults applied
         from dataclasses import replace
-        item = replace(item, grade=grade, length_ft=length_ft)
+        item = replace(item, grade=grade, length_ft=length_ft, wall_thickness=wall_thickness)
 
     return item, notes
 
@@ -992,9 +1002,9 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
     """Core pricing logic for a single parsed item."""
 
     if item.product_type == "sleeve":
-        if not all([item.diameter, item.wall_thickness]):
+        if not item.diameter:
             logger.warning(
-                "Dropping sleeve item — missing diameter or wall_thickness: %s",
+                "Dropping sleeve item — missing diameter: %s",
                 item.description,
             )
             return None
@@ -1100,9 +1110,9 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
             )
 
     if item.product_type == "oversleeve":
-        if not all([item.diameter, item.wall_thickness]):
+        if not item.diameter:
             logger.warning(
-                "Dropping oversleeve item — missing diameter or wall_thickness: %s",
+                "Dropping oversleeve item — missing diameter: %s",
                 item.description,
             )
             return None
@@ -1162,7 +1172,7 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
         item, default_notes = _apply_item_defaults(item)
         actual_od = normalize_nominal_od(item.diameter)
         # Default wall_thickness for part number/description if not provided
-        wall_thickness = item.wall_thickness or 0.375
+        wall_thickness = item.wall_thickness or DEFAULT_WALL_THICKNESS
         if item.wall_thickness is None:
             default_notes.append("wall thickness defaulted to 3/8\" for part number")
 
