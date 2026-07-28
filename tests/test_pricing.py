@@ -366,6 +366,91 @@ def test_price_item_defaults_sleeve_length_to_10ft():
     assert "length defaulted to 10.0ft" in result.notes
 
 
+def test_price_item_defaults_sleeve_wall_thickness_to_3_8():
+    """Sleeve with only a diameter prices with 3/8" GR50 10ft defaults (Chip-approved)."""
+    item = ParsedItem(
+        product_type="sleeve",
+        quantity=1,
+        description="12inch sleeve material",
+        diameter=12.75,
+        wall_thickness=None,
+        grade=None,
+        length_ft=None,
+    )
+
+    result = price_item(item, sort_order=1)
+
+    assert result is not None
+    assert result.part_number == "S-12.34-38-50-10"
+    assert result.unit_price > 0
+    assert 'wall thickness defaulted to 3/8"' in result.notes
+    assert "grade defaulted to GR50" in result.notes
+    assert "length defaulted to 10.0ft" in result.notes
+
+
+def test_price_item_sleeve_missing_diameter_is_tbd():
+    """Sleeve with no diameter still cannot be priced — persists as TBD."""
+    item = ParsedItem(
+        product_type="sleeve",
+        quantity=1,
+        description="sleeve material",
+        diameter=None,
+        wall_thickness=None,
+    )
+
+    result = price_item(item, sort_order=1)
+
+    assert result is not None
+    assert result.part_number == "TBD"
+    assert result.unit_price == Decimal("0.00")
+    assert "Pricing TBD" in (result.notes or "")
+
+
+def test_price_item_defaults_oversleeve_wall_thickness_to_3_8():
+    """Oversleeve missing wall thickness also gets the 3/8" default."""
+    item = ParsedItem(
+        product_type="oversleeve",
+        quantity=1,
+        description="12-3/4 oversleeve",
+        diameter=12.75,
+        wall_thickness=None,
+        grade=50,
+        length_ft=10,
+    )
+
+    result = price_item(item, sort_order=1)
+
+    assert result is not None
+    assert result.part_number != "TBD"
+    assert result.unit_price > 0
+    assert 'wall thickness defaulted to 3/8"' in result.notes
+
+
+def test_price_item_sleeve_footage_with_no_spec_prices_with_defaults():
+    """Buckeye-style ask: '100ft of 12inch sleeve material' with no wall/grade/length.
+
+    Footage normalization converts 100 ft into 10 pcs of 10 ft, and the missing
+    spec fields fall back to 3/8" GR50 defaults instead of dropping the line.
+    """
+    item = ParsedItem(
+        product_type="sleeve",
+        quantity=100,
+        description="100ft of 12inch sleeve material",
+        diameter=12.75,
+        wall_thickness=None,
+        grade=None,
+        length_ft=None,
+    )
+
+    result = price_item(item, sort_order=1)
+
+    assert result is not None
+    assert result.part_number == "S-12.34-38-50-10"
+    assert result.quantity == 10
+    assert result.unit_price > 0
+    assert 'wall thickness defaulted to 3/8"' in result.notes
+
+
 def test_price_item_bag():
     """Test bag pricing by diameter range with pallet rounding."""
     # 36" pipe -> GTW 30-36 range, $155.00/bag, 30 pcs/pallet
