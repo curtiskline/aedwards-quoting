@@ -557,3 +557,49 @@ def test_extract_email_domain():
     assert _extract_email_domain("BOB@ACME.COM") == "acme.com"
     assert _extract_email_domain("") is None
     assert _extract_email_domain("nope") is None
+
+
+def test_ship_to_json_is_written_in_the_canonical_shape(app, msg, rfq, priced_quote):
+    """The RFQ path used to store `street`, which the web editor could not read."""
+    rfq.ship_to = ShipTo(
+        company="Buckeye Huntington",
+        attention="Site Manager",
+        street="1234 Pipeline Rd",
+        city="Huntington",
+        state="IN",
+        postal_code="46750",
+    )
+    quote = write_quote_to_db(msg, rfq, priced_quote, "126-401")
+
+    assert quote.ship_to_json["address_line1"] == "1234 Pipeline Rd"
+    assert quote.ship_to_json["company"] == "Buckeye Huntington"
+    assert quote.ship_to_json["attention"] == "Site Manager"
+    assert "street" not in quote.ship_to_json
+
+
+def test_bill_to_is_preserved_in_internal_notes_not_in_ship_to(app, msg, rfq, priced_quote):
+    """Chip's rule: the signature address is a bill-to. It stays off ship_to (and so
+    off freight) but is not discarded — it is the customer's real mailing address."""
+    rfq.ship_to = None
+    rfq.bill_to = ShipTo(
+        company="Azimuth Energy",
+        street="No 47-2, Level 2, Jalan Neutron U16/Q, Denai Alam",
+        city="Shah Alam",
+        state="Selangor",
+        postal_code="40160",
+        country="Malaysia",
+    )
+    quote = write_quote_to_db(msg, rfq, priced_quote, "126-402")
+
+    assert quote.ship_to_json is None
+    assert "Bill-to (from email signature):" in quote.notes_internal
+    assert "Azimuth Energy" in quote.notes_internal
+    assert "Shah Alam, Selangor, 40160" in quote.notes_internal
+    # The parsed RFQ notes are kept alongside it, not replaced.
+    assert "Rush order" in quote.notes_internal
+
+
+def test_no_bill_to_leaves_notes_internal_untouched(app, msg, rfq, priced_quote):
+    rfq.bill_to = None
+    quote = write_quote_to_db(msg, rfq, priced_quote, "126-403")
+    assert quote.notes_internal == "Rush order"

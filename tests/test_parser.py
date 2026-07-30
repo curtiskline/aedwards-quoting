@@ -494,7 +494,8 @@ def test_parse_rfq_multi_returns_multiple_quotes():
         "Subject: Multiple quote requests\n"
         "Content-Type: text/plain; charset=utf-8\n"
         "\n"
-        "Please quote for 4 separate project lines."
+        "Please quote for 4 separate project lines.\n"
+        "Ship to: the terminal addresses listed against each line."
     )
     with tempfile.NamedTemporaryFile(suffix=".eml", mode="w", delete=False) as f:
         f.write(email_content)
@@ -544,7 +545,8 @@ def test_parse_rfq_multi_handles_single_quote():
         "Subject: Single quote request\n"
         "Content-Type: text/plain; charset=utf-8\n"
         "\n"
-        "Please quote 10 sleeves."
+        "Please quote 10 sleeves.\n"
+        "Ship to: ACME Warehouse, Dallas TX."
     )
     with tempfile.NamedTemporaryFile(suffix=".eml", mode="w", delete=False) as f:
         f.write(email_content)
@@ -596,7 +598,8 @@ def test_parse_rfq_returns_first_quote_from_multi():
         "Subject: Multiple quote requests\n"
         "Content-Type: text/plain; charset=utf-8\n"
         "\n"
-        "Please quote for 4 separate project lines."
+        "Please quote for 4 separate project lines.\n"
+        "Ship to: the terminal addresses listed against each line."
     )
     with tempfile.NamedTemporaryFile(suffix=".eml", mode="w", delete=False) as f:
         f.write(email_content)
@@ -855,61 +858,239 @@ def test_parse_rfq_no_quote_number():
             eml_path.unlink()
 
 
-def test_parse_rfq_uses_contact_info_for_ship_to_fallback():
-    """When no explicit ship-to is provided, LLM should use contact's company/location."""
+SLEEVE_ITEM = {
+    "product_type": "sleeve",
+    "quantity": 10,
+    "diameter": "20",
+    "wall_thickness": "0.375",
+    "grade": "50",
+    "length_ft": 10,
+}
+
+
+def _parse_body(body: str, response: dict, from_header: str = "buyer@bp.com"):
+    """Parse an email whose body is `body` against a canned LLM response."""
     email_content = (
-        "From: Veronica Pisani <veronica.pisani@bp.com>\n"
-        "Subject: BP Pipeline 20\" Sleeve Order\n"
+        f"From: {from_header}\n"
+        "Subject: Sleeve RFQ\n"
         "Content-Type: text/plain; charset=utf-8\n"
         "\n"
-        "Please quote sleeves.\n"
-        "\n"
-        "Veronica Pisani\n"
-        "BP Terminals & Pipelines\n"
-        "Chicago, IL\n"
+        f"{body}\n"
     )
     with tempfile.NamedTemporaryFile(suffix=".eml", mode="w", delete=False) as f:
         f.write(email_content)
         eml_path = Path(f.name)
-
     try:
-        # Simulate LLM using contact info as ship-to fallback
-        provider = MockProvider(
-            {
-                "customer_name": "BP",
-                "contact_name": "Veronica Pisani",
-                "contact_email": "veronica.pisani@bp.com",
-                "quotes": [
-                    {
-                        "ship_to": {
-                            "company": "BP Terminals & Pipelines",
-                            "city": "Chicago",
-                            "state": "IL",
-                        },
-                        "items": [
-                            {
-                                "product_type": "sleeve",
-                                "quantity": 10,
-                                "diameter": "20",
-                                "wall_thickness": "0.375",
-                                "grade": "50",
-                                "length_ft": 10,
-                            }
-                        ],
-                    }
-                ],
-                "confidence": 0.9,
-            }
-        )
-        rfq = parse_rfq(eml_path, provider)
-        # Verify ship_to was populated from contact info
-        assert rfq.ship_to is not None
-        assert rfq.ship_to.company == "BP Terminals & Pipelines"
-        assert rfq.ship_to.city == "Chicago"
-        assert rfq.ship_to.state == "IL"
+        return parse_rfq(eml_path, MockProvider(response))
     finally:
         if eml_path.exists():
             eml_path.unlink()
+
+
+def test_signature_address_does_not_populate_ship_to():
+    """Chip: an address from the sender's signature is a bill-to, never a ship-to.
+
+    The RFQ names no destination, so even when the LLM helpfully returns the
+    signature address the quote must come back with no ship-to at all.
+    """
+    rfq = _parse_body(
+        "Please quote sleeves.\n"
+        "\n"
+        "Veronica Pisani\n"
+        "BP Terminals & Pipelines\n"
+        "Chicago, IL\n",
+        {
+            "customer_name": "BP",
+            "contact_name": "Veronica Pisani",
+            "contact_email": "veronica.pisani@bp.com",
+            "quotes": [
+                {
+                    "ship_to": {
+                        "company": "BP Terminals & Pipelines",
+                        "city": "Chicago",
+                        "state": "IL",
+                    },
+                    "items": [SLEEVE_ITEM],
+                }
+            ],
+            "confidence": 0.9,
+        },
+    )
+    assert rfq.ship_to is None
+    # Contact details are still extracted — only the address is withheld.
+    assert rfq.contact_name == "Veronica Pisani"
+    assert rfq.items
+
+
+def test_signature_address_is_preserved_as_bill_to():
+    """The signature address is kept off pricing but not thrown away."""
+    rfq = _parse_body(
+        "Please quote sleeves.\n\nVeronica Pisani\nBP Terminals & Pipelines\nChicago, IL\n",
+        {
+            "customer_name": "BP",
+            "bill_to": {
+                "company": "BP Terminals & Pipelines",
+                "city": "Chicago",
+                "state": "IL",
+                "postal_code": "60601",
+            },
+            "quotes": [{"ship_to": None, "items": [SLEEVE_ITEM]}],
+        },
+    )
+    assert rfq.ship_to is None
+    assert rfq.bill_to is not None
+    assert rfq.bill_to.company == "BP Terminals & Pipelines"
+    assert rfq.bill_to.city == "Chicago"
+
+
+def test_llm_labelled_signature_source_is_rejected_despite_shipping_wording():
+    """ship_to_source can veto but never authorize."""
+    rfq = _parse_body(
+        "Please quote sleeves. Ship to be arranged later.\n\nVeronica Pisani\nChicago, IL\n",
+        {
+            "customer_name": "BP",
+            "quotes": [
+                {
+                    "ship_to": {"company": "BP Terminals", "city": "Chicago", "state": "IL"},
+                    "ship_to_source": "signature",
+                    "items": [SLEEVE_ITEM],
+                }
+            ],
+        },
+    )
+    assert rfq.ship_to is None
+
+
+def test_explicit_ship_to_still_populates():
+    rfq = _parse_body(
+        "Please quote sleeves.\n"
+        "Ship to: Buckeye Huntington, 1234 Pipeline Rd, Huntington, IN 46750\n",
+        {
+            "customer_name": "Buckeye Partners",
+            "quotes": [
+                {
+                    "ship_to": {
+                        "company": "Buckeye Huntington",
+                        "street": "1234 Pipeline Rd",
+                        "city": "Huntington",
+                        "state": "IN",
+                        "postal_code": "46750",
+                    },
+                    "ship_to_source": "explicit",
+                    "items": [SLEEVE_ITEM],
+                }
+            ],
+        },
+    )
+    assert rfq.ship_to is not None
+    assert rfq.ship_to.company == "Buckeye Huntington"
+    assert rfq.ship_to.street == "1234 Pipeline Rd"
+    assert rfq.ship_to.postal_code == "46750"
+
+
+@pytest.mark.parametrize(
+    "designation",
+    [
+        "Ship To: 500 Yard Rd, Ardmore, OK 73401",
+        "Ship-to 500 Yard Rd, Ardmore, OK 73401",
+        "Please deliver to 500 Yard Rd, Ardmore, OK 73401",
+        "Delivery address: 500 Yard Rd, Ardmore, OK 73401",
+        "Destination is our Ardmore yard, 500 Yard Rd, OK 73401",
+        "Jobsite: 500 Yard Rd, Ardmore, OK 73401",
+    ],
+)
+def test_destination_wording_variants_designate_a_ship_to(designation):
+    rfq = _parse_body(
+        f"Please quote sleeves.\n{designation}\n",
+        {
+            "quotes": [
+                {
+                    "ship_to": {"street": "500 Yard Rd", "city": "Ardmore", "state": "OK"},
+                    "items": [SLEEVE_ITEM],
+                }
+            ]
+        },
+    )
+    assert rfq.ship_to is not None, f"{designation!r} should designate a ship-to"
+    assert rfq.ship_to.city == "Ardmore"
+
+
+def test_ex_works_rfq_with_signature_address_produces_no_ship_to():
+    """Regression for prod quote 126-086 (Azimuth Energy).
+
+    The RFQ asked for EX-Works pricing and gave no destination. The requester's own
+    Malaysian office address was harvested out of the signature block and stored as
+    the ship-to.
+    """
+    rfq = _parse_body(
+        "Kindly quote the following on EX-Works basis.\n"
+        "\n"
+        "Central Office\n"
+        "No 47-2, Level 2, Jalan Neutron U16/Q, Denai Alam\n"
+        "40160 Shah Alam, Selangor, Malaysia\n",
+        {
+            "customer_name": "Azimuth Energy",
+            "quotes": [
+                {
+                    "ship_to": {
+                        "street": "No 47-2, Level 2, Jalan Neutron U16/Q, Denai Alam",
+                        "city": "Shah Alam",
+                        "state": "Selangor",
+                        "postal_code": "40160",
+                        "country": "Malaysia",
+                    },
+                    "items": [SLEEVE_ITEM],
+                }
+            ],
+        },
+    )
+    assert rfq.ship_to is None
+
+
+def test_freight_term_is_scrubbed_from_address_fields():
+    """"FOB Tulsa" is a freight term, not an address line (prod quote 126-086)."""
+    rfq = _parse_body(
+        "Please quote sleeves. Ship to: our Tulsa yard, 100 Depot St, Tulsa, OK 74103. FOB Tulsa.\n",
+        {
+            "quotes": [
+                {
+                    "ship_to": {
+                        "attention": "FOB Tulsa",
+                        "street": "100 Depot St",
+                        "city": "Tulsa",
+                        "state": "OK",
+                        "postal_code": "74103",
+                    },
+                    "items": [SLEEVE_ITEM],
+                }
+            ]
+        },
+    )
+    assert rfq.ship_to is not None
+    assert rfq.ship_to.attention is None
+    assert rfq.ship_to.street == "100 Depot St"
+
+
+def test_ship_to_holding_only_a_freight_term_is_dropped():
+    rfq = _parse_body(
+        "Please quote sleeves. Ship to be FOB Tulsa.\n",
+        {"quotes": [{"ship_to": {"street": "FOB Tulsa"}, "items": [SLEEVE_ITEM]}]},
+    )
+    assert rfq.ship_to is None
+
+
+def test_legacy_response_format_also_gates_ship_to():
+    """The pre-`quotes[]` response shape goes through the same gate."""
+    response = {
+        "customer_name": "ACME Corp",
+        "ship_to": {"company": "ACME HQ", "city": "Dallas", "state": "TX"},
+        "items": [SLEEVE_ITEM],
+    }
+    assert _parse_body("Please quote 10 sleeves.\n", response).ship_to is None
+    assert (
+        _parse_body("Please quote 10 sleeves. Ship to: ACME Yard, Dallas TX.\n", response).ship_to
+        is not None
+    )
 
 
 class _ClassifierProvider(LLMProvider):

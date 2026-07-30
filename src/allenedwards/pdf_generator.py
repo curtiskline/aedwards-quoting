@@ -19,6 +19,7 @@ from reportlab.platypus import (
 )
 
 from .pricing import Quote
+from .ship_to import normalize_ship_to
 
 # Colors matching Template A
 YELLOW_HEADER = colors.Color(1, 1, 0)  # #FFFF00
@@ -296,26 +297,25 @@ class QuotePDFBuilder:
         ship_to_lines = [
             [Paragraph("<b>Ship to:</b>", self.styles["bold"])],
         ]
-        if self.quote.ship_to:
+        # Tolerant read: older quotes stored the parser's `street` key, newer ones the
+        # web editor's `address_line1`. normalize_ship_to accepts both.
+        quote_ship_to = normalize_ship_to(self.quote.ship_to)
+        if quote_ship_to:
             seen_lines: set[str] = set()
-            for value in (
-                self.quote.ship_to.get("company"),
-                self.quote.ship_to.get("attention"),
-                self.quote.ship_to.get("street"),
-            ):
-                line = _clean_text(value)
+            for key in ("company", "attention", "address_line1", "address_line2"):
+                line = _clean_text(quote_ship_to.get(key))
                 if line and line not in seen_lines:
                     ship_to_lines.append([Paragraph(line, self.styles["normal"])])
                     seen_lines.add(line)
 
             city_state_zip_parts = []
             for key in ("city", "state", "postal_code"):
-                part = _clean_text(self.quote.ship_to.get(key))
+                part = _clean_text(quote_ship_to.get(key))
                 if part:
                     city_state_zip_parts.append(part)
             if city_state_zip_parts:
                 ship_to_lines.append([Paragraph(", ".join(city_state_zip_parts), self.styles["normal"])])
-            country = _clean_text(self.quote.ship_to.get("country"))
+            country = _clean_text(quote_ship_to.get("country"))
             if country:
                 ship_to_lines.append([Paragraph(country, self.styles["normal"])])
 

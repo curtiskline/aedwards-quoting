@@ -1153,3 +1153,268 @@ def test_shipping_calc_line_hidden_during_manual_override(tmp_path):
     assert "Shipping Calc:" not in manual_html
     assert "Auto estimate:" in manual_html
     assert "currently overridden" in manual_html
+
+
+def _seed_priced_quote(app, quote_number: str, email: str, ship_to_json=None):
+    """A quote with one weighable sleeve line, ready for auto freight."""
+    with app.app_context():
+        db.create_all()
+        user = User(email=email, name="Freight Tester", password_hash="x")
+        db.session.add(user)
+        quote = Quote(quote_number=quote_number, status=QuoteStatus.NEW, ship_to_json=ship_to_json)
+        db.session.add(quote)
+        db.session.flush()
+        db.session.add(
+            QuoteLineItem(
+                quote_id=quote.id,
+                product_type="sleeve",
+                description="Sleeve",
+                quantity=5,
+                unit_price=100,
+                line_total=500,
+                specs_json={"diameter": "24", "wall_thickness": "0.5", "length_ft": "10"},
+                sort_order=1,
+            )
+        )
+        db.session.commit()
+        return quote.id, user.id
+
+
+def _shipping_items(app, quote_id: int):
+    with app.app_context():
+        return (
+            db.session.query(QuoteLineItem)
+            .filter_by(quote_id=quote_id, product_type="shipping")
+            .all()
+        )
+
+
+def test_foreign_postcode_colliding_with_us_zip_produces_no_freight(tmp_path):
+    """Prod quote 126-086: Malaysian postcode 40160 is also US ZIP 40160 (Vine Grove, KY).
+
+    Without a country check the ZIP-centroid lookup happily resolves the Malaysian
+    address to Kentucky and bills a distance-derived charge for a shipment that is
+    not going to Kentucky.
+    """
+    app = _make_app(tmp_path)
+    quote_id, user_id = _seed_priced_quote(app, "126-320", "foreign-zip@example.com")
+
+    client = app.test_client()
+    _login(client, user_id)
+    response = client.post(
+        f"/quotes/{quote_id}/customer",
+        data={
+            "customer_name_raw": "Azimuth Energy",
+            "ship_to_address_line1": "No 47-2, Jalan Neutron U16/Q",
+            "ship_to_city": "Shah Alam",
+            "ship_to_state": "Selangor",
+            "ship_to_postal_code": "40160",
+            "ship_to_country": "Malaysia",
+        },
+    )
+    assert response.status_code == 200
+
+    assert _shipping_items(app, quote_id) == []
+
+    # Same ZIP, no country override -> treated as domestic and priced, proving the
+    # test discriminates on country rather than on the ZIP being unresolvable.
+    domestic_id, domestic_user = _seed_priced_quote(
+        app,
+        "126-321",
+        "domestic-zip@example.com",
+        ship_to_json={
+            "address_line1": "1 Main St",
+            "city": "Vine Grove",
+            "state": "KY",
+            "postal_code": "40160",
+            "country": "US",
+        },
+    )
+    domestic_client = app.test_client()
+    _login(domestic_client, domestic_user)
+    domestic_client.post(
+        f"/quotes/{domestic_id}/customer",
+        data={
+            "customer_name_raw": "Acme",
+            "ship_to_address_line1": "1 Main St",
+            "ship_to_city": "Vine Grove",
+            "ship_to_state": "KY",
+            "ship_to_postal_code": "40160",
+            "ship_to_country": "US",
+        },
+    )
+    domestic_shipping = _shipping_items(app, domestic_id)
+    assert len(domestic_shipping) == 1
+    assert float(domestic_shipping[0].line_total) > 0
+
+
+def test_clearing_ship_to_removes_the_auto_freight_line(tmp_path):
+    """Requirement (c): no ship-to means no freight, including freight already added."""
+    app = _make_app(tmp_path)
+    quote_id, user_id = _seed_priced_quote(app, "126-322", "clear-ship-to@example.com")
+
+    client = app.test_client()
+    _login(client, user_id)
+
+    # First give it a real domestic ship-to so auto freight is actually created.
+    client.post(
+        f"/quotes/{quote_id}/customer",
+        data={
+            "customer_name_raw": "Acme",
+            "ship_to_address_line1": "123 Main",
+            "ship_to_city": "Oklahoma City",
+            "ship_to_state": "OK",
+            "ship_to_postal_code": "73102",
+            "ship_to_country": "US",
+        },
+    )
+    seeded = _shipping_items(app, quote_id)
+    assert len(seeded) == 1 and float(seeded[0].line_total) > 0, "precondition: freight exists"
+
+    # Now clear the ship-to, as Jamee would after seeing a signature address there.
+    response = client.post(
+        f"/quotes/{quote_id}/customer",
+        data={
+            "customer_name_raw": "Acme",
+            "ship_to_address_line1": "",
+            "ship_to_city": "",
+            "ship_to_state": "",
+            "ship_to_postal_code": "",
+            "ship_to_country": "",
+        },
+    )
+    assert response.status_code == 200
+
+    with app.app_context():
+        quote = db.session.get(Quote, quote_id)
+        assert quote.ship_to_json is None
+    assert _shipping_items(app, quote_id) == []
+
+
+def test_switching_ship_to_abroad_removes_the_auto_freight_line(tmp_path):
+    app = _make_app(tmp_path)
+    quote_id, user_id = _seed_priced_quote(app, "126-323", "abroad-ship-to@example.com")
+
+    client = app.test_client()
+    _login(client, user_id)
+    client.post(
+        f"/quotes/{quote_id}/customer",
+        data={
+            "customer_name_raw": "Acme",
+            "ship_to_address_line1": "123 Main",
+            "ship_to_city": "Oklahoma City",
+            "ship_to_state": "OK",
+            "ship_to_postal_code": "73102",
+            "ship_to_country": "US",
+        },
+    )
+    assert len(_shipping_items(app, quote_id)) == 1
+
+    client.post(
+        f"/quotes/{quote_id}/customer",
+        data={
+            "customer_name_raw": "Azimuth Energy",
+            "ship_to_address_line1": "No 47-2, Jalan Neutron U16/Q",
+            "ship_to_city": "Shah Alam",
+            "ship_to_state": "Selangor",
+            "ship_to_postal_code": "40160",
+            "ship_to_country": "Malaysia",
+        },
+    )
+    assert _shipping_items(app, quote_id) == []
+
+
+def test_manual_freight_survives_a_foreign_ship_to(tmp_path):
+    """D12's implicit user override must keep working when auto declines to price."""
+    app = _make_app(tmp_path)
+    quote_id, user_id = _seed_priced_quote(
+        app,
+        "126-324",
+        "manual-abroad@example.com",
+        ship_to_json={
+            "address_line1": "No 47-2, Jalan Neutron U16/Q",
+            "city": "Shah Alam",
+            "postal_code": "40160",
+            "country": "Malaysia",
+        },
+    )
+    with app.app_context():
+        db.session.add(
+            QuoteLineItem(
+                quote_id=quote_id,
+                product_type="shipping",
+                description="Manual freight / shipping",
+                quantity=1,
+                unit_price=1850,
+                line_total=1850,
+                specs_json={"manual_override": True, "auto_calculated_shipping": False},
+                sort_order=2,
+            )
+        )
+        db.session.commit()
+
+    client = app.test_client()
+    _login(client, user_id)
+    # Re-saving customer info runs the auto-shipping pass, which must not touch it.
+    response = client.post(
+        f"/quotes/{quote_id}/customer",
+        data={
+            "customer_name_raw": "Azimuth Energy",
+            "ship_to_address_line1": "No 47-2, Jalan Neutron U16/Q",
+            "ship_to_city": "Shah Alam",
+            "ship_to_postal_code": "40160",
+            "ship_to_country": "Malaysia",
+        },
+    )
+    assert response.status_code == 200
+
+    remaining = _shipping_items(app, quote_id)
+    assert len(remaining) == 1
+    assert float(remaining[0].line_total) == 1850
+
+
+def test_ship_to_company_and_attention_survive_a_customer_info_save(tmp_path):
+    """The editor used to drop company/attention because the form never sent them."""
+    app = _make_app(tmp_path)
+    quote_id, user_id = _seed_priced_quote(
+        app,
+        "126-325",
+        "shape-roundtrip@example.com",
+        # Stored in the parser's shape, which the editor previously could not read.
+        ship_to_json={
+            "company": "Buckeye Huntington",
+            "attention": "Site Manager",
+            "street": "1234 Pipeline Rd",
+            "city": "Huntington",
+            "state": "IN",
+            "postal_code": "46750",
+            "country": "United States",
+        },
+    )
+
+    client = app.test_client()
+    _login(client, user_id)
+    html = client.get(f"/quotes/{quote_id}").get_data(as_text=True)
+    assert "Buckeye Huntington" in html
+    assert "1234 Pipeline Rd" in html
+
+    # Autosave posts the form back untouched; nothing may be lost in the round trip.
+    client.post(
+        f"/quotes/{quote_id}/customer",
+        data={
+            "customer_name_raw": "Buckeye Partners",
+            "ship_to_company": "Buckeye Huntington",
+            "ship_to_attention": "Site Manager",
+            "ship_to_address_line1": "1234 Pipeline Rd",
+            "ship_to_address_line2": "",
+            "ship_to_city": "Huntington",
+            "ship_to_state": "IN",
+            "ship_to_postal_code": "46750",
+            "ship_to_country": "United States",
+        },
+    )
+    with app.app_context():
+        quote = db.session.get(Quote, quote_id)
+        assert quote.ship_to_json["company"] == "Buckeye Huntington"
+        assert quote.ship_to_json["attention"] == "Site Manager"
+        assert quote.ship_to_json["address_line1"] == "1234 Pipeline Rd"
