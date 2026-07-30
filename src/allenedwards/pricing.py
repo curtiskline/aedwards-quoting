@@ -2,7 +2,7 @@
 
 import logging
 from dataclasses import dataclass
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal
 import re
 from time import monotonic
 from typing import Any
@@ -719,6 +719,58 @@ def _normalize_sleeve_footage(item: ParsedItem) -> tuple[ParsedItem, str | None]
     return item, None
 
 
+# --------------------------------------------------------------------------
+# Backing strip packaging
+#
+# Chip Edwards, 2026-07-28, asked how backing strip should be priced:
+#   "The catalog was off. They are priced as we do on buckey quote.
+#    400$ for pack of 10."
+# That is a price and a billing unit, and it is all he said. The pack is the
+# only thing quoted; a strip is never sold on its own.
+#
+# INTERIM, pending Chip's confirmation (task 343). RFQs ask for backing strip in
+# linear feet ("50 lf of backing strip"), so linear feet have to reach packs
+# somehow. The 5 ft per strip below is ARITHMETIC ON CHIP'S OWN NUMBERS, not
+# something he stated: his Buckeye line billed 50 lf as one $400 pack of 10, so
+# 10 strips covered 50 ft. Because it is inferred, every backing strip line
+# carries a note spelling out the conversion and any round-up, the same way the
+# metric length policy (units.py) surfaces its assumption — Chip reads the quote,
+# so the quote is where a wrong assumption gets caught.
+# --------------------------------------------------------------------------
+BACKING_STRIP_PACK_SIZE = 10
+BACKING_STRIP_FT_PER_STRIP = Decimal("5")
+
+
+def _backing_strip_packs(item: ParsedItem) -> tuple[int, str]:
+    """Resolve a backing strip request to whole packs, with a note explaining how.
+
+    Returns ``(packs, note)``. The note is never empty: the pack is a billing unit
+    the customer did not ask for by name, so how we got there is always shown.
+    """
+    footage = _extract_total_footage(item.description or "")
+
+    if footage is not None and footage > 0:
+        exact = Decimal(str(footage)) / BACKING_STRIP_FT_PER_STRIP
+        strips = max(1, int(exact.to_integral_value(rounding=ROUND_CEILING)))
+        basis = (
+            f"{footage:g} lf = {strips} strip{'s' if strips != 1 else ''} at "
+            f"{BACKING_STRIP_FT_PER_STRIP:g} ft per strip (interim conversion — "
+            f"confirm with Chip)"
+        )
+    else:
+        strips = max(1, item.quantity)
+        basis = f"{strips} strip{'s' if strips != 1 else ''}"
+
+    packs = -(-strips // BACKING_STRIP_PACK_SIZE)
+    note = (
+        f"{basis}; billed as {packs} pack{'s' if packs != 1 else ''} "
+        f"of {BACKING_STRIP_PACK_SIZE}"
+    )
+    if strips != packs * BACKING_STRIP_PACK_SIZE:
+        note += f" (partial pack rounded up to {packs * BACKING_STRIP_PACK_SIZE} strips)"
+    return packs, note
+
+
 def _quote_quantity_and_warning(item: ParsedItem) -> tuple[int, str | None]:
     """Resolve displayed quote quantity in pieces and optional warning text.
 
@@ -1280,15 +1332,24 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
 
         price, unit = _get_other_pricing(key)
         label = key.replace("_", " ").title()
-        total = price * Decimal(str(item.quantity))
+
+        # Backing strip is quoted by the pack, so the requested strip count (or
+        # linear footage) has to be converted before it can be multiplied out.
+        quantity = item.quantity
+        notes: str | None = None
+        if key == "backing_strip":
+            quantity, notes = _backing_strip_packs(item)
+
+        total = price * Decimal(str(quantity))
         return QuoteLineItem(
             sort_order=sort_order,
             product_type="accessory",
             part_number=f"ACC-{key.upper()}",
             description=f"{label} ({unit.replace('_', ' ')})",
-            quantity=item.quantity,
+            quantity=quantity,
             unit_price=price,
             total=total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+            notes=notes,
         )
 
     if item.product_type == "service":

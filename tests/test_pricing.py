@@ -671,7 +671,7 @@ def test_price_item_accessory_weld_cap():
 
 
 def test_price_item_accessory_backing_strip():
-    """Test backing strip accessory pricing."""
+    """Backing strip is $400 per pack of 10, not $10 each (Chip, 2026-07-28)."""
     item = ParsedItem(
         product_type="accessory",
         quantity=6,
@@ -680,8 +680,90 @@ def test_price_item_accessory_backing_strip():
     result = price_item(item, sort_order=1)
     assert result is not None
     assert result.product_type == "accessory"
-    assert result.unit_price == Decimal("10")
-    assert result.total == Decimal("60.00")
+    assert result.unit_price == Decimal("400")
+    # 6 strips is still a whole pack — packs are the only thing we can sell.
+    assert result.quantity == 1
+    assert result.total == Decimal("400.00")
+    assert "pack of 10" in result.notes
+    assert "rounded up" in result.notes
+
+
+def test_price_item_backing_strip_exact_pack_count():
+    """A bare quantity is a strip count: 10 strips bills as exactly one pack."""
+    item = ParsedItem(
+        product_type="accessory",
+        quantity=10,
+        description="Backing Strip",
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.unit_price == Decimal("400")
+    assert result.quantity == 1
+    assert result.total == Decimal("400.00")
+    assert result.notes == "10 strips; billed as 1 pack of 10"
+
+
+def test_price_item_backing_strip_multiple_packs():
+    """25 strips rounds up to 3 packs, and the round-up is stated on the line."""
+    item = ParsedItem(
+        product_type="accessory",
+        quantity=25,
+        description="Backing Strips",
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.quantity == 3
+    assert result.total == Decimal("1200.00")
+    assert "3 packs of 10" in result.notes
+    assert "rounded up to 30 strips" in result.notes
+
+
+def test_price_item_backing_strip_linear_feet():
+    """'50 lf' converts to 10 strips at the interim 5 ft/strip, i.e. one pack."""
+    item = ParsedItem(
+        product_type="accessory",
+        quantity=50,
+        description="50 lf of backing strip",
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.unit_price == Decimal("400")
+    assert result.quantity == 1
+    # Chip's own Buckeye line: 50 lf billed at $400. Quoting 50 strips would be $2,000.
+    assert result.total == Decimal("400.00")
+    assert "50 lf = 10 strips at 5 ft per strip" in result.notes
+    assert "interim conversion" in result.notes
+    assert "billed as 1 pack of 10" in result.notes
+
+
+def test_price_item_backing_strip_partial_pack_from_linear_feet():
+    """'30 lf' is 6 strips — a partial pack, rounded up and noted."""
+    item = ParsedItem(
+        product_type="accessory",
+        quantity=30,
+        description="30 lf of backing strip",
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.quantity == 1
+    assert result.total == Decimal("400.00")
+    assert "30 lf = 6 strips at 5 ft per strip" in result.notes
+    assert "partial pack rounded up to 10 strips" in result.notes
+
+
+def test_price_item_backing_strip_linear_feet_over_one_pack():
+    """Footage past a pack boundary rounds up to the next whole pack."""
+    item = ParsedItem(
+        product_type="accessory",
+        quantity=60,
+        description="60 lf of backing strip",
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.quantity == 2
+    assert result.total == Decimal("800.00")
+    assert "60 lf = 12 strips at 5 ft per strip" in result.notes
+    assert "partial pack rounded up to 20 strips" in result.notes
 
 
 def test_price_item_accessory_unknown():

@@ -110,7 +110,35 @@ Pricing per set:
 **Task:** 125 (grouped with other accessory fixes)
 
 ### Resolution
-**Resolved** in commit `ec0ca93`. Added `backing_strip` to the accessory matcher in `pricing.py` with a price of $10/ea. The keyword matcher now recognizes "backing strip", "backing strips", and "back strip" descriptions. Added to the `pricing_catalog.py` accessory table. Test confirms `6" Backing Strips` no longer triggers the "Cannot match accessory" warning.
+**Resolved** in commit `ec0ca93`. Added `backing_strip` to the accessory matcher in `pricing.py`. The keyword matcher now recognizes "backing strip", "backing strips", and "back strip" descriptions. Added to the `pricing_catalog.py` accessory table. Test confirms `6" Backing Strips` no longer triggers the "Cannot match accessory" warning.
+
+### Correction — the $10/ea price in that resolution was wrong (task 343)
+
+`ec0ca93` priced backing strip at **$10 each**. That number was never Chip's; it was a
+placeholder, and it under-quoted every backing strip line by roughly 8x.
+
+Devin asked Chip directly on 2026-07-28, having noticed that "50 lf of backing strip" quoted
+as 5 pieces at $10 while the Buckeye quote (126-085) billed the same line at $400. Chip's
+reply in full:
+
+> The catalog was off.
+> They are priced as we do on buckey quote.
+> 400$ for pack of 10.
+
+**Backing strip is $400 per pack of 10.** The pack is the billing unit — a single strip is
+never quoted. `DEFAULT_OTHER_PRICING["backing_strip"]` is now `(Decimal("400"),
+"per_pack_of_10")`, and migration `20260730_0001` replaces any persisted `unit: "each"` row.
+
+**Linear feet — INTERIM, not from Chip.** RFQs order backing strip by the foot, so linear
+feet have to reach packs somehow, and Chip gave a price and a unit but no conversion. The
+engine uses **5 ft per strip** (`BACKING_STRIP_FT_PER_STRIP` in `pricing.py`), which is
+arithmetic on Chip's own numbers rather than his statement: his Buckeye line billed 50 lf as
+one pack of 10, so 10 strips covered 50 ft. Partial packs round **up** to a whole pack.
+Because the rule is inferred, every backing strip line carries a note showing the conversion
+and any round-up (e.g. `50 lf = 10 strips at 5 ft per strip (interim conversion — confirm
+with Chip); billed as 1 pack of 10`), so a wrong assumption surfaces on the quote Chip reads.
+Devin is asking Chip to confirm the per-strip length separately; until he does, treat the
+5 ft figure as unconfirmed.
 
 ---
 

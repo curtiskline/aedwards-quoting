@@ -48,7 +48,10 @@ DEFAULT_OTHER_PRICING: dict[str, tuple[Decimal, str]] = {
     "pipejacks_large": (Decimal("2200"), "each"),
     "concrete_coating": (Decimal("1"), "per_inch_od_per_foot"),
     "weld_cap": (Decimal("15"), "each"),
-    "backing_strip": (Decimal("10"), "each"),
+    # Chip Edwards, 2026-07-28: "The catalog was off. They are priced as we do on
+    # buckey quote. 400$ for pack of 10." Backing strip is billed by the pack,
+    # never by the piece — see BACKING_STRIP_PACK_SIZE in pricing.py.
+    "backing_strip": (Decimal("400"), "per_pack_of_10"),
     "supervisor": (Decimal("1950"), "per_day"),
     "trainer_torch": (Decimal("6000"), "per_package"),
     "kickoff_training": (Decimal("6000"), "per_package"),
