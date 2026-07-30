@@ -11,6 +11,7 @@ from flask import has_app_context
 from sqlalchemy import func, inspect
 
 from .parser import ParsedItem, ParsedRFQ
+from .ship_to import normalize_ship_to
 from .pricing_catalog import (
     DEFAULT_BAG_PRICING,
     DEFAULT_GIRTH_WELD_PRICING,
@@ -1450,15 +1451,17 @@ def generate_quote(rfq: ParsedRFQ, quote_number: str) -> Quote:
 
     ship_to_dict = None
     if rfq.ship_to:
-        ship_to_dict = {
-            "company": rfq.ship_to.company,
-            "attention": rfq.ship_to.attention,
-            "street": rfq.ship_to.street,
-            "city": rfq.ship_to.city,
-            "state": rfq.ship_to.state,
-            "postal_code": rfq.ship_to.postal_code,
-            "country": rfq.ship_to.country,
-        }
+        ship_to_dict = normalize_ship_to(
+            {
+                "company": rfq.ship_to.company,
+                "attention": rfq.ship_to.attention,
+                "street": rfq.ship_to.street,
+                "city": rfq.ship_to.city,
+                "state": rfq.ship_to.state,
+                "postal_code": rfq.ship_to.postal_code,
+                "country": rfq.ship_to.country,
+            }
+        )
 
     return Quote(
         quote_number=quote_number,

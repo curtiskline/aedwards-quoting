@@ -43,6 +43,7 @@ from allenedwards.pricing import (
 )
 from allenedwards.pricing import Quote as PricingQuote
 from allenedwards.pricing import QuoteLineItem as PricingLineItem
+from allenedwards.ship_to import SHIP_TO_KEYS, is_domestic_ship_to, normalize_ship_to
 
 from .extensions import db
 from .models import (
@@ -521,7 +522,16 @@ def _steel_weight_for_item(item: QuoteLineItem, default_length_ft: Decimal) -> D
 
 
 def _shipping_breakdown(quote: Quote) -> dict | None:
-    ship_to_zip = _normalize_zip((quote.ship_to_json or {}).get("postal_code"))
+    ship_to = normalize_ship_to(quote.ship_to_json)
+    if ship_to is None:
+        # No ship-to designated: price the product only, no distance-derived charge.
+        return None
+    # The centroid table is US-only, and foreign postcodes collide with real US ZIPs
+    # (Malaysian 40160 is also Vine Grove, KY). Never quote domestic freight abroad.
+    if not is_domestic_ship_to(ship_to):
+        return None
+
+    ship_to_zip = _normalize_zip(ship_to["postal_code"])
     if ship_to_zip is None:
         return None
 
@@ -582,8 +592,21 @@ def _apply_auto_shipping_line_item(quote: Quote) -> dict | None:
     breakdown = _shipping_breakdown(quote)
     shipping_item = _shipping_line_item(quote)
     if _is_manual_shipping_override(shipping_item):
+        # D12: an explicit manual freight figure always wins, even with no ship-to.
         return breakdown
     if breakdown is None:
+        # Nothing to derive a charge from: the ship-to was removed, is foreign, or was
+        # never designated. An auto line still carrying an amount is now stale, so drop
+        # it rather than bill freight to an address we no longer have. A $0 auto line is
+        # just the editor's auto-mode placeholder and is left in place.
+        if (
+            shipping_item is not None
+            and dict(shipping_item.specs_json or {}).get("auto_calculated_shipping")
+            and Decimal(str(shipping_item.line_total)) != 0
+        ):
+            quote.line_items.remove(shipping_item)
+            db.session.delete(shipping_item)
+            _normalize_sort_orders(quote)
         return None
 
     if shipping_item is None:
@@ -902,10 +925,22 @@ def _quote_context(quote: Quote) -> dict:
         )
     elif shipping_breakdown:
         shipping_mode_note = "Auto-calculated from shipping config. Leave it as-is to stay auto, or type a value to override."
+    elif not normalize_ship_to(quote.ship_to_json):
+        shipping_mode_note = (
+            "No ship-to on this RFQ, so the quote prices the product only. "
+            "Add a ship-to address for auto freight, or type a value to set it manually."
+        )
+    elif not is_domestic_ship_to(quote.ship_to_json):
+        shipping_mode_note = (
+            "Ship-to is outside the US, so domestic freight is not auto-calculated. "
+            "Type a value to set freight manually."
+        )
     else:
         shipping_mode_note = "Auto shipping needs a valid ship-to ZIP and configured rate data. Type a value to set freight manually."
     return {
         "quote": quote,
+        # Canonical ship-to for the editor form; tolerates both stored shapes.
+        "ship_to": normalize_ship_to(quote.ship_to_json) or dict.fromkeys(SHIP_TO_KEYS, ""),
         "attachments": sorted(
             quote.attachments, key=lambda attachment: (attachment.created_at, attachment.id)
         ),
@@ -968,14 +1003,16 @@ def _default_customer_ship_to(customer: Customer) -> dict | None:
         address = customer.ship_to_addresses[0]
     if address is None:
         return None
-    return {
-        "address_line1": address.address_line1,
-        "address_line2": address.address_line2 or "",
-        "city": address.city,
-        "state": address.state,
-        "postal_code": address.postal_code,
-        "country": address.country,
-    }
+    return normalize_ship_to(
+        {
+            "address_line1": address.address_line1,
+            "address_line2": address.address_line2 or "",
+            "city": address.city,
+            "state": address.state,
+            "postal_code": address.postal_code,
+            "country": address.country,
+        }
+    )
 
 
 def _hydrate_quote_ship_to_from_customer(quote: Quote) -> bool:
@@ -1026,17 +1063,10 @@ def _sync_customer_contact_from_quote(customer: Customer, quote: Quote) -> None:
 
 
 def _sync_customer_ship_to_from_quote(customer: Customer, quote: Quote) -> None:
-    if not quote.ship_to_json:
+    incoming = normalize_ship_to(quote.ship_to_json)
+    if incoming is None:
         return
 
-    incoming = {
-        "address_line1": (quote.ship_to_json.get("address_line1") or "").strip(),
-        "address_line2": (quote.ship_to_json.get("address_line2") or "").strip(),
-        "city": (quote.ship_to_json.get("city") or "").strip(),
-        "state": (quote.ship_to_json.get("state") or "").strip(),
-        "postal_code": (quote.ship_to_json.get("postal_code") or "").strip(),
-        "country": (quote.ship_to_json.get("country") or "").strip(),
-    }
     address = next((a for a in customer.ship_to_addresses if a.is_default), None)
     if address is None and customer.ship_to_addresses:
         address = customer.ship_to_addresses[0]
@@ -1396,18 +1426,18 @@ def quote_update_customer(quote_id: int):
     quote.contact_name = (request.form.get("contact_name") or "").strip() or None
     quote.contact_email = (request.form.get("contact_email") or "").strip() or None
     quote.contact_phone = (request.form.get("contact_phone") or "").strip() or None
-    ship_to = {
-        "address_line1": (request.form.get("ship_to_address_line1") or "").strip(),
-        "address_line2": (request.form.get("ship_to_address_line2") or "").strip(),
-        "city": (request.form.get("ship_to_city") or "").strip(),
-        "state": (request.form.get("ship_to_state") or "").strip(),
-        "postal_code": (request.form.get("ship_to_postal_code") or "").strip(),
-        "country": (request.form.get("ship_to_country") or "").strip(),
-    }
-    if any(ship_to.values()):
-        quote.ship_to_json = ship_to
-    else:
-        quote.ship_to_json = None
+    quote.ship_to_json = normalize_ship_to(
+        {
+            "company": (request.form.get("ship_to_company") or "").strip(),
+            "attention": (request.form.get("ship_to_attention") or "").strip(),
+            "address_line1": (request.form.get("ship_to_address_line1") or "").strip(),
+            "address_line2": (request.form.get("ship_to_address_line2") or "").strip(),
+            "city": (request.form.get("ship_to_city") or "").strip(),
+            "state": (request.form.get("ship_to_state") or "").strip(),
+            "postal_code": (request.form.get("ship_to_postal_code") or "").strip(),
+            "country": (request.form.get("ship_to_country") or "").strip(),
+        }
+    )
     _sync_linked_customer_from_quote(quote)
     _apply_auto_shipping_line_item(quote)
     db.session.commit()
@@ -2178,17 +2208,7 @@ def _db_quote_to_pricing_quote(quote: Quote) -> PricingQuote:
     shipping_total = shipping_value if shipping_value > 0 else None
     tax_amount = _tax_amount_for_quote(quote)
     total = _quantize_money(subtotal + (shipping_total or Decimal("0.00")) + tax_amount)
-    ship_to = None
-    if quote.ship_to_json:
-        st = quote.ship_to_json
-        ship_to = {
-            "attention": st.get("address_line2", ""),
-            "street": st.get("address_line1", ""),
-            "city": st.get("city", ""),
-            "state": st.get("state", ""),
-            "postal_code": st.get("postal_code", ""),
-            "country": st.get("country", ""),
-        }
+    ship_to = normalize_ship_to(quote.ship_to_json)
     return PricingQuote(
         quote_number=quote.quote_number,
         customer_name=quote.customer_name_raw,

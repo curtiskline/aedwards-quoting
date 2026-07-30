@@ -189,8 +189,10 @@ def test_preview_pdf_maps_ship_to_address_line_into_street_field(mock_generate_q
     assert resp.status_code == 200
     pricing_quote = mock_generate_quote_pdf.call_args.args[0]
     assert pricing_quote.ship_to == {
+        "company": "",
         "attention": "",
-        "street": "123 Main St",
+        "address_line1": "123 Main St",
+        "address_line2": "",
         "city": "Tulsa",
         "state": "OK",
         "postal_code": "74117",

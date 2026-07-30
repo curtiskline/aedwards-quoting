@@ -16,6 +16,37 @@ from sqlalchemy import inspect
 from .providers.base import LLMProvider
 
 QUOTE_NUMBER_PATTERN = re.compile(r"\b(?:QUO|SO|INV)-\d+-\d+\b", re.IGNORECASE)
+
+# Wording that designates an actual delivery destination. An address only becomes a
+# ship-to when the RFQ text says where the material is going; a bare signature block
+# does not qualify. See _body_designates_ship_to.
+SHIP_TO_DESIGNATOR_PATTERN = re.compile(
+    r"""
+    \bship(?:ping|ped|ment)?\s*[-_ ]?\s*to\b
+    | \bship\s+(?:it\s+|them\s+|material\s+|these\s+)?to\b
+    | \bshipping\s+address\b
+    | \bdeliver(?:y|ed|ing)?\s*[-_ ]?\s*(?:to|address|location|point|site)\b
+    | \bdestination\b
+    | \bjob\s*[-_ ]?\s*site\b
+    | \bjobsite\b
+    | \bconsign(?:ee|ed)\b
+    | \bf\.?\s*o\.?\s*b\.?\s+destination\b
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+# Freight terms that keep landing in address fields (prod quote 126-086 stored
+# "FOB Tulsa" as an address line). These describe how freight is handled, not where
+# the material goes, so they must never survive into a ship-to address.
+FREIGHT_TERM_PATTERN = re.compile(
+    r"""
+    (?:f\.?\s*o\.?\s*b\.?|ex[-\s]?works?|exw|ddp|dap|cif|fca)
+    (?:\s+[\w.\-]+){0,3}
+    | prepay(?:\s*(?:&|and)\s*add)?
+    | (?:ltl|ftl|ups|fedex|flatbed|common\s+carrier|best\s+way|will\s+call|customer\s+pickup)
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
 DEFAULT_RFQ_CLASSIFY_BODY_CHARS = 500
 MAX_PDF_ATTACHMENT_BYTES = 15 * 1024 * 1024
 MAX_PDF_EXTRACTION_PAGES = 10
@@ -96,18 +127,28 @@ Return a JSON object with this structure:
     "contact_email": "Email address of requester",
     "contact_phone": "Phone if available",
     "quote_number": "Allan Edwards quote/document number if present in subject or body (e.g. QUO-126-048, SO-125-0348, INV-125-0428), null otherwise",
+    "bill_to": {
+        "company": "Company on the sender's email signature",
+        "attention": "Person named on the signature",
+        "street": "Street address from the signature block",
+        "city": "City from the signature block",
+        "state": "State/region from the signature block",
+        "postal_code": "Postal code from the signature block",
+        "country": "Country from the signature block"
+    },
     "quotes": [
         {
             "project_line": "Project reference like 'XB403CL Line' if mentioned, null otherwise",
             "ship_to": {
                 "company": "End customer/pipeline company receiving the goods (NEVER 'Allan Edwards' — use the pipeline, utility, or requesting company instead)",
                 "attention": "Person name if specified",
-                "street": "Street address if available",
-                "city": "City (use contact's city from signature if no explicit ship-to)",
-                "state": "State (use contact's state from signature if no explicit ship-to)",
-                "postal_code": "ZIP if available",
+                "street": "Street address of the delivery destination",
+                "city": "Destination city",
+                "state": "Destination state",
+                "postal_code": "Destination ZIP",
                 "country": "Country if specified"
             },
+            "ship_to_source": "explicit|signature|none — see SHIP-TO ADDRESS RULES",
             "po_number": "Customer purchase order number for this quote if explicitly provided, otherwise null",
             "items": [
                 {
@@ -168,14 +209,22 @@ IMPORTANT: Some emails contain MULTIPLE separate quote requests, each with:
 If you detect multiple quote requests, return them as an array of quote objects in the "quotes" field.
 If there's only one quote request, still return it in the "quotes" array (with one element).
 
-SHIP-TO ADDRESS RULES:
-- If an explicit ship-to address is provided (e.g., "Ship to:", "Deliver to:"), use that address.
-- If no explicit ship-to is provided, use the contact's/customer's company name and location from their signature or email domain.
-- CRITICAL: ship_to.company must NEVER be "Allan Edwards", "Allan Edwards Inc.", "AE", or any Allan Edwards variant. Allan Edwards is the seller/manufacturer of these products. The ship_to.company should be the end customer — typically the pipeline company, utility, or energy company that will receive the goods. Examples of correct ship_to.company values: "DTE Gas Company", "Kinder Morgan", "Energy Transfer", "Boardwalk Pipeline Partners", "Centerpoint Energy". If you cannot determine the end customer, use the requesting contact's company (the distributor or contractor sending the RFQ).
-- When the email mentions a pipeline company, utility, or project owner (e.g., in project references, PO descriptions, or job site details), that entity is likely the ship_to.company — not Allan Edwards or the sales intermediary.
-- Always try to populate at least company, city, and state for ship_to from available information.
-- Extract postal_code/ZIP when available in the ship-to address or in the contact's signature.
-- Only return ship_to as null if absolutely no location information can be determined.
+SHIP-TO ADDRESS RULES (read carefully — getting this wrong causes bogus freight charges):
+- A ship-to is a DELIVERY DESTINATION the RFQ actually designates. It is NOT "any address that appears in the email".
+- Return ship_to ONLY when the RFQ designates a destination, i.e. one of:
+  - explicit wording such as "Ship to:", "Ship-to", "Deliver to:", "Delivery address:", "Destination:", "Shipping address:", "F.O.B. <place>" naming a delivery point; or
+  - a jobsite/yard/terminal/plant address that is clearly distinct from the sender's own office.
+  Set "ship_to_source": "explicit" in that case.
+- The address in the sender's EMAIL SIGNATURE BLOCK is a BILL-TO, never a ship-to. So is an address inferred from the sender's email domain or letterhead. Put it in the top-level "bill_to" object, set "ship_to": null and "ship_to_source": "signature".
+- If no destination is designated anywhere, return "ship_to": null and "ship_to_source": "none". Do NOT substitute the contact's city/state, the customer's headquarters, or the email domain's location. A missing ship-to is a normal, correct outcome: the quote is then priced for product only.
+- Never guess. An invented ship-to is worse than no ship-to.
+- EX-Works / EXW / "FOB Origin" / "FOB our plant" mean the buyer collects. They designate no destination — return "ship_to": null unless a separate destination address is also given.
+- Freight TERMS are not address lines. Never put "FOB Tulsa", "EX-Works", "FOB Destination", "Prepay & Add", "LTL", "Flatbed", "Best Way" or similar into ship_to.street, ship_to.company, ship_to.attention, or any other address field. Put freight terms in "notes".
+- A company name is not a street. ship_to.company holds the company; ship_to.street holds the street address only.
+- When you DO return a ship_to:
+  - CRITICAL: ship_to.company must NEVER be "Allan Edwards", "Allan Edwards Inc.", "AE", or any Allan Edwards variant. Allan Edwards is the seller/manufacturer of these products. The ship_to.company should be the end customer — typically the pipeline company, utility, or energy company that will receive the goods. Examples of correct ship_to.company values: "DTE Gas Company", "Kinder Morgan", "Energy Transfer", "Boardwalk Pipeline Partners", "Centerpoint Energy".
+  - When the email mentions a pipeline company, utility, or project owner (e.g., in project references, PO descriptions, or job site details), that entity is likely the ship_to.company — not Allan Edwards or the sales intermediary.
+  - Extract postal_code/ZIP and country from the destination address itself, never from the signature.
 
 PO number extraction rules:
 - Only return po_number when the email explicitly provides a PO number value.
@@ -239,6 +288,10 @@ class ParsedRFQ:
     po_number: str | None
     quote_number: str | None
     items: list[ParsedItem]
+
+    # Sender's signature-block address. Chip: "the bill to is typically what is on the
+    # email signature." Kept out of ship_to (and out of pricing) but not discarded.
+    bill_to: ShipTo | None = None
     urgency: str = "normal"
     notes: str | None = None
     confidence: float = 0.0
@@ -663,19 +716,73 @@ def _apply_header_contact_fallback(
     return customer_name, contact_name, contact_email
 
 
-def _parse_ship_to(ship_to_data: dict | None) -> ShipTo | None:
-    """Parse ship_to data from LLM response into ShipTo object."""
+def _body_designates_ship_to(body: str | None) -> bool:
+    """True when the RFQ text actually designates a delivery destination.
+
+    Chip's rule: an address harvested from the sender's signature is a bill-to, and
+    "if people don't provide ship to we just price the product only". The LLM cannot
+    be trusted to hold that line on its own — it previously invented a ship-to from
+    every signature block — so the decision is gated on the source text as well.
+    Failing closed is deliberate: a missing ship-to is corrected in the quote editor,
+    an invented one silently prices freight to the wrong place.
+    """
+    return bool(SHIP_TO_DESIGNATOR_PATTERN.search(body or ""))
+
+
+def _scrub_freight_term(value: Any) -> str | None:
+    """Drop freight terms (e.g. "FOB Tulsa") that the LLM put in an address field."""
+    text = str(value).strip() if value is not None else ""
+    if not text or text.lower() in ("none", "null"):
+        return None
+    if FREIGHT_TERM_PATTERN.fullmatch(text.strip(" .,;:-")):
+        return None
+    return text
+
+
+def _parse_ship_to(
+    ship_to_data: dict | None,
+    *,
+    body: str | None = None,
+    source: Any = None,
+    require_designation: bool = True,
+) -> ShipTo | None:
+    """Parse ship_to data from an LLM response into a ShipTo object.
+
+    Returns None unless the RFQ designates a destination. ``source`` is the LLM's own
+    ``ship_to_source`` label, which can veto but never authorize: an address the model
+    itself calls a signature is dropped even when the body mentions shipping.
+    """
     if not ship_to_data:
         return None
-    return ShipTo(
-        company=ship_to_data.get("company"),
-        attention=ship_to_data.get("attention"),
-        street=ship_to_data.get("street"),
-        city=ship_to_data.get("city"),
-        state=ship_to_data.get("state"),
-        postal_code=ship_to_data.get("postal_code"),
-        country=ship_to_data.get("country", "United States"),
+    if str(source or "").strip().lower() in ("signature", "bill_to", "inferred", "none"):
+        return None
+    if require_designation and not _body_designates_ship_to(body):
+        return None
+
+    ship_to = ShipTo(
+        company=_scrub_freight_term(ship_to_data.get("company")),
+        attention=_scrub_freight_term(ship_to_data.get("attention")),
+        street=_scrub_freight_term(ship_to_data.get("street")),
+        city=_scrub_freight_term(ship_to_data.get("city")),
+        state=_scrub_freight_term(ship_to_data.get("state")),
+        postal_code=_scrub_freight_term(ship_to_data.get("postal_code")),
+        # Absent key defaults, as before; an explicit null stays null so the PDF does
+        # not start printing a country line where it previously printed none.
+        country=_scrub_freight_term(ship_to_data.get("country", "United States")),
     )
+    # Scrubbing can empty the address out entirely (e.g. street was only "FOB Tulsa").
+    if not any(
+        (ship_to.company, ship_to.attention, ship_to.street, ship_to.city, ship_to.state, ship_to.postal_code)
+    ):
+        return None
+    return ship_to
+
+
+def _parse_bill_to(bill_to_data: dict | None) -> ShipTo | None:
+    """Parse the sender's signature-block address (a bill-to, never a ship-to)."""
+    if not bill_to_data:
+        return None
+    return _parse_ship_to(bill_to_data, require_designation=False)
 
 
 def parse_rfq(eml_path: Path, provider: LLMProvider) -> ParsedRFQ:
@@ -752,13 +859,18 @@ in the "quotes" array."""
         contact_email=contact_email,
         from_header=from_header,
     )
+    bill_to = _parse_bill_to(result.get("bill_to"))
 
     rfqs = []
 
     # Check for new multi-quote format (quotes array)
     if "quotes" in result and result["quotes"]:
         for quote_data in result["quotes"]:
-            ship_to = _parse_ship_to(quote_data.get("ship_to"))
+            ship_to = _parse_ship_to(
+                quote_data.get("ship_to"),
+                body=body,
+                source=quote_data.get("ship_to_source"),
+            )
             items = _parse_items(quote_data.get("items", []))
             raw_po = quote_data.get("po_number")
             po_number = _resolve_po_number(raw_po, body)
@@ -778,6 +890,7 @@ in the "quotes" array."""
                 contact_email=contact_email,
                 contact_phone=contact_phone,
                 ship_to=ship_to,
+                bill_to=bill_to,
                 po_number=po_number,
                 quote_number=quote_number,
                 items=items,
@@ -792,7 +905,11 @@ in the "quotes" array."""
             rfqs.append(rfq)
     else:
         # Legacy format (single ship_to and items at top level)
-        ship_to = _parse_ship_to(result.get("ship_to"))
+        ship_to = _parse_ship_to(
+            result.get("ship_to"),
+            body=body,
+            source=result.get("ship_to_source"),
+        )
         items = _parse_items(result.get("items", []))
         raw_po = result.get("po_number")
         po_number = _resolve_po_number(raw_po, body)
@@ -803,6 +920,7 @@ in the "quotes" array."""
             contact_email=contact_email,
             contact_phone=contact_phone,
             ship_to=ship_to,
+            bill_to=bill_to,
             po_number=po_number,
             quote_number=quote_number,
             items=items,

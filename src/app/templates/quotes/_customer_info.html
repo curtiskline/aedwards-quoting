@@ -6,12 +6,14 @@
       <label>Contact <input name="contact_name" value="{{ quote.contact_name or '' }}" /></label>
       <label>Email <input name="contact_email" value="{{ quote.contact_email or '' }}" /></label>
       <label>Phone <input name="contact_phone" value="{{ quote.contact_phone or '' }}" /></label>
-      <label>Ship To Address 1 <input name="ship_to_address_line1" value="{{ (quote.ship_to_json or {}).get('address_line1', '') }}" /></label>
-      <label>Ship To Address 2 <input name="ship_to_address_line2" value="{{ (quote.ship_to_json or {}).get('address_line2', '') }}" /></label>
-      <label>City <input name="ship_to_city" value="{{ (quote.ship_to_json or {}).get('city', '') }}" /></label>
-      <label>State <input name="ship_to_state" value="{{ (quote.ship_to_json or {}).get('state', '') }}" /></label>
-      <label>ZIP <input name="ship_to_postal_code" value="{{ (quote.ship_to_json or {}).get('postal_code', '') }}" /></label>
-      <label>Country <input name="ship_to_country" value="{{ (quote.ship_to_json or {}).get('country', '') }}" /></label>
+      <label>Ship To Company <input name="ship_to_company" value="{{ ship_to.company }}" /></label>
+      <label>Ship To Attention <input name="ship_to_attention" value="{{ ship_to.attention }}" /></label>
+      <label>Ship To Address 1 <input name="ship_to_address_line1" value="{{ ship_to.address_line1 }}" /></label>
+      <label>Ship To Address 2 <input name="ship_to_address_line2" value="{{ ship_to.address_line2 }}" /></label>
+      <label>City <input name="ship_to_city" value="{{ ship_to.city }}" /></label>
+      <label>State <input name="ship_to_state" value="{{ ship_to.state }}" /></label>
+      <label>ZIP <input name="ship_to_postal_code" value="{{ ship_to.postal_code }}" /></label>
+      <label>Country <input name="ship_to_country" value="{{ ship_to.country }}" /></label>
     </div>
     <button type="submit">Save Customer Info</button>
   </form>

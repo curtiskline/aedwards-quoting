@@ -32,10 +32,12 @@ from .email_provider import EmailMessage
 from .outlook import OutlookAttachment
 from .parser import ParsedRFQ
 from .pricing import Quote as PricingQuote
+from .ship_to import normalize_ship_to
 
 logger = logging.getLogger(__name__)
 
 MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024
+BILL_TO_NOTE_PREFIX = "Bill-to (from email signature):"
 
 # Legal suffixes to strip during company name normalization
 _LEGAL_SUFFIXES = re.compile(
@@ -288,10 +290,44 @@ def _create_customer_from_rfq(rfq: ParsedRFQ) -> Customer:
 
 
 def _ship_to_dict(rfq: ParsedRFQ) -> dict | None:
-    """Serialize ShipTo dataclass to JSON-safe dict."""
+    """Serialize the ShipTo dataclass into the canonical ship_to_json shape.
+
+    The dataclass field is ``street``; the web editor and PDF path read
+    ``address_line1``. normalize_ship_to maps between them so both sides agree.
+    """
     if not rfq.ship_to:
         return None
-    return asdict(rfq.ship_to)
+    return normalize_ship_to(asdict(rfq.ship_to))
+
+
+def _bill_to_note(rfq: ParsedRFQ) -> str | None:
+    """Render the signature-block address as an internal note line.
+
+    The signature address is a bill-to, so it must not reach ship_to_json (which
+    drives freight). It is still real customer data, so it is preserved here rather
+    than discarded. Rendering it on the quote PDF is deliberately out of scope.
+    """
+    bill_to = normalize_ship_to(asdict(rfq.bill_to)) if rfq.bill_to else None
+    if not bill_to:
+        return None
+    parts = [
+        bill_to["company"],
+        bill_to["attention"],
+        bill_to["address_line1"],
+        bill_to["address_line2"],
+        ", ".join(p for p in (bill_to["city"], bill_to["state"], bill_to["postal_code"]) if p),
+        bill_to["country"],
+    ]
+    rendered = " | ".join(part for part in parts if part)
+    if not rendered:
+        return None
+    return f"{BILL_TO_NOTE_PREFIX} {rendered}"
+
+
+def _notes_internal_with_bill_to(rfq: ParsedRFQ) -> str | None:
+    """Combine parsed RFQ notes with the preserved bill-to line."""
+    sections = [section for section in (rfq.notes, _bill_to_note(rfq)) if section]
+    return "\n".join(sections) or None
 
 
 def write_quote_to_db(
@@ -338,7 +374,7 @@ def write_quote_to_db(
         contact_phone=rfq.contact_phone,
         po_number=rfq.po_number,
         ship_to_json=_ship_to_dict(rfq),
-        notes_internal=rfq.notes,
+        notes_internal=_notes_internal_with_bill_to(rfq),
     )
     db.session.add(db_quote)
     db.session.flush()  # get db_quote.id
