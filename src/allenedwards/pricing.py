@@ -19,6 +19,18 @@ from .pricing_catalog import (
     DEFAULT_PRICE_PER_LB,
     DEFAULT_SERVICE_PRICES,
 )
+# Fraction tables and the metric converters live in units.py so the parser can
+# share them; re-exported here because callers already import them from pricing.
+from .units import (  # noqa: F401
+    COMMON_LARGE_DIMENSION_FRACTIONS,
+    COMMON_SUBINCH_FRACTIONS,
+    _format_decimal_inches,
+    _nearest_fraction_label,
+    decimal_to_fraction,
+    find_metric_diameter,
+    find_metric_length,
+    find_metric_thickness,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -133,68 +145,6 @@ WALL_THICKNESS_CODE_MAP: dict[float, str] = {
     0.875: "78",
     1.0: "1",
 }
-
-COMMON_SUBINCH_FRACTIONS: tuple[tuple[Decimal, str], ...] = (
-    (Decimal("0"), "0"),
-    (Decimal("0.125"), "1/8"),
-    (Decimal("0.1875"), "3/16"),
-    (Decimal("0.25"), "1/4"),
-    (Decimal("0.28125"), "9/32"),
-    (Decimal("0.3125"), "5/16"),
-    (Decimal("0.34375"), "11/32"),
-    (Decimal("0.375"), "3/8"),
-    (Decimal("0.4375"), "7/16"),
-    (Decimal("0.5"), "1/2"),
-    (Decimal("0.5625"), "9/16"),
-    (Decimal("0.625"), "5/8"),
-    (Decimal("0.6875"), "11/16"),
-    (Decimal("0.75"), "3/4"),
-    (Decimal("0.8125"), "13/16"),
-    (Decimal("0.875"), "7/8"),
-    (Decimal("0.9375"), "15/16"),
-    (Decimal("1"), "1"),
-)
-
-COMMON_LARGE_DIMENSION_FRACTIONS: tuple[tuple[Decimal, str], ...] = (
-    (Decimal("0"), ""),
-    (Decimal("0.125"), "1/8"),
-    (Decimal("0.25"), "1/4"),
-    (Decimal("0.375"), "3/8"),
-    (Decimal("0.5"), "1/2"),
-    (Decimal("0.625"), "5/8"),
-    (Decimal("0.75"), "3/4"),
-    (Decimal("0.875"), "7/8"),
-    (Decimal("1"), "1"),
-)
-
-
-def _format_decimal_inches(value: float | Decimal) -> str:
-    decimal_value = Decimal(str(value))
-    return f"{decimal_value:.3f}".rstrip("0").rstrip(".")
-
-
-def decimal_to_fraction(value: float | Decimal) -> str:
-    """Format decimal inch measurements as reduced quote-style fractions."""
-    decimal_value = Decimal(str(value))
-    sign = "-" if decimal_value < 0 else ""
-    absolute_value = abs(decimal_value)
-    if absolute_value < 1:
-        return f"{sign}{_nearest_fraction_label(absolute_value, COMMON_SUBINCH_FRACTIONS)}"
-
-    whole = int(absolute_value)
-    remainder = absolute_value - Decimal(whole)
-    fraction_text = _nearest_fraction_label(remainder, COMMON_LARGE_DIMENSION_FRACTIONS)
-
-    if fraction_text == "1":
-        return f"{sign}{whole + 1}"
-    if not fraction_text:
-        return f"{sign}{whole}"
-    return f"{sign}{whole}-{fraction_text}"
-
-
-def _nearest_fraction_label(value: Decimal, options: tuple[tuple[Decimal, str], ...]) -> str:
-    return min(options, key=lambda option: (abs(value - option[0]), option[0]))[1]
-
 
 def normalize_nominal_od(diameter: float) -> float:
     """Convert nominal diameter to actual OD when there is an exact nominal match."""
@@ -848,8 +798,11 @@ def _apply_item_defaults(item: ParsedItem) -> tuple[ParsedItem, list[str]]:
     """Apply sensible defaults for missing grade/length_ft.
 
     Returns a (possibly modified) item and a list of notes about defaults applied.
+    A unit conversion made during decoding (a metric RFQ) is reported here too,
+    so the line shows either the conversion or the default but never both for the
+    same dimension — a converted dimension is not a missing one.
     """
-    notes: list[str] = []
+    notes: list[str] = list(item.unit_notes)
     grade = item.grade
     length_ft = item.length_ft
     wall_thickness = item.wall_thickness

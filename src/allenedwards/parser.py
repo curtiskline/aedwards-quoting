@@ -2,7 +2,7 @@
 
 import email
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from email.message import Message
 from email.utils import parseaddr
 from io import BytesIO
@@ -14,6 +14,18 @@ from pypdf import PdfReader
 from sqlalchemy import inspect
 
 from .providers.base import LLMProvider
+from .units import (
+    convert_diameter_to_inches,
+    convert_length_to_feet,
+    convert_thickness_to_inches,
+    find_metric_diameter,
+    find_metric_length,
+    find_metric_thickness,
+)
+
+# Stock piece length per product, used only to interpret a metric length against
+# the nearest standard piece (see units.METRIC_LENGTH_POLICY).
+STANDARD_PIECE_LENGTH_FT = {"sleeve": 10.0, "girth_weld": 6.0}
 
 QUOTE_NUMBER_PATTERN = re.compile(r"\b(?:QUO|SO|INV)-\d+-\d+\b", re.IGNORECASE)
 
@@ -119,6 +131,23 @@ Wall thickness notation conversions:
 - "1/2" or "12" -> 0.5
 - "5/8" or "58" -> 0.625
 - "3/4" or "34" -> 0.75
+
+METRIC RFQs (millimetres / metres) — CRITICAL:
+Some RFQs, especially from outside North America, state every dimension in mm or
+metres (e.g. "Carrier Pipe Wall Thickness: 12.7 mm", "Sleeve Length: 3,000 mm").
+- NEVER return null for a dimension just because it was stated in metric. A
+  metric dimension is a PRESENT dimension. Returning null makes the system
+  substitute a default and quote the wrong product.
+- Copy the metric value through VERBATIM WITH ITS UNIT, as a string:
+  "wall_thickness": "12.7 mm", "length_ft": "3000 mm", "diameter": "914.4 mm".
+  Downstream code does the conversion and records it on the quote.
+- Do NOT convert metric to inches or feet yourself, and do NOT round a metric
+  length to a standard piece length — pass "3000 mm" through unchanged. The
+  10 ft piece-length rules below apply only to lengths the RFQ states in feet.
+- If the RFQ gives BOTH an imperial and a metric form of the same dimension
+  (e.g. "NPS 36 (914.4 mm)"), prefer the imperial form ("36").
+- Always keep the full raw spec text in "description" so any dimension you were
+  unsure about can still be recovered.
 
 Return a JSON object with this structure:
 {
@@ -261,6 +290,11 @@ class ParsedItem:
     painting: bool = False
     notes: str | None = None
     sku: str | None = None
+
+    # Unit conversions applied while decoding (e.g. "12.7 mm" -> 1/2"). The
+    # pricing layer surfaces these on the quote line so a converted dimension is
+    # never invisible to whoever reviews the quote.
+    unit_notes: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -493,6 +527,53 @@ def _is_metadata_item(item_data: dict) -> bool:
     return False
 
 
+def _resolve_item_dimensions(
+    item_data: dict, product_type: str
+) -> tuple[float | None, float | None, float | None, list[str]]:
+    """Resolve diameter / wall thickness / length from a raw LLM item.
+
+    Dimensions may arrive imperial ("0.5"), metric ("12.7 mm"), or as a bare
+    fraction ("1/2") — ``float()`` accepts only the first, so the other two used
+    to become ``None`` and fall through to a default. When the LLM drops a
+    metric dimension entirely, the labelled description text is scanned as a
+    fallback. Returns the three dimensions plus notes for any conversion made.
+    """
+    standard_length = STANDARD_PIECE_LENGTH_FT.get(product_type)
+    source_text = " ".join(
+        str(item_data.get(key) or "") for key in ("description", "notes")
+    )
+
+    notes: list[str] = []
+
+    def resolve(raw: Any, converter, finder) -> float | None:
+        value, note = converter(raw)
+        if value is None:
+            # The LLM returned nothing usable for this dimension; recover it from
+            # the preserved description if the RFQ stated it in metric.
+            value, note = finder(source_text)
+        if note:
+            notes.append(note)
+        return value
+
+    diameter = resolve(
+        item_data.get("diameter"),
+        convert_diameter_to_inches,
+        find_metric_diameter,
+    )
+    wall_thickness = resolve(
+        item_data.get("wall_thickness"),
+        convert_thickness_to_inches,
+        find_metric_thickness,
+    )
+    length_ft = resolve(
+        item_data.get("length_ft"),
+        lambda raw: convert_length_to_feet(raw, standard_length),
+        lambda text: find_metric_length(text, standard_length),
+    )
+
+    return diameter, wall_thickness, length_ft, notes
+
+
 def _parse_items(items_data: list) -> list[ParsedItem]:
     """Parse item data from LLM response into ParsedItem objects."""
     items = []
@@ -502,18 +583,22 @@ def _parse_items(items_data: list) -> list[ParsedItem]:
             continue
         raw_product_type = str(item_data.get("product_type", "sleeve")).strip() or "sleeve"
         product_type = "sleeve" if raw_product_type == "oversleeve" else raw_product_type
+        diameter, wall_thickness, length_ft, unit_notes = _resolve_item_dimensions(
+            item_data, product_type
+        )
         item = ParsedItem(
             product_type=product_type,
             quantity=int(item_data.get("quantity") or 1),
             description=item_data.get("description", ""),
-            diameter=_parse_float(item_data.get("diameter")),
-            wall_thickness=_parse_float(item_data.get("wall_thickness")),
+            diameter=diameter,
+            wall_thickness=wall_thickness,
             grade=_parse_int(item_data.get("grade")),
-            length_ft=_parse_float(item_data.get("length_ft")),
+            length_ft=length_ft,
             milling=bool(item_data.get("milling", False)),
             painting=bool(item_data.get("painting", False)),
             notes=item_data.get("notes"),
             sku=(str(item_data.get("sku")).strip() or None) if item_data.get("sku") is not None else None,
+            unit_notes=unit_notes,
         )
         items.append(item)
     return _split_bag_empty_and_fill_options(items)
@@ -571,6 +656,7 @@ def _split_bag_empty_and_fill_options(items: list[ParsedItem]) -> list[ParsedIte
                 painting=item.painting,
                 notes=item.notes,
                 sku=item.sku,
+                unit_notes=list(item.unit_notes),
             )
         )
 
