@@ -447,7 +447,7 @@ _DIAMETER_LABEL = r"(?:nominal\s*size|diameter|dia\.?|o\.?d\.?|nps|size)"
 
 def _labelled_metric_finder(label: str) -> re.Pattern[str]:
     return re.compile(
-        rf"{label}\b[^0-9\n]{{0,30}}(?P<value>{_NUMBER})\s*"
+        rf"\b{label}\b[^0-9\n]{{0,30}}(?P<value>{_NUMBER})\s*"
         rf"(?P<unit>millimetres|millimeters|millimetre|millimeter|"
         rf"centimetres|centimeters|centimetre|centimeter|"
         rf"metres|meters|metre|meter|mm|cm|m)(?![a-z])",
@@ -497,11 +497,3 @@ def find_metric_length(
     if measurement is None:
         return None, None
     return convert_length_to_feet(measurement.describe(), standard_length_ft)
-
-
-def has_metric_dimensions(text: str) -> bool:
-    """Whether free text states any labelled metric dimension."""
-    return any(
-        _find_labelled_metric(pattern, text) is not None
-        for pattern in (_THICKNESS_METRIC_RE, _LENGTH_METRIC_RE, _DIAMETER_METRIC_RE)
-    )
