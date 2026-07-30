@@ -2,6 +2,7 @@
 
 from datetime import date, timedelta
 from decimal import Decimal
+from html import escape
 from pathlib import Path
 import sys
 
@@ -18,6 +19,7 @@ from reportlab.platypus import (
     TableStyle,
 )
 
+from .line_notes import customer_note
 from .pricing import Quote
 from .ship_to import normalize_ship_to
 
@@ -148,6 +150,15 @@ class QuotePDFBuilder:
                 fontName="Helvetica-Bold",
                 fontSize=10,
                 leading=12,
+            ),
+            # Provenance note under a line item's description.
+            "line_note": ParagraphStyle(
+                "LineNote",
+                fontName="Helvetica-Oblique",
+                fontSize=8,
+                leading=10,
+                spaceBefore=2,
+                textColor=GRAY,
             ),
             "bold_small": ParagraphStyle(
                 "BoldSmall",
@@ -361,9 +372,18 @@ class QuotePDFBuilder:
                 continue
             item_number = "" if item.is_note else item.part_number
             quantity = "" if item.is_note else str(item.quantity)
+            # The line's provenance note, filtered to what a customer should
+            # read. Internal wording never reaches this cell — see
+            # allenedwards.line_notes.
+            description_cell: list = [Paragraph(item.description, self.styles["normal_small"])]
+            note_text = customer_note(item.notes) if not item.is_note else None
+            if note_text:
+                description_cell.append(
+                    Paragraph(escape(note_text), self.styles["line_note"])
+                )
             table_data.append([
                 Paragraph(item_number, self.styles["normal_small"]),
-                Paragraph(item.description, self.styles["normal_small"]),
+                description_cell,
                 Paragraph(quantity, self.styles["normal_small"]),
                 Paragraph(format_currency(item.unit_price), self.styles["normal_small"]),
                 Paragraph(format_currency(item.total), self.styles["normal_small"]),
