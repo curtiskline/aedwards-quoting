@@ -2479,6 +2479,9 @@ def _db_quote_to_pricing_quote(quote: Quote) -> PricingQuote:
                 quantity=int(math.ceil(float(li.quantity))),
                 unit_price=Decimal(str(li.unit_price)),
                 total=Decimal(str(li.line_total)),
+                # Carry the provenance note pricing wrote. The PDF renders only
+                # the customer-facing subset of it (allenedwards.line_notes).
+                notes=dict(li.specs_json or {}).get("notes"),
             )
         )
     subtotal = _quantize_money(sum((item.total for item in pricing_items), Decimal("0.00")))
