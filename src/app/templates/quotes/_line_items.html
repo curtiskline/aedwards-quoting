@@ -49,6 +49,7 @@
               <input name="quantity" type="number" min="0" step="0.01" value="{{ item.display_qty }}" hx-post="/quotes/{{ quote.id }}/line-items/{{ item.id }}/calc-total" hx-trigger="input changed delay:300ms" hx-target="#line-total-{{ item.id }}" hx-swap="outerHTML" hx-include="[name=quantity],[name=unit_price]" />
             </label>
             <label>Unit Price
+              <input type="hidden" name="unit_price_baseline" value="{{ '%.2f'|format(item.unit_price) }}" />
               <input name="unit_price" type="number" min="0" step="0.01" value="{{ '%.2f'|format(item.unit_price) }}" hx-post="/quotes/{{ quote.id }}/line-items/{{ item.id }}/calc-total" hx-trigger="input changed delay:300ms" hx-target="#line-total-{{ item.id }}" hx-swap="outerHTML" hx-include="[name=quantity],[name=unit_price]" />
             </label>
             {% include "quotes/_line_total.html" %}
@@ -56,6 +57,16 @@
               <div>{{ item.pricing_source }}</div>
               {% if item.rounding_indicator %}<div class="pricing-note-warn">{{ item.rounding_indicator }}</div>{% endif %}
               {% if item.note %}<div class="pricing-note">{{ item.note }}</div>{% endif %}
+              {% if item.price_override %}
+                <div class="pricing-note-warn">
+                  Manual price override{% if item.auto_unit_price %} — auto price is ${{ '%.2f'|format(item.auto_unit_price) }} (retype it to resume auto pricing){% endif %}
+                </div>
+              {% endif %}
+              {% if item.price_stale %}
+                <div class="pricing-note-critical">
+                  Specs changed but the price was not recalculated — fill in every spec field to re-price this line.
+                </div>
+              {% endif %}
               {% if item.no_charge %}<div class="pricing-note">No charge</div>{% endif %}
               {% if item.needs_pricing %}<div class="pricing-note-critical">Needs Pricing</div>{% endif %}
             </div>
