@@ -976,3 +976,51 @@ def test_large_footage_request_converts_to_piece_count():
     assert result is not None
     assert result.quantity == 15  # ceil(150/10), NOT 150 pcs
     assert "150 ft" in result.notes
+
+
+def test_price_item_carries_effective_specs_for_the_editor():
+    """Priced lines expose the specs they were priced from (task 329).
+
+    Without these the quote editor renders blank spec fields, so a reviewer who
+    edits one spec saves form defaults over the real dimensions and the price
+    keeps its original basis (prod quote 126-086).
+    """
+    item = ParsedItem(
+        product_type="sleeve",
+        quantity=1,
+        description="12inch sleeve material",
+        diameter=12.75,
+        wall_thickness=None,
+        grade=65,
+        length_ft=20,
+    )
+
+    result = price_item(item, sort_order=1)
+
+    assert result is not None
+    assert result.diameter == 12.75
+    # The defaulted wall thickness is carried, not left blank.
+    assert result.wall_thickness == 0.375
+    assert result.grade == 65
+    assert result.length_ft == 20
+    assert result.milling is False
+    assert result.painting is False
+
+
+def test_price_item_girth_weld_carries_effective_specs():
+    item = ParsedItem(
+        product_type="girth_weld",
+        quantity=2,
+        description='12-3/4" girth weld sleeve',
+        diameter=12.75,
+        wall_thickness=None,
+        grade=None,
+        length_ft=None,
+    )
+
+    result = price_item(item, sort_order=1)
+
+    assert result is not None
+    assert result.diameter == 12.75
+    assert result.wall_thickness == 0.375
+    assert result.grade == 50
