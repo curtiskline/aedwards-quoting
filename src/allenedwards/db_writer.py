@@ -363,6 +363,17 @@ def write_quote_to_db(
             continue  # skip note-only rows
 
         specs = {}
+        # Persist the specs the line was actually priced from. Without these the
+        # quote editor renders blank spec fields, so a reviewer editing one spec
+        # saves form defaults over the real dimensions and the price silently
+        # keeps its original basis (quote 126-086).
+        for spec_key in ("diameter", "wall_thickness", "grade", "length_ft"):
+            spec_value = getattr(li, spec_key, None)
+            if spec_value is not None:
+                specs[spec_key] = str(spec_value)
+        if li.product_type in ("sleeve", "oversleeve"):
+            specs["milling"] = bool(li.milling)
+            specs["painting"] = bool(li.painting)
         if li.weight_per_ft is not None:
             specs["weight_per_ft"] = str(li.weight_per_ft)
         if li.price_per_lb is not None:

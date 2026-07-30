@@ -290,6 +290,16 @@ class QuoteLineItem:
     notes: str | None = None
     sku: str | None = None
 
+    # Effective specs this line was priced from, after defaults were applied.
+    # Persisted alongside the line item so the quote editor can re-price when a
+    # reviewer edits a spec instead of guessing from a blank form.
+    diameter: float | None = None
+    wall_thickness: float | None = None
+    grade: int | None = None
+    length_ft: float | None = None
+    milling: bool = False
+    painting: bool = False
+
 
 @dataclass
 class Quote:
@@ -890,7 +900,7 @@ def _apply_item_defaults(item: ParsedItem) -> tuple[ParsedItem, list[str]]:
     return item, notes
 
 
-def _lookup_bag_pricing(diameter: float) -> tuple[str, int, Decimal] | None:
+def lookup_bag_pricing(diameter: float) -> tuple[str, int, Decimal] | None:
     """Look up bag pricing by pipe diameter.
 
     Returns (part_number, pieces_per_pallet, price_per_bag) or None.
@@ -1066,6 +1076,12 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
                 weight_per_ft=weight_per_ft,
                 price_per_lb=price_per_lb,
                 notes=notes,
+                diameter=actual_od,
+                wall_thickness=item.wall_thickness,
+                grade=item.grade,
+                length_ft=item.length_ft,
+                milling=bool(item.milling),
+                painting=bool(item.painting),
             )
         else:
             # Non-bundle sleeve pricing (existing logic)
@@ -1107,6 +1123,12 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
                 weight_per_ft=weight_per_ft,
                 price_per_lb=price_per_lb,
                 notes=notes,
+                diameter=actual_od,
+                wall_thickness=item.wall_thickness,
+                grade=item.grade,
+                length_ft=item.length_ft,
+                milling=bool(item.milling),
+                painting=bool(item.painting),
             )
 
     if item.product_type == "oversleeve":
@@ -1158,6 +1180,12 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
             weight_per_ft=weight_per_ft,
             price_per_lb=price_per_lb,
             notes=notes,
+            diameter=item.diameter,
+            wall_thickness=item.wall_thickness,
+            grade=item.grade,
+            length_ft=item.length_ft,
+            milling=bool(item.milling),
+            painting=bool(item.painting),
         )
 
     if item.product_type == "girth_weld":
@@ -1202,6 +1230,10 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
             unit_price=unit_price,
             total=total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
             notes=notes,
+            diameter=actual_od,
+            wall_thickness=wall_thickness,
+            grade=item.grade,
+            length_ft=item.length_ft,
         )
 
     if item.product_type == "bag":
@@ -1212,7 +1244,7 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
             )
             return _tbd_line_item(item, sort_order)
 
-        bag_entry = _lookup_bag_pricing(item.diameter)
+        bag_entry = lookup_bag_pricing(item.diameter)
         if bag_entry is None:
             logger.warning(
                 "No bag pricing for diameter %.1f: %s",
@@ -1238,6 +1270,7 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
             unit_price=price_per_bag,
             total=total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
             notes=notes,
+            diameter=item.diameter,
         )
 
     if item.product_type == "compression":
@@ -1255,6 +1288,9 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
             quantity=item.quantity,
             unit_price=price,
             total=total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+            diameter=diameter or None,
+            wall_thickness=wt,
+            grade=grade,
         )
 
     if item.product_type == "omegawrap":

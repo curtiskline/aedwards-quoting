@@ -1153,3 +1153,339 @@ def test_shipping_calc_line_hidden_during_manual_override(tmp_path):
     assert "Shipping Calc:" not in manual_html
     assert "Auto estimate:" in manual_html
     assert "currently overridden" in manual_html
+
+
+# --- Task 329: spec edits must re-run pricing -------------------------------
+#
+# Prod repro (quote 126-086, line 186): a sleeve priced from a metric RFQ fell
+# through to the 3/8" wall default, a reviewer edited the wall to 1/2", and the
+# description plus specs_json.wall_thickness changed while weight_per_ft,
+# price_per_lb and unit_price kept their 3/8" basis. Only the wall thickness was
+# defaulted in that incident; the grade came from the RFQ. The original length is
+# not recoverable, so these tests use a length that is simply not the editor's
+# 10ft default, which is enough to prove the price follows the stored specs.
+
+_SLEEVE_SPECS_38 = {
+    "diameter": "36",
+    "wall_thickness": "0.375",
+    "grade": "65",
+    "length_ft": "20",
+    "milling": False,
+    "painting": False,
+    "weight_per_ft": "72.91",
+    "price_per_lb": "2.75",
+    "notes": 'wall thickness defaulted to 3/8"',
+}
+_SLEEVE_DESCRIPTION_38 = 'Half Sole, 36" ID, 3/8" w/t, A572 GR65, 20\' long. Backing Strip Included.'
+_SLEEVE_DESCRIPTION_12 = 'Half Sole, 36" ID, 1/2" w/t, A572 GR65, 20\' long. Backing Strip Included.'
+# calculate_sleeve_price(36, 0.375, 65, 20) and (36, 0.5, 65, 20)
+_PRICE_38 = 4010.05
+_PRICE_12 = 5248.19
+
+
+def _sleeve_quote(tmp_path, quote_number, *, specs=None, unit_price=_PRICE_38, description=None):
+    app = _make_app(tmp_path)
+    with app.app_context():
+        db.create_all()
+        user = User(email=f"{quote_number}@example.com", name="Editor", password_hash="x")
+        db.session.add(user)
+        quote = Quote(quote_number=quote_number, status=QuoteStatus.IN_REVIEW)
+        db.session.add(quote)
+        db.session.flush()
+        li = QuoteLineItem(
+            quote_id=quote.id,
+            product_type="sleeve",
+            description=_SLEEVE_DESCRIPTION_38 if description is None else description,
+            part_number="S-36-38-65-20",
+            quantity=1,
+            unit_price=unit_price,
+            line_total=unit_price,
+            specs_json=dict(_SLEEVE_SPECS_38 if specs is None else specs),
+            sort_order=1,
+        )
+        db.session.add(li)
+        db.session.commit()
+        return app, quote.id, li.id, user.id
+
+
+def _blur_payload(**overrides):
+    """The form body an autosave blur sends for the 3/8" sleeve above."""
+    payload = {
+        "product_type": "sleeve",
+        "description": _SLEEVE_DESCRIPTION_38,
+        "quantity": "1",
+        "unit_price": f"{_PRICE_38:.2f}",
+        "unit_price_baseline": f"{_PRICE_38:.2f}",
+        "spec_diameter": "36",
+        "spec_wall_thickness": "0.375",
+        "spec_grade": "65",
+        "spec_length_ft": "20",
+    }
+    payload.update(overrides)
+    return payload
+
+
+def test_wall_thickness_edit_recalculates_price_on_autosave(tmp_path):
+    app, quote_id, item_id, user_id = _sleeve_quote(tmp_path, "126-329A")
+    client = app.test_client()
+    _login(client, user_id)
+
+    # Autosave blur: the reviewer changed only the wall thickness, so the form
+    # still carries the pre-edit unit price.
+    response = client.post(
+        f"/quotes/{quote_id}/line-items/{item_id}/update",
+        data=_blur_payload(spec_wall_thickness="0.5"),
+    )
+    assert response.status_code == 200
+
+    with app.app_context():
+        updated = db.session.get(QuoteLineItem, item_id)
+        specs = dict(updated.specs_json or {})
+        assert specs["wall_thickness"] == "0.5"
+        # Both stored pricing inputs must move off the 3/8" basis.
+        assert specs["weight_per_ft"] == "97.55"
+        assert specs["price_per_lb"] == "2.69"
+        assert float(updated.unit_price) == _PRICE_12
+        assert float(updated.line_total) == _PRICE_12
+        # Provenance: the wall thickness is no longer a default.
+        assert "notes" not in specs
+        # The machine-generated description follows the specs.
+        assert updated.description == _SLEEVE_DESCRIPTION_12
+        assert updated.part_number == "S-36-12-65-20"
+
+
+def test_repeated_blur_after_spec_edit_does_not_freeze_a_stale_price(tmp_path):
+    """A second blur carrying the pre-recalc price must not become an override."""
+    app, quote_id, item_id, user_id = _sleeve_quote(tmp_path, "126-329B")
+    client = app.test_client()
+    _login(client, user_id)
+
+    client.post(
+        f"/quotes/{quote_id}/line-items/{item_id}/update",
+        data=_blur_payload(spec_wall_thickness="0.5"),
+    )
+
+    # Blur #2 from the same (now stale) DOM: unit_price is still the 3/8" price
+    # and it no longer matches what is stored.
+    client.post(
+        f"/quotes/{quote_id}/line-items/{item_id}/update",
+        data=_blur_payload(spec_wall_thickness="0.5", description=_SLEEVE_DESCRIPTION_12),
+    )
+
+    with app.app_context():
+        updated = db.session.get(QuoteLineItem, item_id)
+        specs = dict(updated.specs_json or {})
+        assert specs.get("price_override") is None
+        assert float(updated.unit_price) == _PRICE_12
+        assert float(updated.line_total) == _PRICE_12
+
+    # Blur #3 from a freshly rendered form agrees with the stored price.
+    client.post(
+        f"/quotes/{quote_id}/line-items/{item_id}/update",
+        data=_blur_payload(
+            spec_wall_thickness="0.5",
+            description=_SLEEVE_DESCRIPTION_12,
+            unit_price=f"{_PRICE_12:.2f}",
+            unit_price_baseline=f"{_PRICE_12:.2f}",
+        ),
+    )
+
+    with app.app_context():
+        updated = db.session.get(QuoteLineItem, item_id)
+        assert dict(updated.specs_json or {}).get("price_override") is None
+        assert float(updated.unit_price) == _PRICE_12
+
+
+def test_typed_unit_price_survives_later_spec_edits(tmp_path):
+    app, quote_id, item_id, user_id = _sleeve_quote(tmp_path, "126-329C")
+    client = app.test_client()
+    _login(client, user_id)
+
+    # Reviewer types a negotiated price.
+    client.post(
+        f"/quotes/{quote_id}/line-items/{item_id}/update",
+        data=_blur_payload(unit_price="6000.00"),
+    )
+    with app.app_context():
+        updated = db.session.get(QuoteLineItem, item_id)
+        assert dict(updated.specs_json or {}).get("price_override") is True
+        assert float(updated.unit_price) == 6000.00
+
+    # A later spec edit refreshes the pricing basis but leaves the typed price.
+    client.post(
+        f"/quotes/{quote_id}/line-items/{item_id}/update",
+        data=_blur_payload(
+            spec_wall_thickness="0.5",
+            unit_price="6000.00",
+            unit_price_baseline="6000.00",
+        ),
+    )
+    with app.app_context():
+        updated = db.session.get(QuoteLineItem, item_id)
+        specs = dict(updated.specs_json or {})
+        assert float(updated.unit_price) == 6000.00
+        assert specs["weight_per_ft"] == "97.55"
+        assert specs["price_per_lb"] == "2.69"
+        assert specs["auto_unit_price"] == str(_PRICE_12)
+        assert specs.get("price_override") is True
+
+    # Typing the auto price back in hands the line back to automatic pricing.
+    client.post(
+        f"/quotes/{quote_id}/line-items/{item_id}/update",
+        data=_blur_payload(
+            spec_wall_thickness="0.5",
+            unit_price=f"{_PRICE_12:.2f}",
+            unit_price_baseline="6000.00",
+        ),
+    )
+    with app.app_context():
+        updated = db.session.get(QuoteLineItem, item_id)
+        specs = dict(updated.specs_json or {})
+        assert specs.get("price_override") is None
+        assert float(updated.unit_price) == _PRICE_12
+
+
+def test_manual_no_charge_line_is_never_auto_priced(tmp_path):
+    specs = dict(_SLEEVE_SPECS_38)
+    specs["manual_no_charge"] = True
+    app, quote_id, item_id, user_id = _sleeve_quote(
+        tmp_path, "126-329D", specs=specs, unit_price=0
+    )
+    client = app.test_client()
+    _login(client, user_id)
+
+    client.post(
+        f"/quotes/{quote_id}/line-items/{item_id}/update",
+        data=_blur_payload(spec_wall_thickness="0.5", unit_price="0.00", unit_price_baseline="0.00"),
+    )
+
+    with app.app_context():
+        updated = db.session.get(QuoteLineItem, item_id)
+        specs = dict(updated.specs_json or {})
+        assert float(updated.unit_price) == 0.0
+        assert specs.get("manual_no_charge") is True
+        assert specs.get("price_stale") is None
+
+
+def test_spec_edit_without_full_specs_flags_price_as_not_recalculated(tmp_path):
+    """Legacy rows created before specs were persisted must not be guess-priced."""
+    app, quote_id, item_id, user_id = _sleeve_quote(
+        tmp_path,
+        "126-329E",
+        specs={"weight_per_ft": "72.91", "price_per_lb": "2.75", "notes": 'wall thickness defaulted to 3/8"'},
+        unit_price=4855.66,
+        description="Half Sole sleeve",
+    )
+    client = app.test_client()
+    _login(client, user_id)
+
+    response = client.post(
+        f"/quotes/{quote_id}/line-items/{item_id}/update",
+        data={
+            "product_type": "sleeve",
+            "description": "Half Sole sleeve",
+            "quantity": "1",
+            "unit_price": "4855.66",
+            "unit_price_baseline": "4855.66",
+            "spec_diameter": "",
+            "spec_wall_thickness": "0.5",
+            "spec_grade": "",
+            "spec_length_ft": "",
+        },
+    )
+    assert response.status_code == 200
+    assert "the price was not recalculated" in response.get_data(as_text=True)
+
+    with app.app_context():
+        updated = db.session.get(QuoteLineItem, item_id)
+        specs = dict(updated.specs_json or {})
+        assert float(updated.unit_price) == 4855.66
+        assert specs.get("price_stale") is True
+        # Stale 3/8" pricing inputs are not silently kept as if they were fresh.
+        assert specs["wall_thickness"] == "0.5"
+
+
+def test_full_spec_entry_on_legacy_row_prices_the_line(tmp_path):
+    """Filling in every spec clears the warning and prices from those specs."""
+    app, quote_id, item_id, user_id = _sleeve_quote(
+        tmp_path,
+        "126-329F",
+        specs={"weight_per_ft": "72.91", "price_per_lb": "2.75"},
+        unit_price=4855.66,
+        description="Half Sole sleeve",
+    )
+    client = app.test_client()
+    _login(client, user_id)
+
+    client.post(
+        f"/quotes/{quote_id}/line-items/{item_id}/update",
+        data=_blur_payload(
+            spec_wall_thickness="0.5",
+            description="Half Sole sleeve",
+            unit_price="4855.66",
+            unit_price_baseline="4855.66",
+        ),
+    )
+
+    with app.app_context():
+        updated = db.session.get(QuoteLineItem, item_id)
+        specs = dict(updated.specs_json or {})
+        assert float(updated.unit_price) == _PRICE_12
+        assert specs.get("price_stale") is None
+        # A human-written description is never overwritten by the generator.
+        assert updated.description == "Half Sole sleeve"
+
+
+def test_quantity_only_edit_does_not_reprice(tmp_path):
+    app, quote_id, item_id, user_id = _sleeve_quote(tmp_path, "126-329G")
+    client = app.test_client()
+    _login(client, user_id)
+
+    client.post(
+        f"/quotes/{quote_id}/line-items/{item_id}/update",
+        data=_blur_payload(quantity="3"),
+    )
+
+    with app.app_context():
+        updated = db.session.get(QuoteLineItem, item_id)
+        assert float(updated.unit_price) == _PRICE_38
+        assert float(updated.line_total) == round(_PRICE_38 * 3, 2)
+        assert dict(updated.specs_json or {}).get("price_override") is None
+
+
+def test_milling_checkbox_change_reprices_the_line(tmp_path):
+    """The checkbox autosave trigger goes through the same recalc path."""
+    app, quote_id, item_id, user_id = _sleeve_quote(tmp_path, "126-329H")
+    client = app.test_client()
+    _login(client, user_id)
+
+    client.post(
+        f"/quotes/{quote_id}/line-items/{item_id}/update",
+        data=_blur_payload(spec_milling="on"),
+    )
+
+    with app.app_context():
+        updated = db.session.get(QuoteLineItem, item_id)
+        specs = dict(updated.specs_json or {})
+        assert specs["milling"] is True
+        # Milling is a flat add-on, so the price moves off the base price.
+        assert float(updated.unit_price) > _PRICE_38
+
+
+def test_price_override_is_visible_in_the_editor(tmp_path):
+    app, quote_id, item_id, user_id = _sleeve_quote(tmp_path, "126-329I")
+    client = app.test_client()
+    _login(client, user_id)
+
+    client.post(
+        f"/quotes/{quote_id}/line-items/{item_id}/update",
+        data=_blur_payload(unit_price="6000.00"),
+    )
+
+    html = client.get(f"/quotes/{quote_id}").get_data(as_text=True)
+    assert "Manual price override" in html
+    assert f"auto price is ${_PRICE_38:.2f}" in html
+    assert "Manual price entry" in html
+    # The form carries the baseline token so the next blur cannot resubmit a
+    # price the reviewer never typed.
+    assert 'name="unit_price_baseline" value="6000.00"' in html

@@ -34,10 +34,17 @@ from allenedwards.pricing import (
     DEFAULT_LENGTH_SLEEVE,
     STANDARD_BUNDLE_PIECES,
     bundle_round,
+    calculate_oversleeve_od,
+    calculate_sleeve_price,
+    generate_girth_weld_description,
     generate_girth_weld_part_number,
+    generate_oversleeve_description,
     generate_oversleeve_part_number,
     generate_part_number,
+    generate_sleeve_description,
     generate_sleeve_part_number,
+    get_girth_weld_price,
+    lookup_bag_pricing,
     normalize_nominal_od,
     pallet_round,
 )
@@ -679,6 +686,8 @@ def _bag_pricing_row_for_diameter(diameter: float | None) -> tuple[str, int] | N
 
 
 def _line_item_pricing_source(item: QuoteLineItem, specs: dict) -> str:
+    if specs.get("price_override"):
+        return "Manual price entry"
     if item.product_type == "shipping":
         if specs.get("auto_calculated_shipping"):
             return "Auto shipping calculation"
@@ -812,6 +821,245 @@ def _line_item_spec_fields(product_type: str, specs: dict) -> list[dict]:
     return []
 
 
+# Specs that change what a line item costs. Editing any of them re-runs pricing.
+_PRICING_SPEC_KEYS = ("diameter", "wall_thickness", "grade", "length_ft", "milling", "painting")
+
+# Specs required before a product type can be priced from its specs at all.
+# A type that is absent here is priced from a flat/catalog rate that spec edits
+# do not move (compression, omegawrap, accessory, service, shipping).
+_PRICING_REQUIRED_SPECS: dict[str, tuple[str, ...]] = {
+    "sleeve": ("diameter", "wall_thickness", "grade", "length_ft"),
+    "oversleeve": ("diameter", "wall_thickness", "grade", "length_ft"),
+    "girth_weld": ("diameter",),
+    "bag": ("diameter",),
+}
+
+# Specs required to regenerate the customer-facing description.
+_DESCRIPTION_REQUIRED_SPECS: dict[str, tuple[str, ...]] = {
+    "sleeve": ("diameter", "wall_thickness", "grade", "length_ft"),
+    "oversleeve": ("diameter", "wall_thickness", "grade", "length_ft"),
+    "girth_weld": ("diameter", "wall_thickness", "grade"),
+}
+
+# Provenance notes written by pricing when a spec fell through to a default
+# (see allenedwards.pricing._apply_item_defaults). Once a human sets the spec
+# themselves the note is no longer true and has to go.
+_DEFAULT_NOTE_PREFIXES: dict[str, tuple[str, ...]] = {
+    "wall_thickness": ("wall thickness defaulted",),
+    "grade": ("grade defaulted",),
+    "length_ft": ("length defaulted",),
+}
+
+
+def _spec_floats(specs: dict, keys: tuple[str, ...]) -> dict[str, float] | None:
+    """Parse the requested specs as floats, or None if any is missing/unparseable."""
+    values: dict[str, float] = {}
+    for key in keys:
+        parsed = _parse_float(str(specs.get(key, "")))
+        if parsed is None:
+            return None
+        values[key] = parsed
+    return values
+
+
+def _spec_value_differs(prior: dict, current: dict, key: str) -> bool:
+    """Compare one spec across two spec dicts, numerically where possible."""
+    if key in ("milling", "painting"):
+        return bool(prior.get(key)) != bool(current.get(key))
+    prior_raw = prior.get(key)
+    current_raw = current.get(key)
+    prior_blank = prior_raw is None or str(prior_raw).strip() == ""
+    current_blank = current_raw is None or str(current_raw).strip() == ""
+    if prior_blank or current_blank:
+        return prior_blank != current_blank
+    prior_number = _parse_float(str(prior_raw))
+    current_number = _parse_float(str(current_raw))
+    if prior_number is not None and current_number is not None:
+        return prior_number != current_number
+    return str(prior_raw).strip() != str(current_raw).strip()
+
+
+def _changed_pricing_specs(prior: dict, current: dict) -> set[str]:
+    return {key for key in _PRICING_SPEC_KEYS if _spec_value_differs(prior, current, key)}
+
+
+def _auto_pricing_from_specs(
+    product_type: str, specs: dict
+) -> tuple[Decimal, Decimal | None, Decimal | None] | None:
+    """Recompute (unit_price, weight_per_ft, price_per_lb) from a line item's specs.
+
+    Returns None when the type is not priced from specs, or when a required spec
+    is missing. Callers must leave the stored price alone in that case rather
+    than pricing a partially specified line.
+    """
+    required = _PRICING_REQUIRED_SPECS.get(product_type)
+    if required is None:
+        return None
+    values = _spec_floats(specs, required)
+    if values is None:
+        return None
+
+    if product_type in ("sleeve", "oversleeve"):
+        grade = _parse_int(str(specs.get("grade", "")))
+        if grade is None:
+            return None
+        wall_thickness = values["wall_thickness"]
+        if product_type == "sleeve":
+            priced_diameter = normalize_nominal_od(values["diameter"])
+        else:
+            priced_diameter = calculate_oversleeve_od(values["diameter"], wall_thickness)
+        unit_price, weight_per_ft, price_per_lb = calculate_sleeve_price(
+            priced_diameter,
+            wall_thickness,
+            grade,
+            values["length_ft"],
+            bool(specs.get("milling")),
+            bool(specs.get("painting")),
+        )
+        return _quantize_money(unit_price), weight_per_ft, price_per_lb
+
+    if product_type == "girth_weld":
+        price_per_set = get_girth_weld_price(normalize_nominal_od(values["diameter"]))
+        if price_per_set is None:
+            return None
+        return _quantize_money(price_per_set), None, None
+
+    bag_entry = lookup_bag_pricing(values["diameter"])
+    if bag_entry is None:
+        return None
+    return _quantize_money(bag_entry[2]), None, None
+
+
+def _generated_description_from_specs(product_type: str, specs: dict) -> str | None:
+    """Rebuild the description pricing would have produced for these specs."""
+    required = _DESCRIPTION_REQUIRED_SPECS.get(product_type)
+    if required is None:
+        return None
+    values = _spec_floats(specs, required)
+    if values is None:
+        return None
+    grade = _parse_int(str(specs.get("grade", "")))
+    if grade is None:
+        return None
+    if product_type == "girth_weld":
+        return generate_girth_weld_description(
+            values["diameter"], values["wall_thickness"], grade, 0.0
+        )
+    builder = (
+        generate_sleeve_description
+        if product_type == "sleeve"
+        else generate_oversleeve_description
+    )
+    return builder(
+        values["diameter"],
+        values["wall_thickness"],
+        grade,
+        values["length_ft"],
+        bool(specs.get("milling")),
+        bool(specs.get("painting")),
+    )
+
+
+def _strip_stale_default_notes(notes: str | None, changed_keys: set[str]) -> str | None:
+    """Drop 'defaulted to ...' clauses for specs a human has now set explicitly."""
+    if not notes:
+        return notes
+    prefixes = tuple(
+        prefix for key in changed_keys for prefix in _DEFAULT_NOTE_PREFIXES.get(key, ())
+    )
+    if not prefixes:
+        return notes
+    kept = [
+        clause.strip()
+        for clause in notes.split(";")
+        if clause.strip() and not clause.strip().lower().startswith(prefixes)
+    ]
+    return "; ".join(kept) or None
+
+
+def _apply_spec_driven_pricing(
+    item: QuoteLineItem,
+    specs: dict,
+    prior_specs: dict,
+    prior_unit_price: Decimal,
+    prior_description: str | None,
+    unit_price_typed: bool,
+) -> None:
+    """Re-price a line item after its specs changed, in place.
+
+    Precedence (task 329):
+      1. A unit price the human typed wins. It sets a sticky ``price_override``
+         flag, so later spec edits refresh the pricing basis and part number but
+         never touch the price. Typing the auto price back in clears the flag.
+      2. ``manual_no_charge`` lines (a deliberate human zero, insight I95) are
+         never auto-priced.
+      3. Otherwise a change to any pricing-relevant spec re-runs pricing and
+         persists weight_per_ft, price_per_lb, unit_price and line_total.
+      4. If a pricing spec changed but the spec set is too incomplete to price,
+         nothing is guessed — the line is flagged so the reviewer can see the
+         price no longer matches the specs.
+    """
+    changed_keys = _changed_pricing_specs(prior_specs, specs)
+    auto = _auto_pricing_from_specs(item.product_type, specs)
+
+    if unit_price_typed:
+        if auto is not None and _quantize_money(Decimal(str(item.unit_price))) == auto[0]:
+            specs.pop("price_override", None)
+        else:
+            specs["price_override"] = True
+
+    if auto is not None:
+        auto_unit_price, weight_per_ft, price_per_lb = auto
+        specs["auto_unit_price"] = str(auto_unit_price)
+        if weight_per_ft is not None:
+            specs["weight_per_ft"] = str(weight_per_ft)
+        if price_per_lb is not None:
+            specs["price_per_lb"] = str(price_per_lb)
+    else:
+        specs.pop("auto_unit_price", None)
+
+    price_is_human = bool(specs.get("price_override")) or bool(specs.get("manual_no_charge"))
+
+    if changed_keys:
+        specs["notes"] = _strip_stale_default_notes(specs.get("notes"), changed_keys)
+        if specs["notes"] is None:
+            specs.pop("notes", None)
+
+        # Keep the customer-facing description in step with the specs, but only
+        # while it is still the machine-generated text — never overwrite wording
+        # a human typed.
+        prior_generated = _generated_description_from_specs(item.product_type, prior_specs)
+        current_generated = _generated_description_from_specs(item.product_type, specs)
+        submitted_description = (item.description or "").strip()
+        if (
+            current_generated
+            and prior_generated
+            and submitted_description == (prior_description or "").strip()
+            and submitted_description == prior_generated.strip()
+        ):
+            item.description = current_generated
+
+    if price_is_human or unit_price_typed:
+        # The stored price is deliberate (or was just retyped to match auto), so
+        # it is not stale with respect to the specs.
+        specs.pop("price_stale", None)
+        return
+
+    if not changed_keys:
+        return
+
+    if auto is None:
+        if item.product_type in _PRICING_REQUIRED_SPECS and prior_unit_price > 0:
+            specs["price_stale"] = True
+        return
+
+    specs.pop("price_stale", None)
+    item.unit_price = float(auto[0])
+    item.line_total = float(
+        _quantize_money(Decimal(str(item.quantity)) * Decimal(str(item.unit_price)))
+    )
+
+
 def _shipping_breakdown_for_item(item: QuoteLineItem) -> dict | None:
     if item.product_type != "shipping":
         return None
@@ -859,6 +1107,9 @@ def _line_item_view(item: QuoteLineItem) -> dict:
         "no_charge": no_charge,
         "needs_pricing": not no_charge and (unit_price <= 0 or line_total <= 0),
         "note": specs.get("notes"),
+        "price_override": bool(specs.get("price_override")),
+        "auto_unit_price": _decimal_from_raw(specs.get("auto_unit_price")),
+        "price_stale": bool(specs.get("price_stale")),
         "shipping_breakdown": _shipping_breakdown_for_item(item),
     }
 
@@ -1631,6 +1882,10 @@ def quote_update_line_item(quote_id: int, item_id: int):
     if item.quote_id != quote.id:
         abort(404)
 
+    prior_specs = dict(item.specs_json or {})
+    prior_unit_price = _quantize_money(Decimal(str(item.unit_price)))
+    prior_description = item.description
+
     item.product_type = _resolve_product_type(request.form.get("product_type"), item.product_type)
     auto_shipping_trigger = request.form.get("auto_shipping_trigger") == "1"
     item.sku = (request.form.get("sku") or "").strip() or None
@@ -1644,9 +1899,23 @@ def quote_update_line_item(quote_id: int, item_id: int):
         if raw_unit_price is not None and not raw_unit_price.strip()
         else _parse_decimal(raw_unit_price, Decimal(str(item.unit_price)))
     )
-    item.unit_price = float(_quantize_money(unit_price))
+    unit_price = _quantize_money(unit_price)
 
-    specs = dict(item.specs_json or {})
+    # The price the form was BUILT with. Autosave fires on every blur, so a form
+    # rendered before a recalculation would otherwise resubmit the pre-recalc
+    # price — which both reverts the new price and looks like a human override.
+    # Comparing against the baseline instead of the stored value tells the two
+    # apart even if a DOM swap was missed.
+    baseline_unit_price = _quantize_money(
+        _parse_decimal(request.form.get("unit_price_baseline"), prior_unit_price)
+    )
+    unit_price_typed = raw_unit_price is not None and unit_price != baseline_unit_price
+    if not unit_price_typed and baseline_unit_price != prior_unit_price:
+        # Stale form field: keep the stored price rather than winding it back.
+        unit_price = prior_unit_price
+    item.unit_price = float(unit_price)
+
+    specs = dict(prior_specs)
     for key in ("diameter", "wall_thickness", "grade", "length_ft"):
         raw = request.form.get(f"spec_{key}")
         if raw is None:
@@ -1759,6 +2028,15 @@ def quote_update_line_item(quote_id: int, item_id: int):
         else:
             specs["manual_override"] = True
             specs["auto_calculated_shipping"] = False
+
+    _apply_spec_driven_pricing(
+        item,
+        specs,
+        prior_specs,
+        prior_unit_price,
+        prior_description,
+        unit_price_typed,
+    )
 
     item.specs_json = specs or None
     _apply_auto_shipping_line_item(quote)

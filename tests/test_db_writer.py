@@ -557,3 +557,57 @@ def test_extract_email_domain():
     assert _extract_email_domain("BOB@ACME.COM") == "acme.com"
     assert _extract_email_domain("") is None
     assert _extract_email_domain("nope") is None
+
+
+def test_line_item_specs_persist_pricing_inputs(app, msg, rfq):
+    """specs_json carries the specs a line was priced from (task 329).
+
+    The quote editor re-prices from specs_json, so a line written without
+    diameter/wall/grade/length cannot be re-priced when a reviewer edits a spec.
+    """
+    priced = PricingQuote(
+        quote_number="126-329",
+        customer_name="Acme Pipeline Co",
+        contact_name=None,
+        contact_email=None,
+        contact_phone=None,
+        ship_to=None,
+        line_items=[
+            PricingLineItem(
+                sort_order=1,
+                product_type="sleeve",
+                part_number="S-36-38-65-20",
+                description='Half Sole, 36" ID, 3/8" w/t, A572 GR65, 20\' long.',
+                quantity=1,
+                unit_price=Decimal("4010.05"),
+                total=Decimal("4010.05"),
+                weight_per_ft=Decimal("72.91"),
+                price_per_lb=Decimal("2.75"),
+                notes='wall thickness defaulted to 3/8"',
+                diameter=36.0,
+                wall_thickness=0.375,
+                grade=65,
+                length_ft=20.0,
+            )
+        ],
+        subtotal=Decimal("4010.05"),
+        shipping_amount=None,
+        tax_amount=Decimal("0"),
+        total=Decimal("4010.05"),
+        notes=None,
+    )
+
+    with app.app_context():
+        db_quote = write_quote_to_db(msg, rfq, priced, "126-329")
+        line = DBQuoteLineItem.query.filter_by(quote_id=db_quote.id).one()
+        specs = dict(line.specs_json or {})
+        assert specs["diameter"] == "36.0"
+        assert specs["wall_thickness"] == "0.375"
+        assert specs["grade"] == "65"
+        assert specs["length_ft"] == "20.0"
+        assert specs["milling"] is False
+        assert specs["painting"] is False
+        # Existing pricing provenance is untouched.
+        assert specs["weight_per_ft"] == "72.91"
+        assert specs["price_per_lb"] == "2.75"
+        assert specs["notes"] == 'wall thickness defaulted to 3/8"'
