@@ -531,7 +531,7 @@ def test_price_item_bag_missing_diameter():
     result = price_item(item, sort_order=1)
     assert result is not None
     assert result.unit_price == Decimal("0.00")
-    assert result.notes == "Pricing TBD — contact sales"
+    assert result.notes == "Pricing TBD, contact sales"
 
 
 def test_price_item_bag_out_of_range():
@@ -545,7 +545,7 @@ def test_price_item_bag_out_of_range():
     result = price_item(item, sort_order=1)
     assert result is not None
     assert result.unit_price == Decimal("0.00")
-    assert result.notes == "Pricing TBD — contact sales"
+    assert result.notes == "Pricing TBD, contact sales"
 
 
 def test_price_item_compression():
@@ -776,7 +776,7 @@ def test_price_item_accessory_unknown():
     result = price_item(item, sort_order=1)
     assert result is not None
     assert result.unit_price == Decimal("0.00")
-    assert result.notes == "Pricing TBD — contact sales"
+    assert result.notes == "Pricing TBD, contact sales"
 
 
 def test_price_item_service_supervisor():
@@ -816,7 +816,7 @@ def test_price_item_service_unknown():
     result = price_item(item, sort_order=1)
     assert result is not None
     assert result.unit_price == Decimal("0.00")
-    assert result.notes == "Pricing TBD — contact sales"
+    assert result.notes == "Pricing TBD, contact sales"
 
 
 def test_price_item_unknown_product_type():
@@ -829,7 +829,7 @@ def test_price_item_unknown_product_type():
     result = price_item(item, sort_order=1)
     assert result is not None
     assert result.unit_price == Decimal("0.00")
-    assert result.notes == "Pricing TBD — contact sales"
+    assert result.notes == "Pricing TBD, contact sales"
     assert result.part_number == "TBD"
 
 

@@ -754,7 +754,7 @@ def _backing_strip_packs(item: ParsedItem) -> tuple[int, str]:
         strips = max(1, int(exact.to_integral_value(rounding=ROUND_CEILING)))
         basis = (
             f"{footage:g} lf = {strips} strip{'s' if strips != 1 else ''} at "
-            f"{BACKING_STRIP_FT_PER_STRIP:g} ft per strip (interim conversion — "
+            f"{BACKING_STRIP_FT_PER_STRIP:g} ft per strip (interim conversion, "
             f"confirm with Chip)"
         )
     else:
@@ -983,7 +983,7 @@ def _tbd_line_item(item: ParsedItem, sort_order: int) -> QuoteLineItem:
         quantity=item.quantity,
         unit_price=Decimal("0.00"),
         total=Decimal("0.00"),
-        notes="Pricing TBD — contact sales",
+        notes="Pricing TBD, contact sales",
     )
 
 
@@ -997,7 +997,7 @@ def price_item(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
     if item.quantity == 0:
         from dataclasses import replace
         item = replace(item, quantity=1)
-        quantity_note = "Quantity not specified — defaulted to 1"
+        quantity_note = "Quantity not specified, defaulted to 1"
         logger.warning("Item '%s' has quantity 0 — defaulting to 1", item.description or item.product_type)
 
     result = _price_item_core(item, sort_order)

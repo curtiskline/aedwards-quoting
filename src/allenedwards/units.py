@@ -426,7 +426,7 @@ def _apply_metric_length_policy(
         )
         return float(standard_length_ft), note
 
-    note = f"length {measurement.describe()} converted to {exact_ft:f} ft — verify"
+    note = f"length {measurement.describe()} converted to {exact_ft:f} ft, verify"
     return float(exact_ft), note
 
 
