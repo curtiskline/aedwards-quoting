@@ -121,6 +121,9 @@ class ShipToAddress(db.Model):
     postal_code: Mapped[str] = mapped_column(nullable=False)
     country: Mapped[str] = mapped_column(default="US", nullable=False)
     is_default: Mapped[bool] = mapped_column(default=False, nullable=False)
+    # Stored ship-to addresses may be inferred from RFQ data. Only an explicit
+    # human action may promote one to a trusted default.
+    human_confirmed: Mapped[bool] = mapped_column(default=False, nullable=False)
 
     customer: Mapped[Customer] = relationship(back_populates="ship_to_addresses")
 

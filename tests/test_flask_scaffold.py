@@ -80,6 +80,54 @@ def test_migrations_seed_pricing_rows(tmp_path: Path) -> None:
     assert row_count > 0
 
 
+def test_ship_to_confirmation_migration_marks_existing_addresses_unconfirmed(tmp_path: Path) -> None:
+    """The production-style upgrade must treat pre-marker rows as unconfirmed."""
+    db_path = tmp_path / "ship-to-provenance.db"
+    env = _alembic_env(db_path)
+
+    subprocess.run(
+        [*ALEMBIC_CMD, "upgrade", "20260730_0001"],
+        check=True,
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+    )
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO customer (id, company_name, discount_pct, created_at) VALUES (?, ?, ?, ?)",
+            (1, "Existing Customer", 0, "2026-08-05 00:00:00"),
+        )
+        conn.execute(
+            """
+            INSERT INTO ship_to_address
+              (customer_id, address_line1, city, state, postal_code, country, is_default)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (1, "3200 2nd Street SW", "Calgary", "AB", "T2P 1M4", "US", True),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    subprocess.run(
+        [*ALEMBIC_CMD, "upgrade", "head"],
+        check=True,
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+    )
+    conn = sqlite3.connect(db_path)
+    try:
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(ship_to_address)")}
+        human_confirmed = conn.execute(
+            "SELECT human_confirmed FROM ship_to_address WHERE customer_id = 1"
+        ).fetchone()[0]
+    finally:
+        conn.close()
+
+    assert "human_confirmed" in columns
+    assert human_confirmed == 0
+
+
 def test_pricing_admin_page_and_inline_update(tmp_path: Path) -> None:
     db_path = tmp_path / "admin.db"
     previous_database_url = os.environ.get("DATABASE_URL")

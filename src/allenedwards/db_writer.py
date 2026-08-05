@@ -282,6 +282,7 @@ def _create_customer_from_rfq(rfq: ParsedRFQ) -> Customer:
             state=rfq.ship_to.state,
             postal_code=rfq.ship_to.postal_code or "",
             is_default=True,
+            human_confirmed=False,
         )
         db.session.add(addr)
 

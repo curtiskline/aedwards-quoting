@@ -1192,6 +1192,7 @@ def _quote_context(quote: Quote) -> dict:
         "quote": quote,
         # Canonical ship-to for the editor form; tolerates both stored shapes.
         "ship_to": normalize_ship_to(quote.ship_to_json) or dict.fromkeys(SHIP_TO_KEYS, ""),
+        "ship_to_requires_confirmation": _quote_ship_to_requires_confirmation(quote),
         "attachments": sorted(
             quote.attachments, key=lambda attachment: (attachment.created_at, attachment.id)
         ),
@@ -1248,12 +1249,14 @@ def _revision_quote_number(source: Quote) -> str:
     return f"{root.quote_number}-R{source.revision_number + 1}"
 
 
-def _default_customer_ship_to(customer: Customer) -> dict | None:
+def _default_customer_ship_to_address(customer: Customer) -> ShipToAddress | None:
     address = next((a for a in customer.ship_to_addresses if a.is_default), None)
     if address is None and customer.ship_to_addresses:
         address = customer.ship_to_addresses[0]
-    if address is None:
-        return None
+    return address
+
+
+def _ship_to_address_data(address: ShipToAddress) -> dict:
     return normalize_ship_to(
         {
             "address_line1": address.address_line1,
@@ -1263,6 +1266,29 @@ def _default_customer_ship_to(customer: Customer) -> dict | None:
             "postal_code": address.postal_code,
             "country": address.country,
         }
+    )
+
+
+def _default_customer_ship_to(customer: Customer) -> dict | None:
+    address = _default_customer_ship_to_address(customer)
+    return _ship_to_address_data(address) if address is not None else None
+
+
+def _quote_ship_to_requires_confirmation(quote: Quote) -> bool:
+    """Whether the displayed ship-to came from an unconfirmed customer address."""
+    incoming = normalize_ship_to(quote.ship_to_json)
+    if incoming is None or quote.customer_id is None:
+        return False
+    customer = db.session.get(Customer, quote.customer_id)
+    if customer is None:
+        return False
+    address = _default_customer_ship_to_address(customer)
+    if address is None or address.human_confirmed:
+        return False
+    stored = _ship_to_address_data(address)
+    return all(
+        incoming[field] == stored[field]
+        for field in ("address_line1", "address_line2", "city", "state", "postal_code", "country")
     )
 
 
@@ -1340,8 +1366,9 @@ def _sync_customer_ship_to_from_quote(customer: Customer, quote: Quote) -> None:
             postal_code=incoming["postal_code"],
             country=incoming["country"] or "US",
             is_default=True,
+            human_confirmed=False,
         )
-        db.session.add(address)
+        customer.ship_to_addresses.append(address)
         return
 
     if incoming["address_line1"]:
@@ -1367,6 +1394,27 @@ def _sync_linked_customer_from_quote(quote: Quote) -> None:
         customer.company_name = quote.customer_name_raw
     _sync_customer_contact_from_quote(customer, quote)
     _sync_customer_ship_to_from_quote(customer, quote)
+
+
+def _update_quote_customer_from_request(quote: Quote) -> None:
+    """Apply the editor's customer form without assigning provenance by inference."""
+    quote.customer_name_raw = (request.form.get("customer_name_raw") or "").strip() or None
+    quote.contact_name = (request.form.get("contact_name") or "").strip() or None
+    quote.contact_email = (request.form.get("contact_email") or "").strip() or None
+    quote.contact_phone = (request.form.get("contact_phone") or "").strip() or None
+    quote.ship_to_json = normalize_ship_to(
+        {
+            "company": (request.form.get("ship_to_company") or "").strip(),
+            "attention": (request.form.get("ship_to_attention") or "").strip(),
+            "address_line1": (request.form.get("ship_to_address_line1") or "").strip(),
+            "address_line2": (request.form.get("ship_to_address_line2") or "").strip(),
+            "city": (request.form.get("ship_to_city") or "").strip(),
+            "state": (request.form.get("ship_to_state") or "").strip(),
+            "postal_code": (request.form.get("ship_to_postal_code") or "").strip(),
+            "country": (request.form.get("ship_to_country") or "").strip(),
+        }
+    )
+    _sync_linked_customer_from_quote(quote)
 
 
 def _render_line_items(quote: Quote):
@@ -1673,23 +1721,26 @@ def quote_update_meta(quote_id: int):
 @main_bp.post("/quotes/<int:quote_id>/customer")
 def quote_update_customer(quote_id: int):
     quote = _get_active_quote_or_404(quote_id)
-    quote.customer_name_raw = (request.form.get("customer_name_raw") or "").strip() or None
-    quote.contact_name = (request.form.get("contact_name") or "").strip() or None
-    quote.contact_email = (request.form.get("contact_email") or "").strip() or None
-    quote.contact_phone = (request.form.get("contact_phone") or "").strip() or None
-    quote.ship_to_json = normalize_ship_to(
-        {
-            "company": (request.form.get("ship_to_company") or "").strip(),
-            "attention": (request.form.get("ship_to_attention") or "").strip(),
-            "address_line1": (request.form.get("ship_to_address_line1") or "").strip(),
-            "address_line2": (request.form.get("ship_to_address_line2") or "").strip(),
-            "city": (request.form.get("ship_to_city") or "").strip(),
-            "state": (request.form.get("ship_to_state") or "").strip(),
-            "postal_code": (request.form.get("ship_to_postal_code") or "").strip(),
-            "country": (request.form.get("ship_to_country") or "").strip(),
-        }
-    )
-    _sync_linked_customer_from_quote(quote)
+    _update_quote_customer_from_request(quote)
+    _apply_auto_shipping_line_item(quote)
+    db.session.commit()
+    return _render_customer_info(quote)
+
+
+@main_bp.post("/quotes/<int:quote_id>/confirm-ship-to")
+def quote_confirm_ship_to(quote_id: int):
+    """Persist an explicit human confirmation for the quote's stored ship-to."""
+    quote = _get_active_quote_or_404(quote_id)
+    if quote.customer_id is None:
+        abort(400, description="Link this quote to a customer before confirming its ship-to.")
+
+    _update_quote_customer_from_request(quote)
+    customer = db.session.get(Customer, quote.customer_id)
+    address = _default_customer_ship_to_address(customer) if customer is not None else None
+    if address is None or not _quote_ship_to_requires_confirmation(quote):
+        abort(400, description="Save a complete customer ship-to address before confirming it.")
+
+    address.human_confirmed = True
     _apply_auto_shipping_line_item(quote)
     db.session.commit()
     return _render_customer_info(quote)

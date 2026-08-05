@@ -162,6 +162,7 @@ def test_create_customer(client, app):
         assert len(cust.contacts) == 2
         assert len(cust.ship_to_addresses) == 1
         assert cust.ship_to_addresses[0].is_default is True
+        assert cust.ship_to_addresses[0].human_confirmed is True
 
 
 # ---------------------------------------------------------------------------

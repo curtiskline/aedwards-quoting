@@ -9,6 +9,7 @@ from app import create_app
 from app.config import Config
 from app.extensions import db
 from app.models import (
+    Customer,
     PricingTable,
     ProductCatalog,
     ProductFamily,
@@ -16,6 +17,7 @@ from app.models import (
     Quote,
     QuoteLineItem,
     QuoteStatus,
+    ShipToAddress,
     User,
 )
 
@@ -173,6 +175,227 @@ def test_service_item_number_can_be_edited_and_renders_in_preview_pdf(tmp_path):
     )
     assert "TRAINING-12" in pdf_text
     assert b'name="part_number"' in update_response.data
+
+
+def test_hydrated_ship_to_renders_unverified_confirmation_flag(tmp_path):
+    """A stored default still hydrates, but must ask a human to confirm it."""
+    app = _make_app(tmp_path)
+    with app.app_context():
+        db.create_all()
+        user = User(email="ship-to-reviewer@example.com", name="Ship-To Reviewer", password_hash="x")
+        customer = Customer(company_name="Azimuth Energy", discount_pct=0)
+        db.session.add_all([user, customer])
+        db.session.flush()
+        db.session.add(
+            ShipToAddress(
+                customer_id=customer.id,
+                address_line1="No 47-2, Level 2, Jalan Neutron U16/Q, Denai Alam",
+                address_line2="FOB Tulsa",
+                city="Shah Alam",
+                state="Selangor",
+                postal_code="40160",
+                country="Malaysia",
+                is_default=True,
+            )
+        )
+        quote = Quote(
+            quote_number="126-351",
+            customer_id=customer.id,
+            customer_name_raw=customer.company_name,
+            status=QuoteStatus.NEW,
+        )
+        db.session.add(quote)
+        db.session.commit()
+        quote_id = quote.id
+        user_id = user.id
+
+    client = app.test_client()
+    _login(client, user_id)
+    response = client.get(f"/quotes/{quote_id}")
+
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert "No 47-2, Level 2, Jalan Neutron U16/Q, Denai Alam" in html
+    assert "Unverified ship-to — confirm before sending" in html
+
+    preview_response = client.get(f"/quotes/{quote_id}/preview-pdf")
+    assert preview_response.status_code == 200
+    pdf_text = "\n".join(
+        page.extract_text() or "" for page in PdfReader(BytesIO(preview_response.data)).pages
+    )
+    assert "Shah Alam" in pdf_text
+
+
+def test_canada_as_us_ship_to_hydrates_and_renders_unverified_flag(tmp_path):
+    """The Canada-as-US production shape remains visible, but is never silently trusted."""
+    app = _make_app(tmp_path)
+    with app.app_context():
+        db.create_all()
+        user = User(email="calgary-reviewer@example.com", name="Calgary Reviewer", password_hash="x")
+        customer = Customer(company_name="Inter Pipeline", discount_pct=0)
+        db.session.add_all([user, customer])
+        db.session.flush()
+        db.session.add(
+            ShipToAddress(
+                customer_id=customer.id,
+                address_line1="3200, 215 – 2nd Street, SW",
+                city="Calgary",
+                state="AB",
+                postal_code="T2P 1M4",
+                country="US",
+                is_default=True,
+            )
+        )
+        quote = Quote(
+            quote_number="126-352",
+            customer_id=customer.id,
+            customer_name_raw=customer.company_name,
+            status=QuoteStatus.NEW,
+        )
+        db.session.add(quote)
+        db.session.commit()
+        quote_id = quote.id
+        user_id = user.id
+
+    client = app.test_client()
+    _login(client, user_id)
+    html = client.get(f"/quotes/{quote_id}").get_data(as_text=True)
+
+    assert "Calgary" in html
+    assert "Unverified ship-to — confirm before sending" in html
+
+
+def test_editor_autosave_creates_an_unconfirmed_ship_to(tmp_path):
+    app = _make_app(tmp_path)
+    with app.app_context():
+        db.create_all()
+        user = User(email="autosave-reviewer@example.com", name="Autosave Reviewer", password_hash="x")
+        customer = Customer(company_name="Autosave Customer", discount_pct=0)
+        db.session.add_all([user, customer])
+        db.session.flush()
+        quote = Quote(
+            quote_number="126-355",
+            customer_id=customer.id,
+            customer_name_raw=customer.company_name,
+            status=QuoteStatus.NEW,
+        )
+        db.session.add(quote)
+        db.session.commit()
+        quote_id = quote.id
+        customer_id = customer.id
+        user_id = user.id
+
+    client = app.test_client()
+    _login(client, user_id)
+    response = client.post(
+        f"/quotes/{quote_id}/customer",
+        data={
+            "customer_name_raw": "Autosave Customer",
+            "ship_to_address_line1": "123 Main Street",
+            "ship_to_city": "Oklahoma City",
+            "ship_to_state": "OK",
+            "ship_to_postal_code": "73102",
+            "ship_to_country": "US",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "Unverified ship-to — confirm before sending" in response.get_data(as_text=True)
+    with app.app_context():
+        address = db.session.query(ShipToAddress).filter_by(customer_id=customer_id).one()
+        assert address.human_confirmed is False
+
+
+def test_confirming_ship_to_clears_flag_and_survives_autosave(tmp_path):
+    app = _make_app(tmp_path)
+    with app.app_context():
+        db.create_all()
+        user = User(email="confirm-reviewer@example.com", name="Confirm Reviewer", password_hash="x")
+        customer = Customer(company_name="Confirmed Customer", discount_pct=0)
+        db.session.add_all([user, customer])
+        db.session.flush()
+        address = ShipToAddress(
+            customer_id=customer.id,
+            address_line1="123 Main Street",
+            city="Oklahoma City",
+            state="OK",
+            postal_code="73102",
+            country="US",
+            is_default=True,
+        )
+        quote = Quote(
+            quote_number="126-353",
+            customer_id=customer.id,
+            customer_name_raw=customer.company_name,
+            status=QuoteStatus.NEW,
+        )
+        db.session.add_all([address, quote])
+        db.session.commit()
+        quote_id = quote.id
+        user_id = user.id
+        address_id = address.id
+
+    customer_form = {
+        "customer_name_raw": "Confirmed Customer",
+        "ship_to_address_line1": "123 Main Street",
+        "ship_to_city": "Oklahoma City",
+        "ship_to_state": "OK",
+        "ship_to_postal_code": "73102",
+        "ship_to_country": "US",
+    }
+    client = app.test_client()
+    _login(client, user_id)
+    assert "Unverified ship-to — confirm before sending" in client.get(f"/quotes/{quote_id}").get_data(as_text=True)
+
+    confirmation = client.post(f"/quotes/{quote_id}/confirm-ship-to", data=customer_form)
+    assert confirmation.status_code == 200
+    assert "Unverified ship-to — confirm before sending" not in confirmation.get_data(as_text=True)
+    with app.app_context():
+        assert db.session.get(ShipToAddress, address_id).human_confirmed is True
+
+    autosave = client.post(f"/quotes/{quote_id}/customer", data=customer_form)
+    assert autosave.status_code == 200
+    with app.app_context():
+        assert db.session.get(ShipToAddress, address_id).human_confirmed is True
+    assert "Unverified ship-to — confirm before sending" not in client.get(f"/quotes/{quote_id}").get_data(as_text=True)
+
+
+def test_human_confirmed_ship_to_does_not_render_flag(tmp_path):
+    app = _make_app(tmp_path)
+    with app.app_context():
+        db.create_all()
+        user = User(email="human-confirmed@example.com", name="Human Confirmed", password_hash="x")
+        customer = Customer(company_name="Human Confirmed Co", discount_pct=0)
+        db.session.add_all([user, customer])
+        db.session.flush()
+        db.session.add(
+            ShipToAddress(
+                customer_id=customer.id,
+                address_line1="100 Warehouse Road",
+                city="Tulsa",
+                state="OK",
+                postal_code="74103",
+                country="US",
+                is_default=True,
+                human_confirmed=True,
+            )
+        )
+        quote = Quote(
+            quote_number="126-354",
+            customer_id=customer.id,
+            customer_name_raw=customer.company_name,
+            status=QuoteStatus.NEW,
+        )
+        db.session.add(quote)
+        db.session.commit()
+        quote_id = quote.id
+        user_id = user.id
+
+    client = app.test_client()
+    _login(client, user_id)
+    html = client.get(f"/quotes/{quote_id}").get_data(as_text=True)
+    assert "100 Warehouse Road" in html
+    assert "Unverified ship-to — confirm before sending" not in html
 
 
 def test_product_catalog_search_and_lookup_endpoints(tmp_path):

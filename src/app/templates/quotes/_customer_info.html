@@ -1,6 +1,6 @@
 <section id="editor-customer-info" class="quote-editor-section">
   <h2>Customer Info</h2>
-  <form method="post" action="/quotes/{{ quote.id }}/customer" hx-post="/quotes/{{ quote.id }}/customer" hx-target="#editor-customer-info" hx-swap="outerHTML">
+  <form id="quote-customer-info-form" method="post" action="/quotes/{{ quote.id }}/customer" hx-post="/quotes/{{ quote.id }}/customer" hx-target="#editor-customer-info" hx-swap="outerHTML">
     <div class="quote-editor-grid quote-editor-grid-wide">
       <label>Company <input name="customer_name_raw" value="{{ quote.customer_name_raw or '' }}" /></label>
       <label>Contact <input name="contact_name" value="{{ quote.contact_name or '' }}" /></label>
@@ -17,6 +17,18 @@
     </div>
     <button type="submit">Save Customer Info</button>
   </form>
+  {% if ship_to_requires_confirmation %}
+  <aside role="alert" style="margin-top:0.75rem;padding:0.75rem;border-left:4px solid #b45309;background:#fffbeb;color:#78350f">
+    <strong>Unverified ship-to — confirm before sending.</strong>
+    This address is still shown and used for freight until you review it.
+    <button type="button"
+            hx-post="/quotes/{{ quote.id }}/confirm-ship-to"
+            hx-include="#quote-customer-info-form"
+            hx-target="#editor-customer-info"
+            hx-swap="outerHTML"
+            style="margin-left:0.5rem">Confirm this address</button>
+  </aside>
+  {% endif %}
   <script>
     (() => {
       const section = document.getElementById("editor-customer-info");
