@@ -174,6 +174,7 @@ def test_write_quote_creates_records(app, msg, rfq, priced_quote):
         # Ship-to address auto-created
         assert len(cust.ship_to_addresses) == 1
         assert cust.ship_to_addresses[0].city == "Tulsa"
+        assert cust.ship_to_addresses[0].human_confirmed is False
 
         # 2 real line items (note row skipped)
         assert len(db_quote.line_items) == 2

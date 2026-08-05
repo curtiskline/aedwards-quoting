@@ -334,5 +334,6 @@ def _save_addresses(customer: Customer) -> None:
             state=state,
             postal_code=postal,
             is_default=str(i) in defaults,
+            human_confirmed=True,
         )
         db.session.add(addr)
