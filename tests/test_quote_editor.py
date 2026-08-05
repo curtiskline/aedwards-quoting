@@ -1,11 +1,23 @@
 from __future__ import annotations
 
 import os
+from io import BytesIO
+
+from pypdf import PdfReader
 
 from app import create_app
 from app.config import Config
 from app.extensions import db
-from app.models import PricingTable, ProductCatalog, ProductFamily, ProductType, Quote, QuoteLineItem, QuoteStatus, User
+from app.models import (
+    PricingTable,
+    ProductCatalog,
+    ProductFamily,
+    ProductType,
+    Quote,
+    QuoteLineItem,
+    QuoteStatus,
+    User,
+)
 
 
 def _make_app(tmp_path):
@@ -106,12 +118,61 @@ def test_line_item_update_recalculates_and_generates_sleeve_part(tmp_path):
     )
     assert response.status_code == 200
     assert b"102.50" in response.data
+    assert b'name="part_number"' in response.data
 
     with app.app_context():
         updated = db.session.get(QuoteLineItem, item_id)
         assert float(updated.line_total) == 102.50
         assert (updated.part_number or "").startswith("S-")
         assert updated.sku == "S-24-12-50-10"
+
+
+def test_service_item_number_can_be_edited_and_renders_in_preview_pdf(tmp_path):
+    """A manually entered service Item Number must reach the customer PDF."""
+    app = _make_app(tmp_path)
+    with app.app_context():
+        db.create_all()
+        user = User(email="training@example.com", name="Training Editor", password_hash="x")
+        db.session.add(user)
+        quote = Quote(quote_number="126-089", status=QuoteStatus.IN_REVIEW)
+        db.session.add(quote)
+        db.session.flush()
+        item = QuoteLineItem(
+            quote_id=quote.id,
+            product_type="service",
+            description="Installation training for up to 12 people",
+            quantity=1,
+            unit_price=6000,
+            line_total=6000,
+            sort_order=1,
+        )
+        db.session.add(item)
+        db.session.commit()
+        quote_id = quote.id
+        item_id = item.id
+        user_id = user.id
+
+    client = app.test_client()
+    _login(client, user_id)
+    update_response = client.post(
+        f"/quotes/{quote_id}/line-items/{item_id}/update",
+        data={
+            "product_type": "service",
+            "part_number": "TRAINING-12",
+            "description": "Installation training for up to 12 people",
+            "quantity": "1",
+            "unit_price": "6000",
+        },
+    )
+    assert update_response.status_code == 200
+
+    preview_response = client.get(f"/quotes/{quote_id}/preview-pdf")
+    assert preview_response.status_code == 200
+    pdf_text = "\n".join(
+        page.extract_text() or "" for page in PdfReader(BytesIO(preview_response.data)).pages
+    )
+    assert "TRAINING-12" in pdf_text
+    assert b'name="part_number"' in update_response.data
 
 
 def test_product_catalog_search_and_lookup_endpoints(tmp_path):
