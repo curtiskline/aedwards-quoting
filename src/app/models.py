@@ -218,6 +218,11 @@ class QuoteVersion(db.Model):
     quote_id: Mapped[int] = mapped_column(ForeignKey("quote.id"), nullable=False, index=True)
     version_number: Mapped[int] = mapped_column(nullable=False)
     pdf_path: Mapped[str] = mapped_column(nullable=False)
+    # "retained" means pdf_path and line_items_snapshot are the immutable
+    # send-time record.  Pre-archive versions are explicitly "missing" rather
+    # than being mistaken for a record that was never sent.
+    artifact_status: Mapped[str] = mapped_column(nullable=False, default="missing")
+    line_items_snapshot: Mapped[list[dict] | None] = mapped_column(db.JSON, nullable=True)
     sent_at: Mapped[datetime | None]
     sent_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"))
     sent_to: Mapped[str | None]

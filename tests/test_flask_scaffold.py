@@ -128,6 +128,51 @@ def test_ship_to_confirmation_migration_marks_existing_addresses_unconfirmed(tmp
     assert human_confirmed == 0
 
 
+def test_quote_artifact_migration_marks_existing_versions_missing(tmp_path: Path) -> None:
+    """Old dangling filenames must not masquerade as retained quote PDFs."""
+    db_path = tmp_path / "quote-version-artifacts.db"
+    env = _alembic_env(db_path)
+
+    subprocess.run(
+        [*ALEMBIC_CMD, "upgrade", "20260805_0001"],
+        check=True,
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+    )
+    conn = sqlite3.connect(db_path)
+    try:
+        conn.execute(
+            "INSERT INTO quote (id, quote_number, customer_id, status, tax_amount, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (1, "126-legacy", None, "sent", 0, "2026-08-05 00:00:00", "2026-08-05 00:00:00"),
+        )
+        conn.execute(
+            "INSERT INTO quote_version (quote_id, version_number, pdf_path) VALUES (?, ?, ?)",
+            (1, 1, "126-legacy.pdf"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    subprocess.run(
+        [*ALEMBIC_CMD, "upgrade", "head"],
+        check=True,
+        cwd=Path(__file__).resolve().parents[1],
+        env=env,
+    )
+    conn = sqlite3.connect(db_path)
+    try:
+        artifact_status, pdf_path, snapshot = conn.execute(
+            "SELECT artifact_status, pdf_path, line_items_snapshot FROM quote_version"
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert artifact_status == "missing"
+    assert pdf_path == "artifact-missing://legacy-unretained"
+    assert snapshot is None
+
+
 def test_pricing_admin_page_and_inline_update(tmp_path: Path) -> None:
     db_path = tmp_path / "admin.db"
     previous_database_url = os.environ.get("DATABASE_URL")

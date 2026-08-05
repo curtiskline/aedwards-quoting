@@ -5,10 +5,10 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[2]
 INSTANCE_DIR = REPO_ROOT / "instance"
 DEFAULT_SQLITE_PATH = INSTANCE_DIR / "allenedwards.db"
+DEFAULT_QUOTE_ARTIFACT_DIR = INSTANCE_DIR / "quote_versions"
 
 
 def _default_database_url() -> str:
@@ -20,6 +20,10 @@ class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key")
     SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL", _default_database_url())
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+    # Sent quote PDFs are business records, not deployable source assets.  The
+    # web deploy replaces the source tree, while this directory lives beside
+    # the database and is retained across deployments.
+    QUOTE_ARTIFACT_DIR = os.getenv("QUOTE_ARTIFACT_DIR", str(DEFAULT_QUOTE_ARTIFACT_DIR))
     REMEMBER_COOKIE_DURATION_DAYS = int(os.getenv("REMEMBER_COOKIE_DURATION_DAYS", "30"))
     MAGIC_LINK_TTL_SECONDS = int(os.getenv("MAGIC_LINK_TTL_SECONDS", "1800"))
     APP_URL = os.getenv("APP_URL")
