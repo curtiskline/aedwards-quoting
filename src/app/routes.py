@@ -1822,15 +1822,20 @@ def quote_add_line_item(quote_id: int):
     is_manual_no_charge = (
         not auto_shipping_trigger and product_type != "shipping" and unit_price <= 0
     )
+    part_number = (request.form.get("part_number") or "").strip() or None
+    specs = {"manual_no_charge": True} if is_manual_no_charge else {}
+    if part_number is not None:
+        specs["part_number_override"] = part_number
     line_item = QuoteLineItem(
         quote=quote,
         product_type=product_type,
         sku=(request.form.get("sku") or "").strip() or None,
+        part_number=part_number,
         description=(request.form.get("description") or "New line item").strip() or "New line item",
         quantity=float(_parse_decimal(request.form.get("quantity"), Decimal("1"))),
         unit_price=float(unit_price),
         line_total=0,
-        specs_json={"manual_no_charge": True} if is_manual_no_charge else {},
+        specs_json=specs,
         sort_order=len(quote.line_items) + 1,
     )
     line_item.line_total = float(
@@ -1946,6 +1951,14 @@ def quote_update_line_item(quote_id: int, item_id: int):
     item.unit_price = float(unit_price)
 
     specs = dict(prior_specs)
+    part_number = request.form.get("part_number")
+    part_number_baseline = request.form.get("part_number_baseline")
+    if part_number is not None and part_number != (part_number_baseline or ""):
+        # Preserve an explicitly typed Item Number across autosaves and spec
+        # recalculations. Generated identifiers continue to update until a
+        # user changes this field themselves.
+        item.part_number = part_number.strip() or None
+        specs["part_number_override"] = item.part_number
     for key in ("diameter", "wall_thickness", "grade", "length_ft"):
         raw = request.form.get(f"spec_{key}")
         if raw is None:
@@ -1970,7 +1983,8 @@ def quote_update_line_item(quote_id: int, item_id: int):
     # Apply pallet/bundle rounding to quantity
     requested_qty = int(math.ceil(float(quantity)))
     rounded_qty = requested_qty
-    if item.product_type == "sleeve":
+    has_manual_part_number = "part_number_override" in specs
+    if item.product_type == "sleeve" and not has_manual_part_number:
         diameter = _parse_float(str(specs.get("diameter", "")))
         length_ft = _parse_float(str(specs.get("length_ft", "")))
         if diameter is not None and length_ft == 10 and diameter <= 24:
@@ -2007,7 +2021,7 @@ def quote_update_line_item(quote_id: int, item_id: int):
                 milling=bool(specs.get("milling")),
                 painting=bool(specs.get("painting")),
             )
-    elif item.product_type == "oversleeve":
+    elif item.product_type == "oversleeve" and not has_manual_part_number:
         diameter = _parse_float(str(specs.get("diameter", "")))
         wall_thickness = _parse_float(str(specs.get("wall_thickness", "")))
         grade = _parse_int(str(specs.get("grade", "")))
@@ -2021,7 +2035,7 @@ def quote_update_line_item(quote_id: int, item_id: int):
                 milling=bool(specs.get("milling")),
                 painting=bool(specs.get("painting")),
             )
-    elif item.product_type == "girth_weld":
+    elif item.product_type == "girth_weld" and not has_manual_part_number:
         diameter = _parse_float(str(specs.get("diameter", "")))
         wall_thickness = _parse_float(str(specs.get("wall_thickness", "")))
         grade = _parse_int(str(specs.get("grade", "")))
@@ -2031,7 +2045,7 @@ def quote_update_line_item(quote_id: int, item_id: int):
                 wall_thickness=wall_thickness,  # type: ignore[arg-type]
                 grade=grade,  # type: ignore[arg-type]
             )
-    elif item.product_type == "compression":
+    elif item.product_type == "compression" and not has_manual_part_number:
         diameter = _parse_float(str(specs.get("diameter", "")))
         wall_thickness = _parse_float(str(specs.get("wall_thickness", "")))
         grade = _parse_int(str(specs.get("grade", "")))
@@ -2042,7 +2056,7 @@ def quote_update_line_item(quote_id: int, item_id: int):
                 wall_thickness=wall_thickness,
                 grade=grade,
             )
-    elif item.product_type == "bag":
+    elif item.product_type == "bag" and not has_manual_part_number:
         diameter = _parse_float(str(specs.get("diameter", "")))
         bag_row = _bag_pricing_row_for_diameter(diameter)
         if bag_row is not None:
