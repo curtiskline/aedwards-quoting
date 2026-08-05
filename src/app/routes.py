@@ -18,6 +18,7 @@ from flask import (
     Blueprint,
     Response,
     abort,
+    current_app,
     jsonify,
     make_response,
     redirect,
@@ -2596,6 +2597,57 @@ def _generate_pdf_bytes(quote: Quote) -> tuple[bytes, str]:
     return pdf_bytes, filename
 
 
+def _quote_line_items_snapshot(quote: Quote) -> list[dict[str, object]]:
+    """Return JSON-safe, point-in-time copies of every priced line item."""
+    return [
+        {
+            "id": item.id,
+            "product_type": item.product_type,
+            "sku": item.sku,
+            "description": item.description,
+            "quantity": str(item.quantity),
+            "unit_price": str(item.unit_price),
+            "line_total": str(item.line_total),
+            # Includes all original dimensions and pricing basis fields, not
+            # only the subset currently rendered by the quote editor.
+            "specs_json": copy.deepcopy(item.specs_json),
+            "part_number": item.part_number,
+            "sort_order": item.sort_order,
+        }
+        for item in quote.line_items
+    ]
+
+
+def _archive_sent_quote_pdf(quote: Quote, version_number: int, pdf_bytes: bytes) -> str:
+    """Persist a send-time PDF outside the deploy-replaced source tree.
+
+    The hard-link publish makes the finished archive file exclusive: a
+    duplicate version number cannot silently overwrite an existing record.
+    """
+    artifact_dir = Path(current_app.config["QUOTE_ARTIFACT_DIR"]).expanduser().resolve()
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    safe_quote_number = re.sub(r"[^A-Za-z0-9._-]+", "_", quote.quote_number).strip("._")
+    archive_path = artifact_dir / f"quote-{safe_quote_number}-v{version_number}.pdf"
+
+    with tempfile.NamedTemporaryFile(
+        mode="wb", suffix=".pdf", prefix=".quote-version-", dir=artifact_dir, delete=False
+    ) as tmp:
+        tmp.write(pdf_bytes)
+        tmp.flush()
+        os.fsync(tmp.fileno())
+        temporary_path = Path(tmp.name)
+
+    try:
+        # link() fails if archive_path already exists, preserving the first
+        # immutable record rather than replacing it.
+        os.link(temporary_path, archive_path)
+        archive_path.chmod(0o444)
+    finally:
+        temporary_path.unlink(missing_ok=True)
+
+    return str(archive_path)
+
+
 @main_bp.get("/quotes/<int:quote_id>/preview-pdf")
 def quote_preview_pdf(quote_id: int):
     """Generate and return the quote PDF for inline browser preview."""
@@ -2714,6 +2766,13 @@ def quote_send(quote_id: int):
         "no",
     )
 
+    # Reserve both immutable records immediately before external delivery.  On
+    # a send failure the just-created archive is removed below, so only
+    # successful sends become retained quote versions.
+    version_number = len(quote.versions) + 1
+    line_items_snapshot = _quote_line_items_snapshot(quote)
+    archive_path = _archive_sent_quote_pdf(quote, version_number, pdf_bytes)
+
     try:
         client.send_mail(
             to_email=to_email,
@@ -2722,15 +2781,9 @@ def quote_send(quote_id: int):
             attachments=[(filename, pdf_bytes)],
             cc_email=cc_email,
         )
-        if enable_drafts:
-            client.create_draft(
-                to_email=to_email,
-                subject=subject,
-                body_text=body_text,
-                attachments=[(filename, pdf_bytes)],
-                cc_email=cc_email,
-            )
     except (OutlookAuthError, Exception) as exc:
+        Path(archive_path).chmod(0o644)
+        Path(archive_path).unlink(missing_ok=True)
         return render_template(
             "quotes/_send_result.html",
             success=False,
@@ -2738,17 +2791,33 @@ def quote_send(quote_id: int):
             quote=quote,
         )
 
+    # A customer email is the send event.  A convenience copy in Drafts must
+    # not erase its immutable record when Microsoft accepts the email but
+    # rejects the follow-up draft creation.
+    if enable_drafts:
+        try:
+            client.create_draft(
+                to_email=to_email,
+                subject=subject,
+                body_text=body_text,
+                attachments=[(filename, pdf_bytes)],
+                cc_email=cc_email,
+            )
+        except Exception:
+            pass
+
     # Update quote status
     now = datetime.utcnow()
     quote.status = QuoteStatus.SENT
     quote.updated_at = now
 
     # Create version record
-    version_number = len(quote.versions) + 1
     version = QuoteVersion(
         quote_id=quote.id,
         version_number=version_number,
-        pdf_path=filename,
+        pdf_path=archive_path,
+        artifact_status="retained",
+        line_items_snapshot=line_items_snapshot,
         sent_at=now,
         sent_by=user.id if user else None,
         sent_to=to_email,

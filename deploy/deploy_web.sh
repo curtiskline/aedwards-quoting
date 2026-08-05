@@ -43,8 +43,10 @@ ANTHROPIC_API_KEY="${ANTHROPIC_API_KEY:-$(read_from_dotenv ANTHROPIC_API_KEY || 
 MINIMAX_API_KEY="${MINIMAX_API_KEY:-$(read_from_dotenv MINIMAX_API_KEY || true)}"
 MINIMAX_BASE_URL="${MINIMAX_BASE_URL:-$(read_from_dotenv MINIMAX_BASE_URL || true)}"
 APP_URL="${APP_URL:-$(read_from_dotenv APP_URL || true)}"
+QUOTE_ARTIFACT_DIR="${QUOTE_ARTIFACT_DIR:-$(read_from_dotenv QUOTE_ARTIFACT_DIR || true)}"
 
 DATABASE_URL="${DATABASE_URL:-sqlite:////opt/aedwards/instance/allenedwards.db}"
+QUOTE_ARTIFACT_DIR="${QUOTE_ARTIFACT_DIR:-${APP_DIR}/instance/quote_versions}"
 O365_CLIENT_ID="${O365_CLIENT_ID:-d3590ed6-52b3-4102-aeff-aad2292ab01c}"
 O365_SCOPES="${O365_SCOPES:-https://graph.microsoft.com/.default}"
 LLM_PROVIDER="${LLM_PROVIDER:-claude}"
@@ -95,6 +97,7 @@ tar \
 
 {
   echo "DATABASE_URL=${DATABASE_URL}"
+  echo "QUOTE_ARTIFACT_DIR=${QUOTE_ARTIFACT_DIR}"
   if [[ -n "${SECRET_KEY}" ]]; then
     echo "SECRET_KEY=${SECRET_KEY}"
   fi
@@ -178,7 +181,7 @@ fi
 # Wipe the old source tree first: extracting over it leaves stale build/ and
 # egg-info artifacts that poison the wheel build with old module versions.
 sudo rm -rf "${APP_DIR}/src"
-sudo mkdir -p "${APP_DIR}/src" "${APP_DIR}/instance"
+sudo mkdir -p "${APP_DIR}/src" "${APP_DIR}/instance/quote_versions"
 sudo tar -xzf /tmp/aedwards-src.tgz -C "${APP_DIR}/src"
 sudo chown -R "${APP_USER}:${APP_USER}" "${APP_DIR}"
 

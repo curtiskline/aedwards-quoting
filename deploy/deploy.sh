@@ -33,11 +33,13 @@ MINIMAX_BASE_URL="${MINIMAX_BASE_URL:-$(read_from_dotenv MINIMAX_BASE_URL || tru
 DATABASE_URL="${DATABASE_URL:-$(read_from_dotenv DATABASE_URL || true)}"
 SECRET_KEY="${SECRET_KEY:-$(read_from_dotenv SECRET_KEY || true)}"
 APP_URL="${APP_URL:-$(read_from_dotenv APP_URL || true)}"
+QUOTE_ARTIFACT_DIR="${QUOTE_ARTIFACT_DIR:-$(read_from_dotenv QUOTE_ARTIFACT_DIR || true)}"
 
 O365_CLIENT_ID="${O365_CLIENT_ID:-d3590ed6-52b3-4102-aeff-aad2292ab01c}"
 O365_SCOPES="${O365_SCOPES:-https://graph.microsoft.com/.default}"
 LLM_PROVIDER="${LLM_PROVIDER:-claude}"
 DATABASE_URL="${DATABASE_URL:-sqlite:////opt/aedwards/instance/allenedwards.db}"
+QUOTE_ARTIFACT_DIR="${QUOTE_ARTIFACT_DIR:-${APP_DIR}/instance/quote_versions}"
 if [[ -z "${SECRET_KEY}" ]]; then
   SECRET_KEY="$(openssl rand -hex 32)"
 fi
@@ -96,6 +98,7 @@ tar \
   echo "O365_SCOPES=${O365_SCOPES}"
   echo "LLM_PROVIDER=${LLM_PROVIDER}"
   echo "DATABASE_URL=${DATABASE_URL}"
+  echo "QUOTE_ARTIFACT_DIR=${QUOTE_ARTIFACT_DIR}"
   echo "SECRET_KEY=${SECRET_KEY}"
   if [[ -n "${ANTHROPIC_API_KEY}" ]]; then
     echo "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}"
@@ -136,7 +139,7 @@ if ! id "${APP_USER}" >/dev/null 2>&1; then
   sudo useradd --system --create-home --home-dir "${APP_DIR}" --shell /bin/bash "${APP_USER}"
 fi
 
-sudo mkdir -p "${APP_DIR}/src" "${APP_DIR}/monitor_output"
+sudo mkdir -p "${APP_DIR}/src" "${APP_DIR}/monitor_output" "${APP_DIR}/instance/quote_versions"
 sudo tar -xzf /tmp/aedwards-src.tgz -C "${APP_DIR}/src"
 sudo chown -R "${APP_USER}:${APP_USER}" "${APP_DIR}"
 

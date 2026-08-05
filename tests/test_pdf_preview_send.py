@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import os
+import shutil
 from decimal import Decimal
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from app import create_app
@@ -19,6 +21,9 @@ def _make_app(tmp_path):
     app = create_app()
     app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_path}"
     app.config["TESTING"] = True
+    # Mirrors production: artifacts live beside the deploy-persistent DB, not
+    # under the source tree that deploy_web.sh replaces.
+    app.config["QUOTE_ARTIFACT_DIR"] = str(tmp_path / "instance" / "quote_versions")
     return app
 
 
@@ -397,8 +402,62 @@ def test_send_quote_success(mock_outlook_class, tmp_path):
         # Verify QuoteVersion was created
         versions = db.session.query(QuoteVersion).filter_by(quote_id=quote_id).all()
         assert len(versions) == 1
-        assert versions[0].sent_to == "customer@example.com"
-        assert versions[0].sent_at is not None
+        version = versions[0]
+        assert version.sent_to == "customer@example.com"
+        assert version.sent_at is not None
+        assert version.artifact_status == "retained"
+        archived_pdf = Path(version.pdf_path)
+        assert archived_pdf.is_file()
+        assert archived_pdf.read_bytes()[:4] == b"%PDF"
+        assert version.line_items_snapshot == [
+            {
+                "id": 1,
+                "product_type": "sleeve",
+                "sku": None,
+                "description": '12" x 0.250 GR3 10ft Sleeve',
+                "quantity": "10.00",
+                "unit_price": "150.00",
+                "line_total": "1500.00",
+                "specs_json": {
+                    "diameter": "12",
+                    "wall_thickness": "0.250",
+                    "grade": "3",
+                    "length_ft": "10",
+                },
+                "part_number": "HM120253G10",
+                "sort_order": 1,
+            },
+            {
+                "id": 2,
+                "product_type": "bag",
+                "sku": None,
+                "description": 'GTW Bag 12"',
+                "quantity": "10.00",
+                "unit_price": "5.00",
+                "line_total": "50.00",
+                "specs_json": {"diameter": "12"},
+                "part_number": "BAG-12",
+                "sort_order": 2,
+            },
+        ]
+
+        # Simulate deploy_web.sh, which deletes the source tree.  The archive
+        # must remain resolvable from QuoteVersion after that deployment.
+        deploy_replaced_source = tmp_path / "src"
+        deploy_replaced_source.mkdir()
+        shutil.rmtree(deploy_replaced_source)
+        assert archived_pdf.is_file()
+
+        # A later editor save changes the live line item, never the sent
+        # version snapshot.
+        live_item = db.session.get(QuoteLineItem, 1)
+        live_item.unit_price = Decimal("999.99")
+        live_item.specs_json = {"diameter": "99", "price_override": True}
+        db.session.commit()
+        db.session.expire_all()
+        immutable_snapshot = db.session.get(QuoteVersion, version.id).line_items_snapshot
+        assert immutable_snapshot[0]["unit_price"] == "150.00"
+        assert immutable_snapshot[0]["specs_json"]["diameter"] == "12"
 
         # Verify AuditLog was created
         logs = db.session.query(AuditLog).filter_by(quote_id=quote_id, action="sent").all()
@@ -438,6 +497,39 @@ def test_send_quote_also_creates_draft_when_enabled(mock_outlook_class, tmp_path
     assert resp.status_code == 200
     mock_client.send_mail.assert_called_once()
     mock_client.create_draft.assert_called_once()
+
+
+@patch("allenedwards.outlook.OutlookClient")
+def test_sent_quote_is_retained_when_follow_up_draft_fails(mock_outlook_class, tmp_path):
+    """A successful customer delivery cannot lose its archive to draft failure."""
+    app = _make_app(tmp_path)
+    quote_id, user_id = _seed_quote(app)
+    mock_client = MagicMock()
+    mock_client.create_draft.side_effect = Exception("Drafts API unavailable")
+    mock_outlook_class.return_value = mock_client
+
+    with app.test_client() as client:
+        _login(client, user_id)
+        os.environ["O365_EMAIL"] = "test@allanedwards.com"
+        os.environ["O365_PASSWORD"] = "testpass"
+        os.environ["ENABLE_OUTLOOK_DRAFTS"] = "true"
+        try:
+            resp = client.post(
+                f"/quotes/{quote_id}/send",
+                data={"to_email": "customer@example.com", "subject": "Quote 126-300"},
+            )
+        finally:
+            os.environ.pop("O365_EMAIL", None)
+            os.environ.pop("O365_PASSWORD", None)
+            os.environ.pop("ENABLE_OUTLOOK_DRAFTS", None)
+
+    assert resp.status_code == 200
+    mock_client.send_mail.assert_called_once()
+    mock_client.create_draft.assert_called_once()
+    with app.app_context():
+        version = db.session.query(QuoteVersion).filter_by(quote_id=quote_id).one()
+        assert version.artifact_status == "retained"
+        assert Path(version.pdf_path).is_file()
 
 
 def test_editor_has_preview_and_send_buttons(tmp_path):
