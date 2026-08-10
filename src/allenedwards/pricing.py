@@ -270,6 +270,10 @@ class Quote:
     notes: str | None
     po_number: str | None = None
 
+    # Signature-block bill-to address (D37). Rendered under the customer name in the
+    # PDF Bill To block; never reaches the freight path. Canonical normalize_ship_to shape.
+    bill_to: dict[str, Any] | None = None
+
     # Project line reference (e.g., "XB403CL Line") for multi-quote emails
     project_line: str | None = None
 
@@ -1513,6 +1517,21 @@ def generate_quote(rfq: ParsedRFQ, quote_number: str) -> Quote:
             }
         )
 
+    # The signature-block bill-to (D37) renders on the PDF but never touches freight.
+    bill_to_dict = None
+    if rfq.bill_to:
+        bill_to_dict = normalize_ship_to(
+            {
+                "company": rfq.bill_to.company,
+                "attention": rfq.bill_to.attention,
+                "street": rfq.bill_to.street,
+                "city": rfq.bill_to.city,
+                "state": rfq.bill_to.state,
+                "postal_code": rfq.bill_to.postal_code,
+                "country": rfq.bill_to.country,
+            }
+        )
+
     return Quote(
         quote_number=quote_number,
         customer_name=rfq.customer_name,
@@ -1528,6 +1547,7 @@ def generate_quote(rfq: ParsedRFQ, quote_number: str) -> Quote:
         tax_amount=Decimal("0"),
         total=subtotal,
         notes=rfq.notes,
+        bill_to=bill_to_dict,
     )
 
 

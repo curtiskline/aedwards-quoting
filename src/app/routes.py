@@ -1587,6 +1587,9 @@ def quote_revise(quote_id: int):
         ship_to_json=(
             copy.deepcopy(source.ship_to_json) if source.ship_to_json is not None else None
         ),
+        bill_to_json=(
+            copy.deepcopy(source.bill_to_json) if source.bill_to_json is not None else None
+        ),
         tax_amount=source.tax_amount,
         replaces_quote_id=source.id,
         revision_number=source.revision_number + 1,
@@ -2556,6 +2559,7 @@ def _db_quote_to_pricing_quote(quote: Quote) -> PricingQuote:
     tax_amount = _tax_amount_for_quote(quote)
     total = _quantize_money(subtotal + (shipping_total or Decimal("0.00")) + tax_amount)
     ship_to = normalize_ship_to(quote.ship_to_json)
+    bill_to = normalize_ship_to(quote.bill_to_json)
     return PricingQuote(
         quote_number=quote.quote_number,
         customer_name=quote.customer_name_raw,
@@ -2571,6 +2575,7 @@ def _db_quote_to_pricing_quote(quote: Quote) -> PricingQuote:
         notes=quote.notes_customer,
         po_number=quote.po_number,
         project_line=quote.project_name,
+        bill_to=bill_to,
     )
 
 

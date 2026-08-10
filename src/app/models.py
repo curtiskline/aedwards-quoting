@@ -152,6 +152,7 @@ class Quote(db.Model):
     contact_phone: Mapped[str | None]
     po_number: Mapped[str | None]
     ship_to_json: Mapped[dict | None] = mapped_column(db.JSON)
+    bill_to_json: Mapped[dict | None] = mapped_column(db.JSON)
     tax_amount: Mapped[float] = mapped_column(Numeric(12, 2), default=0, nullable=False)
     deleted_at: Mapped[datetime | None] = mapped_column(nullable=True, index=True)
     replaces_quote_id: Mapped[int | None] = mapped_column(

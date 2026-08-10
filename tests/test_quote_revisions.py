@@ -58,6 +58,7 @@ def source_quote(app):
             notes_internal="Keep pricing private",
             po_number="PO-101",
             ship_to_json={"city": "Tulsa", "state": "OK"},
+            bill_to_json={"company": "Acme HQ", "city": "Dallas", "state": "TX"},
             tax_amount=12.34,
         )
         _db.session.add(quote)
@@ -113,6 +114,9 @@ def test_revise_copies_details_and_closes_original(client, app, source_quote):
         assert revision.project_name == source.project_name
         assert revision.ship_to_json == source.ship_to_json
         assert revision.ship_to_json is not source.ship_to_json
+        # The bill-to (task 332) is carried onto the revision as a deep copy.
+        assert revision.bill_to_json == source.bill_to_json
+        assert revision.bill_to_json is not source.bill_to_json
         assert [
             (item.sku, item.part_number, float(item.line_total)) for item in revision.line_items
         ] == [("SLV-100", "PN-12", 250.0)]

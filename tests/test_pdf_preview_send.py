@@ -53,6 +53,14 @@ def _seed_quote(app):
                 "postal_code": "74117",
                 "country": "US",
             },
+            bill_to_json={
+                "company": "Test Customer HQ",
+                "address_line1": "500 Billing Blvd",
+                "city": "Dallas",
+                "state": "TX",
+                "postal_code": "75001",
+                "country": "US",
+            },
         )
         db.session.add(quote)
         db.session.flush()
@@ -201,6 +209,36 @@ def test_preview_pdf_maps_ship_to_address_line_into_street_field(mock_generate_q
         "city": "Tulsa",
         "state": "OK",
         "postal_code": "74117",
+        "country": "US",
+    }
+
+
+@patch("app.routes.generate_quote_pdf")
+def test_preview_pdf_maps_bill_to_json_into_pricing_quote(mock_generate_quote_pdf, tmp_path):
+    """Task 332: the DB quote's bill_to_json is handed to the PDF as pricing_quote.bill_to
+    (canonical shape), so the Bill To block can render the signature address."""
+    app = _make_app(tmp_path)
+    quote_id, user_id = _seed_quote(app)
+
+    def _fake_generate(pricing_quote, output_path):
+        output_path.write_bytes(b"%PDF-1.4\n")
+
+    mock_generate_quote_pdf.side_effect = _fake_generate
+
+    with app.test_client() as client:
+        _login(client, user_id)
+        resp = client.get(f"/quotes/{quote_id}/preview-pdf")
+
+    assert resp.status_code == 200
+    pricing_quote = mock_generate_quote_pdf.call_args.args[0]
+    assert pricing_quote.bill_to == {
+        "company": "Test Customer HQ",
+        "attention": "",
+        "address_line1": "500 Billing Blvd",
+        "address_line2": "",
+        "city": "Dallas",
+        "state": "TX",
+        "postal_code": "75001",
         "country": "US",
     }
 
