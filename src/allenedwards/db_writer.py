@@ -301,12 +301,24 @@ def _ship_to_dict(rfq: ParsedRFQ) -> dict | None:
     return normalize_ship_to(asdict(rfq.ship_to))
 
 
+def _bill_to_dict(rfq: ParsedRFQ) -> dict | None:
+    """Serialize the signature-block bill-to into the canonical bill_to_json shape.
+
+    Same canonical 8-key shape as ship_to_json (via normalize_ship_to), so the PDF
+    and any future editor read bill-to and ship-to identically. This is the address
+    the quote PDF renders under the customer name; the freight path never touches it.
+    """
+    if not rfq.bill_to:
+        return None
+    return normalize_ship_to(asdict(rfq.bill_to))
+
+
 def _bill_to_note(rfq: ParsedRFQ) -> str | None:
     """Render the signature-block address as an internal note line.
 
-    The signature address is a bill-to, so it must not reach ship_to_json (which
-    drives freight). It is still real customer data, so it is preserved here rather
-    than discarded. Rendering it on the quote PDF is deliberately out of scope.
+    bill_to_json is the structured render source; this note is the internal-only
+    provenance breadcrumb, recording that the address came from the email signature
+    (not human entry). Both are written once from the same rfq.bill_to at parse time.
     """
     bill_to = normalize_ship_to(asdict(rfq.bill_to)) if rfq.bill_to else None
     if not bill_to:
@@ -375,6 +387,7 @@ def write_quote_to_db(
         contact_phone=rfq.contact_phone,
         po_number=rfq.po_number,
         ship_to_json=_ship_to_dict(rfq),
+        bill_to_json=_bill_to_dict(rfq),
         notes_internal=_notes_internal_with_bill_to(rfq),
     )
     db.session.add(db_quote)

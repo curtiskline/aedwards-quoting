@@ -606,6 +606,37 @@ def test_no_bill_to_leaves_notes_internal_untouched(app, msg, rfq, priced_quote)
     assert quote.notes_internal == "Rush order"
 
 
+def test_bill_to_stored_in_bill_to_json_canonical_shape(app, msg, rfq, priced_quote):
+    """Task 332: the bill-to is stored in bill_to_json in the canonical
+    normalize_ship_to shape (the parser's `street` mapped to `address_line1`), so the
+    PDF can render it. It must NOT reach ship_to_json (which drives freight)."""
+    rfq.ship_to = None
+    rfq.bill_to = ShipTo(
+        company="Azimuth Energy",
+        street="No 47-2, Level 2, Jalan Neutron U16/Q, Denai Alam",
+        city="Shah Alam",
+        state="Selangor",
+        postal_code="40160",
+        country="Malaysia",
+    )
+    quote = write_quote_to_db(msg, rfq, priced_quote, "126-404")
+
+    assert quote.ship_to_json is None
+    assert quote.bill_to_json is not None
+    assert quote.bill_to_json["company"] == "Azimuth Energy"
+    assert quote.bill_to_json["address_line1"] == "No 47-2, Level 2, Jalan Neutron U16/Q, Denai Alam"
+    assert quote.bill_to_json["postal_code"] == "40160"
+    assert quote.bill_to_json["country"] == "Malaysia"
+    # Canonical shape uses address_line1, never the dataclass's raw `street` key.
+    assert "street" not in quote.bill_to_json
+
+
+def test_no_bill_to_leaves_bill_to_json_null(app, msg, rfq, priced_quote):
+    rfq.bill_to = None
+    quote = write_quote_to_db(msg, rfq, priced_quote, "126-405")
+    assert quote.bill_to_json is None
+
+
 def test_line_item_specs_persist_pricing_inputs(app, msg, rfq):
     """specs_json carries the specs a line was priced from (task 329).
 

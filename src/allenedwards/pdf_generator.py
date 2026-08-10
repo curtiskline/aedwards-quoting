@@ -290,12 +290,36 @@ class QuotePDFBuilder:
         """Build Template A Bill To / Ship To section."""
         elements = []
 
-        # Bill To content (customer name only in Template A)
+        # Bill To content: customer name on top, then the signature-block bill-to
+        # address (D37) below it. The bill-to never drives freight — it is purely the
+        # customer's mailing address, so it renders here and nowhere near ship_to.
         bill_to_lines = [
             [Paragraph("<b>Bill To:</b>", self.styles["bold"])],
         ]
         if self.quote.customer_name:
             bill_to_lines.append([Paragraph(self.quote.customer_name, self.styles["normal"])])
+
+        quote_bill_to = normalize_ship_to(getattr(self.quote, "bill_to", None))
+        if quote_bill_to:
+            seen_bill_lines: set[str] = set()
+            for key in ("company", "attention", "address_line1", "address_line2"):
+                line = _clean_text(quote_bill_to.get(key))
+                # The customer name is already the first line; don't repeat it if the
+                # signature company matches it.
+                if line and line != self.quote.customer_name and line not in seen_bill_lines:
+                    bill_to_lines.append([Paragraph(line, self.styles["normal"])])
+                    seen_bill_lines.add(line)
+
+            city_state_zip_parts = []
+            for key in ("city", "state", "postal_code"):
+                part = _clean_text(quote_bill_to.get(key))
+                if part:
+                    city_state_zip_parts.append(part)
+            if city_state_zip_parts:
+                bill_to_lines.append([Paragraph(", ".join(city_state_zip_parts), self.styles["normal"])])
+            country = _clean_text(quote_bill_to.get("country"))
+            if country:
+                bill_to_lines.append([Paragraph(country, self.styles["normal"])])
 
         bill_to_table = Table(bill_to_lines, colWidths=[3.5 * inch])
         bill_to_table.setStyle(TableStyle([

@@ -284,6 +284,85 @@ def test_ship_to_omits_null_stringified_values():
     assert "contractor yard" in ship_to_text
 
 
+def test_bill_to_address_renders_under_customer_name():
+    """Task 332: the signature-block bill-to (D37) renders in the Bill To block,
+    below the customer name (company name on top, address below)."""
+    quote = _make_quote(
+        customer_name="Azimuth Energy",
+        bill_to={
+            "company": "Azimuth Energy Sdn Bhd",
+            "attention": "Purchasing",
+            "address_line1": "No 47-2, Level 2, Jalan Neutron U16/Q, Denai Alam",
+            "address_line2": "",
+            "city": "Shah Alam",
+            "state": "Selangor",
+            "postal_code": "40160",
+            "country": "Malaysia",
+        },
+    )
+    builder = QuotePDFBuilder(quote=quote, output_path=Path("/tmp/test.pdf"))
+    address_table = builder._build_bill_ship_to()[0]
+    bill_to_table = address_table._cellvalues[0][0]
+    bill_to_text = [row[0].text for row in bill_to_table._cellvalues]
+
+    # Customer name stays on top; the address lines follow it.
+    assert bill_to_text[0] == "<b>Bill To:</b>"
+    assert bill_to_text[1] == "Azimuth Energy"
+    assert "No 47-2, Level 2, Jalan Neutron U16/Q, Denai Alam" in bill_to_text
+    assert "Shah Alam, Selangor, 40160" in bill_to_text
+    assert "Malaysia" in bill_to_text
+    assert "Purchasing" in bill_to_text
+    # The company line index is after the customer name (renders below it).
+    assert bill_to_text.index("Azimuth Energy Sdn Bhd") > bill_to_text.index("Azimuth Energy")
+
+
+def test_bill_to_absent_renders_customer_name_only():
+    """With no bill-to (the common case), the Bill To block is name-only — the
+    pre-332 behavior, so old quotes without a bill_to_json do not regress."""
+    quote = _make_quote(customer_name="FHR Pipeline", bill_to=None)
+    builder = QuotePDFBuilder(quote=quote, output_path=Path("/tmp/test.pdf"))
+    address_table = builder._build_bill_ship_to()[0]
+    bill_to_table = address_table._cellvalues[0][0]
+    bill_to_text = [row[0].text for row in bill_to_table._cellvalues]
+
+    assert bill_to_text == ["<b>Bill To:</b>", "FHR Pipeline"]
+
+
+def test_bill_to_does_not_repeat_customer_name():
+    """If the signature company equals the customer name, it renders once, not twice."""
+    quote = _make_quote(
+        customer_name="Buckeye Partners",
+        bill_to={"company": "Buckeye Partners", "city": "Houston", "state": "TX"},
+    )
+    builder = QuotePDFBuilder(quote=quote, output_path=Path("/tmp/test.pdf"))
+    address_table = builder._build_bill_ship_to()[0]
+    bill_to_table = address_table._cellvalues[0][0]
+    bill_to_text = [row[0].text for row in bill_to_table._cellvalues]
+
+    assert bill_to_text.count("Buckeye Partners") == 1
+    assert "Houston, TX" in bill_to_text
+
+
+def test_bill_to_omits_null_stringified_values():
+    """A bill-to field stored as the literal 'None'/'null' must not render."""
+    quote = _make_quote(
+        customer_name="Acme",
+        bill_to={
+            "company": "Acme Signature Co",
+            "city": "Tulsa",
+            "state": "OK",
+            "country": "None",
+        },
+    )
+    builder = QuotePDFBuilder(quote=quote, output_path=Path("/tmp/test.pdf"))
+    address_table = builder._build_bill_ship_to()[0]
+    bill_to_table = address_table._cellvalues[0][0]
+    bill_to_text = [row[0].text for row in bill_to_table._cellvalues]
+
+    assert "None" not in bill_to_text
+    assert "Acme Signature Co" in bill_to_text
+
+
 def _make_quote(**overrides):
     """Helper to build a Quote with sensible defaults."""
     defaults = dict(
