@@ -82,6 +82,7 @@ DEFAULT_PRODUCT_TYPES: list[tuple[str, str]] = [
     ("accessory", "Accessory"),
     ("service", "Service"),
     ("shipping", "Shipping & Handling"),
+    ("composite", "Composite"),
 ]
 
 QUOTE_EDITOR_HIDDEN_PRODUCT_TYPES = {"shipping"}
