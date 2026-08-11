@@ -168,20 +168,18 @@ class InboxMonitor:
                     self.state.advance_watermark(msg.received_datetime)
 
                 if self.state.contains(message_id):
-                    logger.debug("Skipping already processed message %s", message_id)
-                    continue
-
-                # Claim before any downstream side effect (DB quote, Outlook
-                # draft, or mailbox acknowledgement).  If the process dies
-                # afterward, a later run deliberately does not replay it.
-                self.state.add(message_id)
-                if not self._claim_source_email(message_id):
+                    if self._has_source_email_claim(message_id):
+                        logger.debug("Skipping already processed message %s", message_id)
+                        continue
                     logger.warning(
-                        "Skipping message %s because it already has a durable DB claim",
+                        "Retrying message %s: state file says processed but its DB claim is absent",
                         message_id,
                     )
-                    self._finalize_message(message_id)
-                    continue
+
+                # Persist the local state before downstream side effects.  DB
+                # writes additionally use a claim committed atomically with
+                # their quote rows; a state-only entry is retried above.
+                self.state.add(message_id)
 
                 handled = self._process_message(msg)
                 if handled:
@@ -236,17 +234,23 @@ class InboxMonitor:
         else:
             base_quote_number = _generate_quote_number()
 
+        quotes = []
         for idx, rfq in enumerate(rfqs):
             quote_number = base_quote_number if len(rfqs) == 1 else f"{base_quote_number}-{idx + 1:02d}"
-            quote = generate_quote(rfq, quote_number)
+            quotes.append((rfq, generate_quote(rfq, quote_number), quote_number))
 
-            # --- DB write path ---
-            if self.enable_db_writes:
-                try:
-                    self._write_to_db(msg, rfq, quote, quote_number, attachments)
-                except Exception:
-                    logger.exception("Failed writing quote %s to database", quote_number)
+        # --- DB write path ---
+        if self.enable_db_writes:
+            from .db_writer import InboundEmailAlreadyProcessed
 
+            try:
+                self._write_to_db(msg, quotes, attachments)
+            except InboundEmailAlreadyProcessed:
+                logger.warning("Skipping replayed message %s with an existing DB claim", msg.id)
+                self._finalize_message(msg.id)
+                return False
+
+        for rfq, quote, _quote_number in quotes:
             # --- Outlook draft path ---
             if self.enable_outlook_drafts:
                 if not hasattr(self.email_client, "create_draft"):
@@ -288,43 +292,43 @@ class InboxMonitor:
     def _write_to_db(
         self,
         msg: EmailMessage,
-        rfq: ParsedRFQ,
-        quote: Quote,
-        quote_number: str,
+        quotes: list[tuple[ParsedRFQ, Quote, str]],
         attachments: list[OutlookAttachment],
     ) -> None:
-        """Write quote data to the database within Flask app context."""
+        """Atomically claim one message and write all of its quotes."""
+        from app.extensions import db
         from .db_writer import write_quote_to_db
 
         if not self._flask_app:
             raise RuntimeError("DB writes enabled but no Flask app provided")
 
         with self._flask_app.app_context():
-            write_quote_to_db(msg, rfq, quote, quote_number, attachments=attachments)
+            try:
+                for index, (rfq, quote, quote_number) in enumerate(quotes):
+                    write_quote_to_db(
+                        msg,
+                        rfq,
+                        quote,
+                        quote_number,
+                        attachments=attachments,
+                        claim_source_email=index == 0 and bool(msg.id),
+                        commit=False,
+                    )
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+                raise
 
-    def _claim_source_email(self, message_id: str) -> bool:
-        """Atomically claim a source message before creating its quote(s).
-
-        A source email may legitimately parse into multiple quotes, so the
-        unique key belongs to this message-level claim rather than ``quote``.
-        The claim complements the local state file when database writes are on.
-        """
+    def _has_source_email_claim(self, message_id: str) -> bool:
+        """Whether a state-file entry has a matching committed DB claim."""
         if not self.enable_db_writes or not self._flask_app or message_id == "<missing-id>":
             return True
-
-        from sqlalchemy.exc import IntegrityError
 
         from app.extensions import db
         from app.models import ProcessedInboundEmail
 
         with self._flask_app.app_context():
-            db.session.add(ProcessedInboundEmail(source_email_id=message_id))
-            try:
-                db.session.commit()
-            except IntegrityError:
-                db.session.rollback()
-                return False
-        return True
+            return db.session.query(ProcessedInboundEmail.id).filter_by(source_email_id=message_id).first() is not None
 
     def _write_rejected_email(self, msg: EmailMessage, reason: str | None) -> None:
         """Write a rejected email record to the database."""

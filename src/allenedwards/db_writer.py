@@ -13,6 +13,7 @@ from decimal import Decimal
 
 from flask import Flask
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 
 import re
 from difflib import SequenceMatcher
@@ -22,6 +23,7 @@ from app.models import (
     AuditLog,
     Contact,
     Customer,
+    ProcessedInboundEmail,
     Quote as DBQuote,
     QuoteAttachment as DBQuoteAttachment,
     QuoteLineItem as DBQuoteLineItem,
@@ -38,6 +40,10 @@ logger = logging.getLogger(__name__)
 
 MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024
 BILL_TO_NOTE_PREFIX = "Bill-to (from email signature):"
+
+
+class InboundEmailAlreadyProcessed(Exception):
+    """The monitor's atomic inbound-email claim already exists."""
 
 # Legal suffixes to strip during company name normalization
 _LEGAL_SUFFIXES = re.compile(
@@ -349,11 +355,31 @@ def write_quote_to_db(
     priced_quote: PricingQuote,
     quote_number: str,
     attachments: list[OutlookAttachment] | None = None,
+    *,
+    claim_source_email: bool = False,
+    commit: bool = True,
 ) -> DBQuote:
     """Write a priced quote into the database.
 
-    Returns the created DBQuote ORM instance (already committed).
+    When ``claim_source_email`` is true, the unique inbound-email claim is
+    inserted in this transaction.  A crash before commit therefore persists
+    neither the claim nor its quote rows.
+
+    Returns the created DBQuote ORM instance.  It is committed unless
+    ``commit`` is false, allowing the monitor to commit every quote produced
+    from one email with its one message-level claim.
     """
+    if claim_source_email:
+        db.session.add(ProcessedInboundEmail(source_email_id=msg.id))
+        try:
+            # Flush the claim without committing it.  A duplicate is an
+            # expected replay; any other failure must still abort the whole
+            # quote transaction.
+            db.session.flush()
+        except IntegrityError as error:
+            db.session.rollback()
+            raise InboundEmailAlreadyProcessed(msg.id) from error
+
     customer = _match_customer(rfq)
 
     if customer:
@@ -459,7 +485,8 @@ def write_quote_to_db(
     )
     db.session.add(audit)
 
-    db.session.commit()
+    if commit:
+        db.session.commit()
     logger.info(
         "Wrote quote %s (id=%s, status=%s, customer_id=%s) with %d line items",
         quote_number,

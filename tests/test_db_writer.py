@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -212,8 +212,8 @@ def test_write_quote_creates_records(app, msg, rfq, priced_quote):
         assert audits[0].action == "created_from_email"
 
 
-def test_inbound_email_claim_is_idempotent(app, tmp_path):
-    """One durable message claim can protect any number of its quote rows."""
+def test_atomic_claim_crash_is_reprocessed_from_state_file(app, tmp_path, msg, rfq, priced_quote):
+    """A saved state entry retries when its in-transaction claim rolled back."""
     monitor = InboxMonitor(
         outlook=MagicMock(),
         provider=MagicMock(),
@@ -224,12 +224,48 @@ def test_inbound_email_claim_is_idempotent(app, tmp_path):
         enable_outlook_drafts=False,
         flask_app=app,
     )
+    monitor.state.add(msg.id)
 
-    assert monitor._claim_source_email("AAMk-test-claim") is True
-    assert monitor._claim_source_email("AAMk-test-claim") is False
+    original_flush = db.session.flush
+    flush_count = 0
+
+    def crash_after_claim(*args, **kwargs):
+        nonlocal flush_count
+        flush_count += 1
+        if flush_count == 2:
+            raise RuntimeError("simulated crash after claim flush")
+        return original_flush(*args, **kwargs)
+
+    with patch.object(db.session, "flush", side_effect=crash_after_claim):
+        with pytest.raises(RuntimeError, match="after claim flush"):
+            monitor._write_to_db(msg, [(rfq, priced_quote, "126-claim")], [])
 
     with app.app_context():
-        assert ProcessedInboundEmail.query.filter_by(source_email_id="AAMk-test-claim").count() == 1
+        assert ProcessedInboundEmail.query.filter_by(source_email_id=msg.id).count() == 0
+        assert DBQuote.query.filter_by(source_email_id=msg.id).count() == 0
+
+    retry_outlook = MagicMock()
+    retry_outlook.fetch_messages.return_value = [msg]
+    retry = InboxMonitor(
+        outlook=retry_outlook,
+        provider=MagicMock(),
+        poll_interval_seconds=60,
+        state_path=tmp_path / "state.json",
+        output_dir=tmp_path / "quotes",
+        enable_db_writes=True,
+        enable_outlook_drafts=False,
+        flask_app=app,
+    )
+    retry._process_message = MagicMock(
+        side_effect=lambda _msg: (retry._write_to_db(_msg, [(rfq, priced_quote, "126-claim")], []), True)[1]
+    )
+
+    assert retry.run_once() == 1
+    retry._process_message.assert_called_once_with(msg)
+
+    with app.app_context():
+        assert ProcessedInboundEmail.query.filter_by(source_email_id=msg.id).count() == 1
+        assert DBQuote.query.filter_by(source_email_id=msg.id).count() == 1
 
 
 def test_write_quote_without_attachments_leaves_attachment_list_empty(app, msg, rfq, priced_quote):
