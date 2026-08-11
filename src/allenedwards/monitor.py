@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 import logging
-from pathlib import Path
+import os
 import signal
 import tempfile
+import threading
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from .email_provider import EmailMessage, EmailProvider
@@ -81,7 +83,21 @@ class ProcessedState:
         payload: dict[str, Any] = {"processed_ids": sorted(self._ids)}
         if self.last_seen_datetime:
             payload["last_seen_datetime"] = self.last_seen_datetime
-        self.path.write_text(json.dumps(payload, indent=2))
+        # A monitor can be terminated at any point.  Write and fsync a temporary
+        # file before replacing the old state, so a SIGKILL cannot leave an
+        # unreadable partial JSON file that would cause the inbox to replay.
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=self.path.parent,
+            prefix=f".{self.path.name}.",
+            delete=False,
+        ) as state_file:
+            temporary_path = Path(state_file.name)
+            state_file.write(json.dumps(payload, indent=2))
+            state_file.flush()
+            os.fsync(state_file.fileno())
+        os.replace(temporary_path, self.path)
 
 
 class InboxMonitor:
@@ -114,6 +130,7 @@ class InboxMonitor:
         self.processed_folder_name = processed_folder_name
         self._processed_folder_id: str | None = None
         self._running = True
+        self._shutdown_event = threading.Event()
         self.enable_db_writes = enable_db_writes
         self.enable_outlook_drafts = enable_outlook_drafts
         self._flask_app = flask_app
@@ -121,6 +138,7 @@ class InboxMonitor:
     def _shutdown_signal(self, signum: int, _frame: Any) -> None:
         logger.info("Received signal %s; shutting down", signum)
         self._running = False
+        self._shutdown_event.set()
 
     def install_signal_handlers(self) -> None:
         signal.signal(signal.SIGINT, self._shutdown_signal)
@@ -134,7 +152,7 @@ class InboxMonitor:
             self.run_once()
             if not self._running:
                 break
-            time.sleep(self.poll_interval_seconds)
+            self._shutdown_event.wait(self.poll_interval_seconds)
 
     def run_once(self) -> int:
         messages = self.email_client.fetch_messages(
@@ -153,6 +171,18 @@ class InboxMonitor:
                     logger.debug("Skipping already processed message %s", message_id)
                     continue
 
+                # Claim before any downstream side effect (DB quote, Outlook
+                # draft, or mailbox acknowledgement).  If the process dies
+                # afterward, a later run deliberately does not replay it.
+                self.state.add(message_id)
+                if not self._claim_source_email(message_id):
+                    logger.warning(
+                        "Skipping message %s because it already has a durable DB claim",
+                        message_id,
+                    )
+                    self._finalize_message(message_id)
+                    continue
+
                 handled = self._process_message(msg)
                 if handled:
                     processed_count += 1
@@ -165,9 +195,6 @@ class InboxMonitor:
                     getattr(msg, "sender_email", None),
                     getattr(msg, "received_datetime", None),
                 )
-                if message_id != "<missing-id>":
-                    self.state.add(message_id)
-
         if messages:
             self.state.save()
 
@@ -274,6 +301,30 @@ class InboxMonitor:
 
         with self._flask_app.app_context():
             write_quote_to_db(msg, rfq, quote, quote_number, attachments=attachments)
+
+    def _claim_source_email(self, message_id: str) -> bool:
+        """Atomically claim a source message before creating its quote(s).
+
+        A source email may legitimately parse into multiple quotes, so the
+        unique key belongs to this message-level claim rather than ``quote``.
+        The claim complements the local state file when database writes are on.
+        """
+        if not self.enable_db_writes or not self._flask_app or message_id == "<missing-id>":
+            return True
+
+        from sqlalchemy.exc import IntegrityError
+
+        from app.extensions import db
+        from app.models import ProcessedInboundEmail
+
+        with self._flask_app.app_context():
+            db.session.add(ProcessedInboundEmail(source_email_id=message_id))
+            try:
+                db.session.commit()
+            except IntegrityError:
+                db.session.rollback()
+                return False
+        return True
 
     def _write_rejected_email(self, msg: EmailMessage, reason: str | None) -> None:
         """Write a rejected email record to the database."""

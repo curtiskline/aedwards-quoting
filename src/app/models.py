@@ -169,6 +169,19 @@ class Quote(db.Model):
     audit_logs: Mapped[list["AuditLog"]] = relationship(back_populates="quote", cascade="all, delete-orphan")
 
 
+class ProcessedInboundEmail(TimestampMixin, db.Model):
+    """Durable, message-level idempotency claim for the inbox monitor.
+
+    A single inbound email can legitimately create several Quote rows, so this
+    guard cannot live on Quote.source_email_id itself.
+    """
+
+    __tablename__ = "processed_inbound_email"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_email_id: Mapped[str] = mapped_column(unique=True, nullable=False, index=True)
+
+
 class QuoteLineItem(db.Model):
     __tablename__ = "quote_line_item"
 

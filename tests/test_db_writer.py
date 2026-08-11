@@ -4,13 +4,25 @@ from __future__ import annotations
 
 from decimal import Decimal
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
 
 from app import create_app
 from app.config import Config
 from app.extensions import db
-from app.models import AuditLog, Customer, Contact, Quote as DBQuote, QuoteAttachment, QuoteLineItem as DBQuoteLineItem, QuoteStatus, ShipToAddress
+from app.models import (
+    AuditLog,
+    Customer,
+    Contact,
+    ProcessedInboundEmail,
+    Quote as DBQuote,
+    QuoteAttachment,
+    QuoteLineItem as DBQuoteLineItem,
+    QuoteStatus,
+    ShipToAddress,
+)
+from allenedwards.monitor import InboxMonitor
 from allenedwards.db_writer import (
     MAX_ATTACHMENT_BYTES,
     write_quote_to_db,
@@ -198,6 +210,26 @@ def test_write_quote_creates_records(app, msg, rfq, priced_quote):
         audits = AuditLog.query.filter_by(quote_id=db_quote.id).all()
         assert len(audits) == 1
         assert audits[0].action == "created_from_email"
+
+
+def test_inbound_email_claim_is_idempotent(app, tmp_path):
+    """One durable message claim can protect any number of its quote rows."""
+    monitor = InboxMonitor(
+        outlook=MagicMock(),
+        provider=MagicMock(),
+        poll_interval_seconds=60,
+        state_path=tmp_path / "state.json",
+        output_dir=tmp_path / "quotes",
+        enable_db_writes=True,
+        enable_outlook_drafts=False,
+        flask_app=app,
+    )
+
+    assert monitor._claim_source_email("AAMk-test-claim") is True
+    assert monitor._claim_source_email("AAMk-test-claim") is False
+
+    with app.app_context():
+        assert ProcessedInboundEmail.query.filter_by(source_email_id="AAMk-test-claim").count() == 1
 
 
 def test_write_quote_without_attachments_leaves_attachment_list_empty(app, msg, rfq, priced_quote):

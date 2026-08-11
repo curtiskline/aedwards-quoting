@@ -233,10 +233,6 @@ sudo -u "${APP_USER}" bash -c "set -a; source ${APP_DIR}/.env; set +a; cd ${APP_
 sudo systemctl daemon-reload
 sudo systemctl enable "${SERVICE_NAME}"
 sudo systemctl restart "${SERVICE_NAME}"
-if systemctl is-enabled aedwards-monitor >/dev/null 2>&1; then
-  sudo systemctl restart aedwards-monitor
-  echo "Restarted aedwards-monitor"
-fi
 sudo nginx -t
 sudo systemctl enable nginx
 sudo systemctl restart nginx

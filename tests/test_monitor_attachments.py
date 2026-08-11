@@ -6,6 +6,9 @@ import base64
 import email
 import json
 from pathlib import Path
+import signal
+import threading
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -154,6 +157,49 @@ class TestGetAttachments:
 
 
 class TestMonitorAttachmentWiring:
+    def test_sigterm_interrupts_poll_wait(self, tmp_path):
+        """The shutdown handler must wake a monitor that is between polls."""
+        monitor = InboxMonitor(
+            outlook=MagicMock(spec=OutlookClient),
+            provider=FakeProvider(),
+            poll_interval_seconds=1,
+            state_path=tmp_path / "state.json",
+            output_dir=tmp_path / "quotes",
+        )
+        monitor.run_once = MagicMock()
+        timer = threading.Timer(0.05, monitor._shutdown_signal, args=(signal.SIGTERM, None))
+
+        timer.start()
+        started_at = time.monotonic()
+        try:
+            monitor.run_forever()
+        finally:
+            timer.cancel()
+
+        assert time.monotonic() - started_at < 0.5
+        monitor.run_once.assert_called_once()
+
+    def test_state_claim_is_saved_before_processing(self, tmp_path):
+        """A crash during downstream work must not replay the source email."""
+        outlook = MagicMock(spec=OutlookClient)
+        outlook.fetch_messages.return_value = [_make_msg()]
+        monitor = InboxMonitor(
+            outlook=outlook,
+            provider=FakeProvider(),
+            poll_interval_seconds=60,
+            state_path=tmp_path / "state.json",
+            output_dir=tmp_path / "quotes",
+        )
+
+        def assert_durable_claim(_msg):
+            saved_state = json.loads((tmp_path / "state.json").read_text())
+            assert saved_state["processed_ids"] == ["msg-001"]
+            assert saved_state["last_seen_datetime"] == "2026-03-13T12:00:00Z"
+            return True
+
+        monitor._process_message = MagicMock(side_effect=assert_durable_claim)
+        assert monitor.run_once() == 1
+
     def test_run_once_normalizes_fractional_second_watermark(self, tmp_path):
         """A newer fractional-second timestamp still advances the watermark."""
         state_path = tmp_path / "state.json"
