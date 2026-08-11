@@ -578,23 +578,23 @@ def test_price_item_compression_no_diameter():
 
 
 def test_price_item_omegawrap_carbon():
-    """Test omegawrap carbon variant pricing."""
+    """Wrap now dispatches on product_type='composite'; carbon variant pricing."""
     item = ParsedItem(
-        product_type="omegawrap",
+        product_type="composite",
         quantity=3,
         description="OmegaWrap Carbon fiber roll",
     )
     result = price_item(item, sort_order=1)
     assert result is not None
-    assert result.product_type == "omegawrap"
+    assert result.product_type == "composite"
     assert result.unit_price == Decimal("680")
     assert result.total == Decimal("2040.00")
 
 
 def test_price_item_omegawrap_eglass():
-    """Test omegawrap E-Glass variant pricing."""
+    """Composite E-Glass variant pricing (variant key unchanged)."""
     item = ParsedItem(
-        product_type="omegawrap",
+        product_type="composite",
         quantity=2,
         description="OmegaWrap E-Glass roll",
     )
@@ -605,9 +605,9 @@ def test_price_item_omegawrap_eglass():
 
 
 def test_price_item_omegawrap_magnum():
-    """Test omegawrap Magnum variant pricing."""
+    """Composite Magnum variant pricing."""
     item = ParsedItem(
-        product_type="omegawrap",
+        product_type="composite",
         quantity=1,
         description="OmegaWrap Magnum",
     )
@@ -618,9 +618,9 @@ def test_price_item_omegawrap_magnum():
 
 
 def test_price_item_omegawrap_default_carbon():
-    """Test omegawrap defaults to carbon when no variant specified."""
+    """Composite defaults to carbon when no variant specified."""
     item = ParsedItem(
-        product_type="omegawrap",
+        product_type="composite",
         quantity=1,
         description="omegawrap",
     )

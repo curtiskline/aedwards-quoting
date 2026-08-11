@@ -392,7 +392,7 @@ def _build_pricing_snapshot() -> PricingSnapshot:
             else:
                 snapshot.bag_pricing.append(updated)
 
-        elif product_type in {"compression", "omegawrap", "accessory", "service", "flat"}:
+        elif product_type in {"compression", "composite", "accessory", "service", "flat"}:
             key = str(key_fields.get("key", ""))
             if not key:
                 continue
@@ -1303,7 +1303,7 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
             grade=grade,
         )
 
-    if item.product_type == "omegawrap":
+    if item.product_type == "composite":
         key = _match_omegawrap_key(item.description)
         if key is None:
             logger.warning(
@@ -1317,7 +1317,7 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
         total = price * Decimal(str(item.quantity))
         return QuoteLineItem(
             sort_order=sort_order,
-            product_type="omegawrap",
+            product_type="composite",
             part_number=f"OW-{label.upper()}",
             description=f"OmegaWrap {label} ({unit.replace('_', ' ')})",
             quantity=item.quantity,
