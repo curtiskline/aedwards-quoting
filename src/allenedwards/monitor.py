@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import json
 import logging
-from pathlib import Path
+import os
 import signal
 import tempfile
+import threading
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from .email_provider import EmailMessage, EmailProvider
@@ -81,7 +83,21 @@ class ProcessedState:
         payload: dict[str, Any] = {"processed_ids": sorted(self._ids)}
         if self.last_seen_datetime:
             payload["last_seen_datetime"] = self.last_seen_datetime
-        self.path.write_text(json.dumps(payload, indent=2))
+        # A monitor can be terminated at any point.  Write and fsync a temporary
+        # file before replacing the old state, so a SIGKILL cannot leave an
+        # unreadable partial JSON file that would cause the inbox to replay.
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=self.path.parent,
+            prefix=f".{self.path.name}.",
+            delete=False,
+        ) as state_file:
+            temporary_path = Path(state_file.name)
+            state_file.write(json.dumps(payload, indent=2))
+            state_file.flush()
+            os.fsync(state_file.fileno())
+        os.replace(temporary_path, self.path)
 
 
 class InboxMonitor:
@@ -114,6 +130,7 @@ class InboxMonitor:
         self.processed_folder_name = processed_folder_name
         self._processed_folder_id: str | None = None
         self._running = True
+        self._shutdown_event = threading.Event()
         self.enable_db_writes = enable_db_writes
         self.enable_outlook_drafts = enable_outlook_drafts
         self._flask_app = flask_app
@@ -121,6 +138,7 @@ class InboxMonitor:
     def _shutdown_signal(self, signum: int, _frame: Any) -> None:
         logger.info("Received signal %s; shutting down", signum)
         self._running = False
+        self._shutdown_event.set()
 
     def install_signal_handlers(self) -> None:
         signal.signal(signal.SIGINT, self._shutdown_signal)
@@ -134,7 +152,7 @@ class InboxMonitor:
             self.run_once()
             if not self._running:
                 break
-            time.sleep(self.poll_interval_seconds)
+            self._shutdown_event.wait(self.poll_interval_seconds)
 
     def run_once(self) -> int:
         messages = self.email_client.fetch_messages(
@@ -150,8 +168,18 @@ class InboxMonitor:
                     self.state.advance_watermark(msg.received_datetime)
 
                 if self.state.contains(message_id):
-                    logger.debug("Skipping already processed message %s", message_id)
-                    continue
+                    if self._has_source_email_claim(message_id):
+                        logger.debug("Skipping already processed message %s", message_id)
+                        continue
+                    logger.warning(
+                        "Retrying message %s: state file says processed but its DB claim is absent",
+                        message_id,
+                    )
+
+                # Persist the local state before downstream side effects.  DB
+                # writes additionally use a claim committed atomically with
+                # their quote rows; a state-only entry is retried above.
+                self.state.add(message_id)
 
                 handled = self._process_message(msg)
                 if handled:
@@ -165,9 +193,6 @@ class InboxMonitor:
                     getattr(msg, "sender_email", None),
                     getattr(msg, "received_datetime", None),
                 )
-                if message_id != "<missing-id>":
-                    self.state.add(message_id)
-
         if messages:
             self.state.save()
 
@@ -209,17 +234,23 @@ class InboxMonitor:
         else:
             base_quote_number = _generate_quote_number()
 
+        quotes = []
         for idx, rfq in enumerate(rfqs):
             quote_number = base_quote_number if len(rfqs) == 1 else f"{base_quote_number}-{idx + 1:02d}"
-            quote = generate_quote(rfq, quote_number)
+            quotes.append((rfq, generate_quote(rfq, quote_number), quote_number))
 
-            # --- DB write path ---
-            if self.enable_db_writes:
-                try:
-                    self._write_to_db(msg, rfq, quote, quote_number, attachments)
-                except Exception:
-                    logger.exception("Failed writing quote %s to database", quote_number)
+        # --- DB write path ---
+        if self.enable_db_writes:
+            from .db_writer import InboundEmailAlreadyProcessed
 
+            try:
+                self._write_to_db(msg, quotes, attachments)
+            except InboundEmailAlreadyProcessed:
+                logger.warning("Skipping replayed message %s with an existing DB claim", msg.id)
+                self._finalize_message(msg.id)
+                return False
+
+        for rfq, quote, _quote_number in quotes:
             # --- Outlook draft path ---
             if self.enable_outlook_drafts:
                 if not hasattr(self.email_client, "create_draft"):
@@ -261,19 +292,43 @@ class InboxMonitor:
     def _write_to_db(
         self,
         msg: EmailMessage,
-        rfq: ParsedRFQ,
-        quote: Quote,
-        quote_number: str,
+        quotes: list[tuple[ParsedRFQ, Quote, str]],
         attachments: list[OutlookAttachment],
     ) -> None:
-        """Write quote data to the database within Flask app context."""
+        """Atomically claim one message and write all of its quotes."""
+        from app.extensions import db
         from .db_writer import write_quote_to_db
 
         if not self._flask_app:
             raise RuntimeError("DB writes enabled but no Flask app provided")
 
         with self._flask_app.app_context():
-            write_quote_to_db(msg, rfq, quote, quote_number, attachments=attachments)
+            try:
+                for index, (rfq, quote, quote_number) in enumerate(quotes):
+                    write_quote_to_db(
+                        msg,
+                        rfq,
+                        quote,
+                        quote_number,
+                        attachments=attachments,
+                        claim_source_email=index == 0 and bool(msg.id),
+                        commit=False,
+                    )
+                db.session.commit()
+            except Exception:
+                db.session.rollback()
+                raise
+
+    def _has_source_email_claim(self, message_id: str) -> bool:
+        """Whether a state-file entry has a matching committed DB claim."""
+        if not self.enable_db_writes or not self._flask_app or message_id == "<missing-id>":
+            return True
+
+        from app.extensions import db
+        from app.models import ProcessedInboundEmail
+
+        with self._flask_app.app_context():
+            return db.session.query(ProcessedInboundEmail.id).filter_by(source_email_id=message_id).first() is not None
 
     def _write_rejected_email(self, msg: EmailMessage, reason: str | None) -> None:
         """Write a rejected email record to the database."""
