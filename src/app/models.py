@@ -250,10 +250,6 @@ class ProductCatalog(db.Model):
     # Category slug, mirroring QuoteLineItem.product_type (matches an editable
     # ProductType.name). Nullable: untriaged legacy rows carry no type yet.
     product_type: Mapped[str | None] = mapped_column(nullable=True, index=True)
-    # Retained legacy value from the pre-terminology model (the old "Family"
-    # enum). No longer surfaced in the UI; kept so the family->type migration
-    # stays reversible and untriaged rows keep their original label.
-    product_family: Mapped[str | None] = mapped_column(nullable=True, index=True)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
