@@ -434,13 +434,14 @@ def write_quote_to_db(
         db_line = DBQuoteLineItem(
             quote_id=db_quote.id,
             product_type=li.product_type,
-            sku=(li.sku or None),
             description=li.description,
             quantity=float(li.quantity),
             unit_price=float(li.unit_price),
             line_total=float(li.total),
             specs_json=specs or None,
-            part_number=li.part_number or None,
+            # Single identifier now. Fold the legacy catalog-match SKU into
+            # part_number when pricing did not generate one of its own.
+            part_number=(li.part_number or li.sku or None),
             sort_order=li.sort_order,
         )
         db.session.add(db_line)

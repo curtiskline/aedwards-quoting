@@ -326,7 +326,7 @@ def test_pricing_admin_page_and_inline_update(tmp_path: Path) -> None:
 
         added_catalog_item = client.post(
             "/admin/catalog/add",
-            data={"sku": "FS-001", "description": "Field service visit", "product_family": "other"},
+            data={"part_number": "FS-001", "description": "Field service visit", "product_type": "accessory"},
         )
         assert added_catalog_item.status_code == 200
         assert b"FS-001" in added_catalog_item.data
@@ -334,7 +334,7 @@ def test_pricing_admin_page_and_inline_update(tmp_path: Path) -> None:
         conn = sqlite3.connect(db_path)
         try:
             catalog_row = conn.execute(
-                "SELECT id FROM product_catalog WHERE sku = 'FS-001'"
+                "SELECT id FROM product_catalog WHERE part_number = 'FS-001'"
             ).fetchone()
         finally:
             conn.close()
@@ -344,9 +344,9 @@ def test_pricing_admin_page_and_inline_update(tmp_path: Path) -> None:
         updated_catalog_item = client.post(
             f"/admin/catalog/{catalog_item_id}/update",
             data={
-                "sku": "FS-002",
+                "part_number": "FS-002",
                 "description": "Updated field service visit",
-                "product_family": "other",
+                "product_type": "accessory",
                 "is_active": "on",
             },
         )
@@ -354,13 +354,13 @@ def test_pricing_admin_page_and_inline_update(tmp_path: Path) -> None:
         assert b"FS-002" in updated_catalog_item.data
 
         search_before_deactivation = client.get("/api/product-catalog/search?q=FS-002")
-        assert search_before_deactivation.get_json()[0]["sku"] == "FS-002"
+        assert search_before_deactivation.get_json()[0]["part_number"] == "FS-002"
         deactivated_catalog_item = client.post(
             f"/admin/catalog/{catalog_item_id}/update",
             data={
-                "sku": "FS-002",
+                "part_number": "FS-002",
                 "description": "Updated field service visit",
-                "product_family": "other",
+                "product_type": "accessory",
                 "catalog_filter": "active",
             },
         )
@@ -376,14 +376,14 @@ def test_pricing_admin_page_and_inline_update(tmp_path: Path) -> None:
         assert (
             client.post(
                 "/admin/catalog/add",
-                data={"sku": "ZZ-001", "description": "Zulu active", "product_family": "other"},
+                data={"part_number": "ZZ-001", "description": "Zulu active", "product_type": "accessory"},
             ).status_code
             == 200
         )
         assert (
             client.post(
                 "/admin/catalog/add",
-                data={"sku": "AA-001", "description": "Alpha active", "product_family": "other"},
+                data={"part_number": "AA-001", "description": "Alpha active", "product_type": "accessory"},
             ).status_code
             == 200
         )

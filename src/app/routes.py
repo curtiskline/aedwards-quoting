@@ -60,7 +60,6 @@ from .models import (
     Customer,
     PricingTable,
     ProductCatalog,
-    ProductFamily,
     ProductType,
     Quote,
     QuoteAttachment,
@@ -83,6 +82,7 @@ DEFAULT_PRODUCT_TYPES: list[tuple[str, str]] = [
     ("accessory", "Accessory"),
     ("service", "Service"),
     ("shipping", "Shipping & Handling"),
+    ("composite", "Composite"),
 ]
 
 QUOTE_EDITOR_HIDDEN_PRODUCT_TYPES = {"shipping"}
@@ -266,15 +266,15 @@ def _catalog_items(
         )
 
     if catalog_filter == "all":
-        return query.order_by(ProductCatalog.is_active.desc(), ProductCatalog.sku.asc()).all()
-    return query.order_by(ProductCatalog.sku.asc()).all()
+        return query.order_by(
+            ProductCatalog.is_active.desc(), ProductCatalog.part_number.asc()
+        ).all()
+    return query.order_by(ProductCatalog.part_number.asc()).all()
 
 
-def _product_family_choices() -> list[dict[str, str]]:
-    return [
-        {"value": family.value, "label": family.value.replace("_", " ").title()}
-        for family in ProductFamily
-    ]
+def _catalog_type_choices() -> list[dict[str, str]]:
+    """Type options for the product catalog, from the editable ProductType list."""
+    return [{"name": row.name, "label": row.display_label} for row in _active_product_types()]
 
 
 def _quantize_money(value: Decimal) -> Decimal:
@@ -1117,7 +1117,6 @@ def _line_item_view(item: QuoteLineItem) -> dict:
     return {
         "id": item.id,
         "product_type": item.product_type,
-        "sku": item.sku,
         "description": item.description,
         "quantity": quantity,
         "display_qty": display_qty,
@@ -1449,7 +1448,7 @@ def _quote_has_tbd_items(quote: Quote) -> bool:
 
 
 def _line_item_has_tbd_marker(item: QuoteLineItem) -> bool:
-    values = (item.sku, item.part_number, item.description)
+    values = (item.part_number, item.description)
     return any("tbd" in str(value or "").lower() for value in values)
 
 
@@ -1548,7 +1547,6 @@ def _copy_line_item(item: QuoteLineItem, new_quote_id: int) -> QuoteLineItem:
     return QuoteLineItem(
         quote_id=new_quote_id,
         product_type=item.product_type,
-        sku=item.sku,
         description=item.description,
         quantity=item.quantity,
         unit_price=item.unit_price,
@@ -1884,7 +1882,6 @@ def quote_add_line_item(quote_id: int):
     line_item = QuoteLineItem(
         quote=quote,
         product_type=product_type,
-        sku=(request.form.get("sku") or "").strip() or None,
         part_number=part_number,
         description=(request.form.get("description") or "New line item").strip() or "New line item",
         quantity=float(_parse_decimal(request.form.get("quantity"), Decimal("1"))),
@@ -1978,7 +1975,6 @@ def quote_update_line_item(quote_id: int, item_id: int):
 
     item.product_type = _resolve_product_type(request.form.get("product_type"), item.product_type)
     auto_shipping_trigger = request.form.get("auto_shipping_trigger") == "1"
-    item.sku = (request.form.get("sku") or "").strip() or None
     item.description = (
         request.form.get("description") or item.description
     ).strip() or item.description
@@ -2009,7 +2005,7 @@ def quote_update_line_item(quote_id: int, item_id: int):
     part_number = request.form.get("part_number")
     part_number_baseline = request.form.get("part_number_baseline")
     if part_number is not None and part_number != (part_number_baseline or ""):
-        # Preserve an explicitly typed Item Number across autosaves and spec
+        # Preserve an explicitly typed Part Number across autosaves and spec
         # recalculations. Generated identifiers continue to update until a
         # user changes this field themselves.
         item.part_number = part_number.strip() or None
@@ -2156,37 +2152,44 @@ def product_catalog_search():
         .filter(ProductCatalog.is_active.is_(True))
         .filter(
             or_(
-                func.lower(ProductCatalog.sku).like(like),
+                func.lower(ProductCatalog.part_number).like(like),
                 func.lower(ProductCatalog.description).like(like),
             )
         )
-        .order_by(ProductCatalog.sku.asc())
+        .order_by(ProductCatalog.part_number.asc())
         .limit(10)
         .all()
     )
     return jsonify(
         [
             {
-                "sku": row.sku,
+                "part_number": row.part_number,
                 "description": row.description,
-                "product_family": row.product_family.value,
+                "product_type": row.product_type,
             }
             for row in rows
         ]
     )
 
 
-@main_bp.get("/api/product-catalog/lookup/<string:sku>")
-def product_catalog_lookup(sku: str):
+@main_bp.get("/api/product-catalog/lookup/<string:part_number>")
+def product_catalog_lookup(part_number: str):
     row = (
         db.session.query(ProductCatalog)
-        .filter(ProductCatalog.is_active.is_(True), func.lower(ProductCatalog.sku) == sku.lower())
+        .filter(
+            ProductCatalog.is_active.is_(True),
+            func.lower(ProductCatalog.part_number) == part_number.lower(),
+        )
         .one_or_none()
     )
     if row is None:
         abort(404)
     return jsonify(
-        {"sku": row.sku, "description": row.description, "product_family": row.product_family.value}
+        {
+            "part_number": row.part_number,
+            "description": row.description,
+            "product_type": row.product_type,
+        }
     )
 
 
@@ -2242,7 +2245,7 @@ def pricing_admin():
         shipping_config=_shipping_config_form_data(_shipping_config()),
         catalog_items=_catalog_items(catalog_filter),
         catalog_filter=catalog_filter,
-        product_families=_product_family_choices(),
+        catalog_product_types=_catalog_type_choices(),
         active_tab=active_tab,
         **_product_types_admin_data(),
     )
@@ -2315,28 +2318,43 @@ def delete_pricing_row(row_id: int):
     return render_template("partials/pricing_catalog.html", sections=_group_pricing_rows())
 
 
+def _resolve_catalog_product_type(raw: str | None) -> str | None:
+    """Validate a submitted catalog Type. Blank is allowed (name-only rows)."""
+    slug = (raw or "").strip()
+    if not slug:
+        return None
+    if slug not in {row.name for row in _all_product_types()}:
+        abort(400, description="Select a valid product type")
+    return slug
+
+
+def _catalog_row_label(item: ProductCatalog) -> str:
+    """Human label for flash messages: part number if present, else description."""
+    return item.part_number or item.description
+
+
 @main_bp.post("/admin/catalog/add")
 @login_required
 def add_catalog_item():
-    sku = (request.form.get("sku") or "").strip()
+    part_number = (request.form.get("part_number") or "").strip() or None
     description = (request.form.get("description") or "").strip()
-    family_value = (request.form.get("product_family") or "").strip()
-    if not sku or not description:
-        abort(400, description="SKU and description are required")
-    try:
-        product_family = ProductFamily(family_value)
-    except ValueError:
-        abort(400, description="Select a valid product family")
+    product_type = _resolve_catalog_product_type(request.form.get("product_type"))
+    if not description:
+        abort(400, description="Description is required")
     if (
-        db.session.query(ProductCatalog)
-        .filter(func.lower(ProductCatalog.sku) == sku.lower())
+        part_number is not None
+        and db.session.query(ProductCatalog)
+        .filter(func.lower(ProductCatalog.part_number) == part_number.lower())
         .first()
         is not None
     ):
-        abort(400, description="A catalog item with this SKU already exists")
+        abort(400, description="A catalog item with this part number already exists")
     db.session.add(
         ProductCatalog(
-            sku=sku, description=description, product_family=product_family, is_active=True
+            part_number=part_number,
+            description=description,
+            product_type=product_type,
+            is_active=True,
         )
     )
     db.session.commit()
@@ -2344,7 +2362,7 @@ def add_catalog_item():
         "partials/product_catalog_table.html",
         catalog_items=_catalog_items("active"),
         catalog_filter="active",
-        product_families=_product_family_choices(),
+        catalog_product_types=_catalog_type_choices(),
         catalog_just_saved=True,
     )
 
@@ -2355,25 +2373,25 @@ def update_catalog_item(item_id: int):
     item = db.session.get(ProductCatalog, item_id)
     if item is None:
         abort(404)
-    sku = (request.form.get("sku") or "").strip()
+    part_number = (request.form.get("part_number") or "").strip() or None
     description = (request.form.get("description") or "").strip()
-    family_value = (request.form.get("product_family") or "").strip()
-    if not sku or not description:
-        abort(400, description="SKU and description are required")
-    try:
-        product_family = ProductFamily(family_value)
-    except ValueError:
-        abort(400, description="Select a valid product family")
-    duplicate = (
-        db.session.query(ProductCatalog)
-        .filter(func.lower(ProductCatalog.sku) == sku.lower(), ProductCatalog.id != item.id)
-        .first()
-    )
-    if duplicate is not None:
-        abort(400, description="A catalog item with this SKU already exists")
-    item.sku = sku
+    product_type = _resolve_catalog_product_type(request.form.get("product_type"))
+    if not description:
+        abort(400, description="Description is required")
+    if part_number is not None:
+        duplicate = (
+            db.session.query(ProductCatalog)
+            .filter(
+                func.lower(ProductCatalog.part_number) == part_number.lower(),
+                ProductCatalog.id != item.id,
+            )
+            .first()
+        )
+        if duplicate is not None:
+            abort(400, description="A catalog item with this part number already exists")
+    item.part_number = part_number
     item.description = description
-    item.product_family = product_family
+    item.product_type = product_type
     catalog_filter = _catalog_filter(request.form.get("catalog_filter"))
     was_active = item.is_active
     item.is_active = request.form.get("is_active") == "on"
@@ -2382,7 +2400,8 @@ def update_catalog_item(item_id: int):
     if was_active != item.is_active and catalog_filter != "all":
         destination = "Active" if item.is_active else "Inactive"
         transition_note = (
-            f"{item.sku} moved to {destination}; it will leave this view after the next reload."
+            f"{_catalog_row_label(item)} moved to {destination}; "
+            "it will leave this view after the next reload."
         )
     return render_template(
         "partials/product_catalog_table.html",
@@ -2390,7 +2409,7 @@ def update_catalog_item(item_id: int):
             catalog_filter, include_item_id=item.id if transition_note else None
         ),
         catalog_filter=catalog_filter,
-        product_families=_product_family_choices(),
+        catalog_product_types=_catalog_type_choices(),
         catalog_just_saved=True,
         catalog_transition_note=transition_note,
     )
@@ -2411,10 +2430,11 @@ def delete_catalog_item(item_id: int):
             catalog_filter, include_item_id=item.id if catalog_filter == "active" else None
         ),
         catalog_filter=catalog_filter,
-        product_families=_product_family_choices(),
+        catalog_product_types=_catalog_type_choices(),
         catalog_just_saved=True,
         catalog_transition_note=(
-            f"{item.sku} moved to Inactive; it will leave this view after the next reload."
+            f"{_catalog_row_label(item)} moved to Inactive; "
+            "it will leave this view after the next reload."
             if catalog_filter == "active"
             else None
         ),
@@ -2608,7 +2628,6 @@ def _quote_line_items_snapshot(quote: Quote) -> list[dict[str, object]]:
         {
             "id": item.id,
             "product_type": item.product_type,
-            "sku": item.sku,
             "description": item.description,
             "quantity": str(item.quantity),
             "unit_price": str(item.unit_price),

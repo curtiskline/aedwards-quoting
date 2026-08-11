@@ -8,7 +8,7 @@ from enum import Enum
 
 from flask_login import UserMixin
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import ForeignKey, Numeric, String, Text
+from sqlalchemy import ForeignKey, Numeric, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -23,17 +23,6 @@ class QuoteStatus(str, Enum):
     SENT = "sent"
     ARCHIVED = "archived"
     REPLACED = "replaced"
-
-
-class ProductFamily(str, Enum):
-    SLEEVE = "sleeve"
-    GIRTH_WELD = "girth_weld"
-    BAG = "bag"
-    OMEGAWRAP = "omegawrap"
-    PIPE_JACK = "pipe_jack"
-    BACKING_STRIP = "backing_strip"
-    COMPRESSION_SLEEVE = "compression_sleeve"
-    OTHER = "other"
 
 
 class TimestampMixin:
@@ -186,7 +175,6 @@ class QuoteLineItem(db.Model):
     id: Mapped[int] = mapped_column(primary_key=True)
     quote_id: Mapped[int] = mapped_column(ForeignKey("quote.id"), nullable=False, index=True)
     product_type: Mapped[str] = mapped_column(nullable=False, index=True)
-    sku: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
     description: Mapped[str] = mapped_column(nullable=False)
     quantity: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
     unit_price: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
@@ -255,11 +243,17 @@ class ProductCatalog(db.Model):
     __tablename__ = "product_catalog"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    sku: Mapped[str] = mapped_column(unique=True, nullable=False, index=True)
+    # Business identifier — optional, not a referential backbone. Name-only
+    # products are first-class; the surrogate `id` is the rename-safe key.
+    part_number: Mapped[str | None] = mapped_column(nullable=True, index=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
-    product_family: Mapped[ProductFamily] = mapped_column(
-        SAEnum(ProductFamily, name="product_family"), nullable=False, index=True
-    )
+    # Category slug, mirroring QuoteLineItem.product_type (matches an editable
+    # ProductType.name). Nullable: untriaged legacy rows carry no type yet.
+    product_type: Mapped[str | None] = mapped_column(nullable=True, index=True)
+    # Retained legacy value from the pre-terminology model (the old "Family"
+    # enum). No longer surfaced in the UI; kept so the family->type migration
+    # stays reversible and untriaged rows keep their original label.
+    product_family: Mapped[str | None] = mapped_column(nullable=True, index=True)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

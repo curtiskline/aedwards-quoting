@@ -68,7 +68,6 @@ def source_quote(app):
                 QuoteLineItem(
                     quote_id=quote.id,
                     product_type="sleeve",
-                    sku="SLV-100",
                     description="12in sleeve",
                     quantity=10,
                     unit_price=25,
@@ -118,8 +117,8 @@ def test_revise_copies_details_and_closes_original(client, app, source_quote):
         assert revision.bill_to_json == source.bill_to_json
         assert revision.bill_to_json is not source.bill_to_json
         assert [
-            (item.sku, item.part_number, float(item.line_total)) for item in revision.line_items
-        ] == [("SLV-100", "PN-12", 250.0)]
+            (item.part_number, float(item.line_total)) for item in revision.line_items
+        ] == [("PN-12", 250.0)]
         assert revision.attachments == []
         assert (
             _db.session.query(AuditLog).filter_by(quote_id=source.id, action="revised_by").count()

@@ -690,18 +690,24 @@ def _load_active_sku_prompt_block() -> str:
 
         rows = (
             db.session.query(ProductCatalog)
-            .filter(ProductCatalog.is_active.is_(True))
-            .order_by(ProductCatalog.sku.asc())
+            .filter(
+                ProductCatalog.is_active.is_(True),
+                ProductCatalog.part_number.isnot(None),
+            )
+            .order_by(ProductCatalog.part_number.asc())
             .all()
         )
+        # Name-only rows (blank part number) have nothing for the model to match.
+        rows = [row for row in rows if (row.part_number or "").strip()]
         if not rows:
             return ""
 
-        lines = "\n".join(f"- {row.sku}: {row.description}" for row in rows)
+        lines = "\n".join(f"- {row.part_number}: {row.description}" for row in rows)
         return (
-            "\n\nCANONICAL SKU LIST (active catalog entries):\n"
+            "\n\nCANONICAL PART NUMBER LIST (active catalog entries):\n"
             f"{lines}\n"
-            'If a line item clearly matches a SKU, include "sku": "<sku>" in its JSON item.\n'
+            'If a line item clearly matches a part number, include "sku": "<part number>" '
+            "in its JSON item.\n"
             'If uncertain, set "sku" to null.'
         )
     except Exception:

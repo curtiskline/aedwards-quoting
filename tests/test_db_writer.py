@@ -190,7 +190,9 @@ def test_write_quote_creates_records(app, msg, rfq, priced_quote):
         assert float(li1.unit_price) == 45.50
         assert float(li1.line_total) == 4550.00
         assert li1.specs_json["weight_per_ft"] == "12.5"
-        assert li1.sku == "S-12.34-38-50-10"
+        # Single identifier: a generated part_number wins over the catalog-match
+        # SKU, which is folded in only when part_number is blank.
+        assert li1.part_number == "SLV-12-375"
 
         # Audit log
         audits = AuditLog.query.filter_by(quote_id=db_quote.id).all()
@@ -689,3 +691,41 @@ def test_line_item_specs_persist_pricing_inputs(app, msg, rfq):
         assert specs["weight_per_ft"] == "72.91"
         assert specs["price_per_lb"] == "2.75"
         assert specs["notes"] == 'wall thickness defaulted to 3/8"'
+
+
+def test_sku_folds_into_part_number_when_part_number_blank(app, msg, rfq):
+    """Task 358: the two identifier columns are collapsed into part_number.
+
+    When pricing did not generate a part_number, the catalog-match SKU is folded
+    into part_number so the single identifier is never lost.
+    """
+    priced = PricingQuote(
+        quote_number="126-358",
+        customer_name="Acme Pipeline Co",
+        contact_name=None,
+        contact_email=None,
+        contact_phone=None,
+        ship_to=None,
+        line_items=[
+            PricingLineItem(
+                sort_order=1,
+                product_type="accessory",
+                sku="ACC-CATALOG-MATCH",
+                part_number="",
+                description="Accessory picked from the catalog",
+                quantity=2,
+                unit_price=Decimal("10.00"),
+                total=Decimal("20.00"),
+            )
+        ],
+        subtotal=Decimal("20.00"),
+        shipping_amount=None,
+        tax_amount=Decimal("0"),
+        total=Decimal("20.00"),
+        notes=None,
+    )
+
+    with app.app_context():
+        db_quote = write_quote_to_db(msg, rfq, priced, "126-358")
+        line = DBQuoteLineItem.query.filter_by(quote_id=db_quote.id).one()
+        assert line.part_number == "ACC-CATALOG-MATCH"

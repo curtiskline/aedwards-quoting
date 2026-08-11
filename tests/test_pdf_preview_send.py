@@ -451,7 +451,6 @@ def test_send_quote_success(mock_outlook_class, tmp_path):
             {
                 "id": 1,
                 "product_type": "sleeve",
-                "sku": None,
                 "description": '12" x 0.250 GR3 10ft Sleeve',
                 "quantity": "10.00",
                 "unit_price": "150.00",
@@ -468,7 +467,6 @@ def test_send_quote_success(mock_outlook_class, tmp_path):
             {
                 "id": 2,
                 "product_type": "bag",
-                "sku": None,
                 "description": 'GTW Bag 12"',
                 "quantity": "10.00",
                 "unit_price": "5.00",
