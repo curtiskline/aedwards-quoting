@@ -181,7 +181,7 @@ Return a JSON object with this structure:
             "po_number": "Customer purchase order number for this quote if explicitly provided, otherwise null",
             "items": [
                 {
-                    "product_type": "sleeve|girth_weld|compression|bag|omegawrap|accessory|service",
+                    "product_type": "__PRODUCT_TYPE_ENUM__",
                     "quantity": 30,
                     "diameter": "6.625",
                     "wall_thickness": "0.25",
@@ -714,10 +714,74 @@ def _load_active_sku_prompt_block() -> str:
         return ""
 
 
-def _parse_system_prompt() -> str:
+# Sentinel in PARSE_SYSTEM_PROMPT replaced at assembly time with the live
+# product_type slugs. The catalog is edited in the UI (Chip added 'composite'
+# live), so the enum must adapt to the ProductType table, not hardcode names.
+_PRODUCT_TYPE_ENUM_PLACEHOLDER = "__PRODUCT_TYPE_ENUM__"
+
+# Fallback (name, display_label) pairs when there is no app/DB context to read
+# the editable ProductType table. Mirrors the seeded defaults in app.routes.
+_DEFAULT_PRODUCT_TYPES_FOR_PROMPT: tuple[tuple[str, str], ...] = (
+    ("sleeve", "Sleeve"),
+    ("bag", "Bag"),
+    ("girth_weld", "Girth Weld"),
+    ("compression", "Compression"),
+    ("accessory", "Accessory"),
+    ("service", "Service"),
+    ("shipping", "Shipping & Handling"),
+    ("composite", "Composite"),
+)
+
+
+def _active_product_types_for_prompt() -> list[tuple[str, str]]:
+    """Active (name, display_label) product types from the editable table.
+
+    Mirrors the guard style of _load_active_sku_prompt_block: reads the live
+    ProductType table when app/DB context exists, else falls back to a sane
+    default. Ordered by sort_order so the prompt matches the UI ordering.
+    """
+    if not has_app_context():
+        return list(_DEFAULT_PRODUCT_TYPES_FOR_PROMPT)
+    try:
+        from app.extensions import db
+        from app.models import ProductType
+
+        if not inspect(db.engine).has_table("product_type"):
+            return list(_DEFAULT_PRODUCT_TYPES_FOR_PROMPT)
+
+        rows = (
+            db.session.query(ProductType)
+            .filter(ProductType.is_active.is_(True))
+            .order_by(ProductType.sort_order.asc(), ProductType.id.asc())
+            .all()
+        )
+        pairs = [
+            ((row.name or "").strip(), (row.display_label or "").strip() or (row.name or "").strip())
+            for row in rows
+        ]
+        pairs = [(name, label) for name, label in pairs if name]
+        return pairs or list(_DEFAULT_PRODUCT_TYPES_FOR_PROMPT)
+    except Exception:
+        return list(_DEFAULT_PRODUCT_TYPES_FOR_PROMPT)
+
+
+def _product_type_prompt_block(types: list[tuple[str, str]]) -> str:
+    lines = "\n".join(f"- {name}: {label}" for name, label in types)
     return (
-        PARSE_SYSTEM_PROMPT
+        "\n\nVALID product_type VALUES — the product catalog is edited live, so this "
+        "list is authoritative. Use exactly one of these slugs (left of the colon) "
+        'for each item\'s "product_type":\n'
+        f"{lines}"
+    )
+
+
+def _parse_system_prompt() -> str:
+    types = _active_product_types_for_prompt()
+    enum = "|".join(name for name, _ in types)
+    return (
+        PARSE_SYSTEM_PROMPT.replace(_PRODUCT_TYPE_ENUM_PLACEHOLDER, enum)
         + '\n\nEach line item may include optional field "sku": string|null.'
+        + _product_type_prompt_block(types)
         + _load_active_sku_prompt_block()
     )
 

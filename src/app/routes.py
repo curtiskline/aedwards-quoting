@@ -126,7 +126,7 @@ def _pricing_section_order(product_type: str) -> int:
         "girth_weld": 1,
         "bag": 2,
         "compression": 3,
-        "omegawrap": 4,
+        "composite": 4,
         "accessory": 5,
         "service": 6,
         "flat": 7,
@@ -850,7 +850,7 @@ _PRICING_SPEC_KEYS = ("diameter", "wall_thickness", "grade", "length_ft", "milli
 
 # Specs required before a product type can be priced from its specs at all.
 # A type that is absent here is priced from a flat/catalog rate that spec edits
-# do not move (compression, omegawrap, accessory, service, shipping).
+# do not move (compression, composite, accessory, service, shipping).
 _PRICING_REQUIRED_SPECS: dict[str, tuple[str, ...]] = {
     "sleeve": ("diameter", "wall_thickness", "grade", "length_ft"),
     "oversleeve": ("diameter", "wall_thickness", "grade", "length_ft"),

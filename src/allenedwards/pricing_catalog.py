@@ -112,7 +112,7 @@ def default_pricing_rows() -> list[dict[str, object]]:
         if key == "compression_sleeve":
             product_type = "compression"
         elif key.startswith("omegawrap_"):
-            product_type = "omegawrap"
+            product_type = "composite"
         elif key in {"supervisor", "trainer_torch", "kickoff_training", "training_package"}:
             product_type = "service"
         elif key not in {"compression_sleeve"}:
