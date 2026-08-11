@@ -60,7 +60,8 @@ the existing intake→quote lane. Dashed boxes = net-new subsystems.
                     ┌─────────────────────────────────────────────────────────────┐
                     │  MILESTONE 1 — INFRA HARDENING (GATE, Devin-directed)          │
                     │  • monitor SIGTERM interruptible-wait + state-before-boundary  │
-                    │  • source_email_id UNIQUE (idempotency key) — task 340         │
+                    │  • whole-message idempotency ledger — task 340                 │
+                    │    (NOT a Quote.source_email_id UNIQUE constraint — see note)   │
                     │  • Postgres-vs-SQLite decision BEFORE concurrent writers       │
                     │  Nothing below auto-fires until this is green.                 │
                     └───────────────────────────────┬─────────────────────────────┘
@@ -129,13 +130,21 @@ Three concrete items, in order:
    poll (`monitor.py:137`) and ignores SIGTERM, so systemd SIGKILLs it 90s into every deploy — and
    `deploy_web.sh` bounces it too, so a two-script deploy takes the risk twice. Fix: wait on an event with
    timeout so SIGTERM exits promptly.
-2. **State-before-boundary + `source_email_id` UNIQUE (C39/C40).** The watermark
+2. **State-before-boundary + whole-message idempotency (C39/C40).** The watermark
    (`.monitor_state.json`) is saved *after* processing (`monitor.py:171`), so a kill at the wrong moment
-   reprocesses an email → duplicate quote. `source_email_id` is already written on every quote
-   (`db_writer.py:381`) but **nothing enforces uniqueness**. Make it the dedup key with a UNIQUE constraint,
-   and persist the watermark before the send/ack boundary. This one key generalizes: every downstream
-   irreversible action (order-create, shop-ping, reorder) keys idempotency off the same lineage so a replay
-   is a no-op, not a double-fire.
+   reprocesses an email → duplicate quote.
+   > **CORRECTION (PM, 2026-08-11, reconciling with task 340 / codex-allanedwards-2):** The original draft
+   > recommended a `Quote.source_email_id` **UNIQUE constraint** as the dedup key. That is WRONG — one email
+   > can legitimately produce **multiple** RFQs/quotes, so a uniqueness constraint on `Quote.source_email_id`
+   > would break correct behavior. The right mechanism is **whole-message idempotency**: a per-message
+   > processed-ledger (claimed → done) keyed on the email **message id**, so reprocessing after a crash is a
+   > no-op rather than a duplicate, WITHOUT forbidding multiple quotes per email. Task 340 is implementing
+   > this correct approach. **Fail toward reprocessing, not dropping** — mark a message fully-processed only
+   > after side effects complete, so a crash mid-processing re-drives the message instead of silently losing
+   > the RFQ.
+   Downstream generalization still holds: every irreversible action (order-create, shop-ping, reorder) keys
+   idempotency off a stable lineage (the QuoteVersion / order id, and the message-processed ledger) so a
+   replay is a no-op — just **not** via a `source_email_id` unique constraint.
 3. **Postgres-vs-SQLite decision BEFORE any concurrent writer (C39, DECISION-NEEDED #6).** Prod is
    single-file SQLite; the monitor opens a Flask app context to write (`cli.py:569`). Stages D/E/F add
    **concurrent writers** (order creation, shop-ping status, inventory decrement) racing the monitor and the
@@ -361,5 +370,3 @@ foundation the auto-flows sit on, not as overhead. The trust ramp (CP-1) advanci
   CP-0…CP-4 mapping as a starting point, not a committed quote.
 
 *Deliverable for epic 347. Canon proposals filed for the durable architectural decisions.*
-</content>
-</invoke>
