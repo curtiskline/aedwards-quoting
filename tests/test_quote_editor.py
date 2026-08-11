@@ -12,7 +12,6 @@ from app.models import (
     Customer,
     PricingTable,
     ProductCatalog,
-    ProductFamily,
     ProductType,
     Quote,
     QuoteLineItem,
@@ -108,7 +107,6 @@ def test_line_item_update_recalculates_and_generates_sleeve_part(tmp_path):
         f"/quotes/{quote_id}/line-items/{item_id}/update",
         data={
             "product_type": "sleeve",
-            "sku": "S-24-12-50-10",
             "description": "Updated Sleeve",
             "quantity": "7",
             "unit_price": "10.25",
@@ -125,8 +123,8 @@ def test_line_item_update_recalculates_and_generates_sleeve_part(tmp_path):
     with app.app_context():
         updated = db.session.get(QuoteLineItem, item_id)
         assert float(updated.line_total) == 102.50
+        # With no explicit part number, the sleeve part number is generated.
         assert (updated.part_number or "").startswith("S-")
-        assert updated.sku == "S-24-12-50-10"
 
 
 def test_service_item_number_can_be_edited_and_renders_in_preview_pdf(tmp_path):
@@ -407,15 +405,15 @@ def test_product_catalog_search_and_lookup_endpoints(tmp_path):
         db.session.add_all(
             [
                 ProductCatalog(
-                    sku="S-6.58-38-50-10",
+                    part_number="S-6.58-38-50-10",
                     description='Half Sole, 6-5/8" ID, 3/8" w/t, A572 GR50, 10\' long',
-                    product_family=ProductFamily.SLEEVE,
+                    product_type="sleeve",
                     is_active=True,
                 ),
                 ProductCatalog(
-                    sku="G-12.34-38-50",
+                    part_number="G-12.34-38-50",
                     description='Girth Weld, 12-3/4" ID, 3/8" wall, A572 GR50',
-                    product_family=ProductFamily.GIRTH_WELD,
+                    product_type="girth_weld",
                     is_active=False,
                 ),
             ]
@@ -431,12 +429,14 @@ def test_product_catalog_search_and_lookup_endpoints(tmp_path):
     search_data = search_resp.get_json()
     assert isinstance(search_data, list)
     assert len(search_data) >= 1
-    assert search_data[0]["sku"] == "S-6.58-38-50-10"
+    assert search_data[0]["part_number"] == "S-6.58-38-50-10"
+    assert search_data[0]["product_type"] == "sleeve"
 
     lookup_resp = client.get("/api/product-catalog/lookup/S-6.58-38-50-10")
     assert lookup_resp.status_code == 200
     lookup_data = lookup_resp.get_json()
-    assert lookup_data["sku"] == "S-6.58-38-50-10"
+    assert lookup_data["part_number"] == "S-6.58-38-50-10"
+    assert lookup_data["product_type"] == "sleeve"
     assert "Half Sole" in lookup_data["description"]
 
 

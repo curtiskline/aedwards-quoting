@@ -100,7 +100,6 @@ def seeded(app):
                 QuoteLineItem(
                     quote_id=q.id,
                     product_type="sleeve",
-                    sku="SLV-100",
                     description="12in sleeve",
                     quantity=10,
                     unit_price=25.00,
@@ -174,7 +173,6 @@ def test_duplicate_to_existing_customer_copies_line_items(client, app, seeded):
             ("sleeve", "12in sleeve", 10.0, 25.0, 250.0),
             ("bag", "Denso bag", 4.0, 15.0, 60.0),
         ]
-        assert items[0].sku == "SLV-100"
         assert items[0].part_number == "PN-12"
         assert items[0].specs_json == {"diameter": 12}
 

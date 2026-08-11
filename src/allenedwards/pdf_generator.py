@@ -381,7 +381,7 @@ class QuotePDFBuilder:
         # Header row - Template A columns
         table_data = [
             [
-                Paragraph("<b>Item Number</b>", self.styles["header"]),
+                Paragraph("<b>Part Number</b>", self.styles["header"]),
                 Paragraph("<b>Description</b>", self.styles["header"]),
                 Paragraph("<b>Quantity</b>", self.styles["header"]),
                 Paragraph("<b>Unit Price</b>", self.styles["header"]),
@@ -413,7 +413,7 @@ class QuotePDFBuilder:
                 Paragraph(format_currency(item.total), self.styles["normal_small"]),
             ])
 
-        # Column widths: Item Number 18%, Description 42%, Quantity 12%, Unit Price 14%, Total 14%
+        # Column widths: Part Number 18%, Description 42%, Quantity 12%, Unit Price 14%, Total 14%
         col_widths = [
             self.content_width * 0.18,
             self.content_width * 0.42,

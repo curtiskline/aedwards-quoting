@@ -9,7 +9,7 @@
       {% endfor %}
     </div>
     <label class="catalog-search-label">Search catalog
-      <input id="catalog-search" type="search" placeholder="SKU or description" autocomplete="off" />
+      <input id="catalog-search" type="search" placeholder="Part number or description" autocomplete="off" />
     </label>
   </div>
 
@@ -21,16 +21,17 @@
     <summary>Add product</summary>
     <form method="post" action="/admin/catalog/add" hx-post="/admin/catalog/add" hx-target="#product-catalog-card" hx-swap="outerHTML" class="catalog-form">
       <input type="hidden" name="catalog_filter" value="{{ catalog_filter }}" />
-      <label>SKU
-        <input name="sku" maxlength="255" required />
+      <label>Part Number
+        <input name="part_number" maxlength="255" placeholder="Optional" />
       </label>
       <label>Description
         <input name="description" maxlength="1000" required />
       </label>
-      <label>Product family
-        <select name="product_family" required>
-          {% for family in product_families %}
-            <option value="{{ family.value }}">{{ family.label }}</option>
+      <label>Type
+        <select name="product_type">
+          <option value="">— none —</option>
+          {% for pt in catalog_product_types %}
+            <option value="{{ pt.name }}">{{ pt.label }}</option>
           {% endfor %}
         </select>
       </label>
@@ -46,31 +47,32 @@
       <table class="pricing-table">
         <thead>
           <tr>
-            <th>SKU</th>
+            <th>Part Number</th>
             <th>Description</th>
-            <th>Family</th>
+            <th>Type</th>
             <th>Active</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
           {% for item in catalog_items %}
-            <tr id="catalog-item-{{ item.id }}" class="{% if not item.is_active %}catalog-inactive{% endif %}" data-catalog-search="{{ item.sku|lower }} {{ item.description|lower }}">
+            <tr id="catalog-item-{{ item.id }}" class="{% if not item.is_active %}catalog-inactive{% endif %}" data-catalog-search="{{ (item.part_number or '')|lower }} {{ item.description|lower }}">
               <td colspan="5">
                 <form method="post" action="/admin/catalog/{{ item.id }}/update" hx-post="/admin/catalog/{{ item.id }}/update" hx-target="#product-catalog-card" hx-swap="outerHTML" class="catalog-form catalog-form-row">
                   <input type="hidden" name="catalog_filter" value="{{ catalog_filter }}" />
-                  <input name="sku" value="{{ item.sku }}" aria-label="SKU" maxlength="255" required />
+                  <input name="part_number" value="{{ item.part_number or '' }}" aria-label="Part Number" maxlength="255" placeholder="Optional" />
                   <input name="description" value="{{ item.description }}" aria-label="Description" maxlength="1000" required />
-                  <select name="product_family" aria-label="Product family" required>
-                    {% for family in product_families %}
-                      <option value="{{ family.value }}" {% if item.product_family.value == family.value %}selected{% endif %}>{{ family.label }}</option>
+                  <select name="product_type" aria-label="Type">
+                    <option value="">— none —</option>
+                    {% for pt in catalog_product_types %}
+                      <option value="{{ pt.name }}" {% if item.product_type == pt.name %}selected{% endif %}>{{ pt.label }}</option>
                     {% endfor %}
                   </select>
                   <label class="checkbox-row"><input type="checkbox" name="is_active" {% if item.is_active %}checked{% endif %} /> Active</label>
                   <button type="submit" class="save-btn">Save</button>
                 </form>
                 {% if item.is_active %}
-                  <form method="post" action="/admin/catalog/{{ item.id }}/delete" hx-post="/admin/catalog/{{ item.id }}/delete" hx-target="#product-catalog-card" hx-swap="outerHTML" class="catalog-remove-form" onsubmit="return confirm('Remove {{ item.sku }} from the active product catalog? Existing quotes will not change.');">
+                  <form method="post" action="/admin/catalog/{{ item.id }}/delete" hx-post="/admin/catalog/{{ item.id }}/delete" hx-target="#product-catalog-card" hx-swap="outerHTML" class="catalog-remove-form" onsubmit="return confirm('Remove {{ item.part_number or item.description }} from the active product catalog? Existing quotes will not change.');">
                     <input type="hidden" name="catalog_filter" value="{{ catalog_filter }}" />
                     <button type="submit" class="delete-btn">Remove</button>
                   </form>
