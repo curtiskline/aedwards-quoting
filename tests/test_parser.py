@@ -149,6 +149,160 @@ def test_extract_email_text_truncates_long_pdf_text(tmp_path, monkeypatch):
     assert "[Text truncated at 100 characters.]" in body
 
 
+XLSX_MIME_SUBTYPE = "vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+def _write_attachment_email(
+    tmp_path: Path, filename: str, content: bytes, maintype: str, subtype: str
+) -> Path:
+    message = EmailMessage()
+    message.set_content("Please see the attached RFQ.")
+    message.add_attachment(content, maintype=maintype, subtype=subtype, filename=filename)
+    path = tmp_path / "rfq.eml"
+    path.write_bytes(message.as_bytes())
+    return path
+
+
+def _build_xlsx(sheets: dict[str, list[list]]) -> bytes:
+    from openpyxl import Workbook
+
+    workbook = Workbook()
+    workbook.remove(workbook.active)
+    for title, rows in sheets.items():
+        sheet = workbook.create_sheet(title=title)
+        for row in rows:
+            sheet.append(row)
+    buffer = BytesIO()
+    workbook.save(buffer)
+    return buffer.getvalue()
+
+
+def test_extract_email_text_includes_xlsx_attachment(tmp_path):
+    content = _build_xlsx(
+        {
+            "Order": [
+                ["Diameter", "Thickness", "Grade", "Length"],
+                [6.625, 0.375, "A572-50", 100],
+                [8.625, 0.375, "A572-50", 300],
+            ]
+        }
+    )
+    eml_path = _write_attachment_email(
+        tmp_path, "sleeve-order.xlsx", content, "application", XLSX_MIME_SUBTYPE
+    )
+
+    _, body = extract_email_text(eml_path)
+
+    assert "--- Attachment: sleeve-order.xlsx ---" in body
+    assert "=== Sheet: Order ===" in body
+    assert "Diameter | Thickness | Grade | Length" in body
+    assert "6.625 | 0.375 | A572-50 | 100" in body
+    assert "--- End Attachment: sleeve-order.xlsx ---" in body
+
+
+def test_extract_email_text_detects_xlsx_by_filename(tmp_path):
+    """An .xlsx sent with a generic content type is still extracted."""
+    content = _build_xlsx({"Order": [["Diameter"], [6.625]]})
+    eml_path = _write_attachment_email(
+        tmp_path, "order.xlsx", content, "application", "octet-stream"
+    )
+
+    _, body = extract_email_text(eml_path)
+
+    assert "=== Sheet: Order ===" in body
+    assert "6.625" in body
+
+
+def test_extract_email_text_caps_noise_sheet_rows(tmp_path):
+    """A huge irrelevant tab is row-capped; the small order sheet survives intact."""
+    noise_rows = [[f"asset-{i}", "pipeline", "segment", i] for i in range(500)]
+    content = _build_xlsx(
+        {
+            "Order": [["Diameter", "Grade"], [6.625, "A572-50"]],
+            "PODs Pipe Segment": noise_rows,
+        }
+    )
+    eml_path = _write_attachment_email(
+        tmp_path, "bp-order.xlsx", content, "application", XLSX_MIME_SUBTYPE
+    )
+
+    _, body = extract_email_text(eml_path)
+
+    assert "6.625 | A572-50" in body
+    assert "[Sheet truncated after the first 200 rows.]" in body
+    assert "asset-199" in body
+    assert "asset-200" not in body
+
+
+def test_extract_email_text_truncates_oversized_xlsx_text(tmp_path, monkeypatch):
+    monkeypatch.setattr(parser, "MAX_SPREADSHEET_EXTRACTION_CHARS", 200)
+    content = _build_xlsx(
+        {"Order": [[f"cell-{i}-{j}" for j in range(10)] for i in range(50)]}
+    )
+    eml_path = _write_attachment_email(
+        tmp_path, "big.xlsx", content, "application", XLSX_MIME_SUBTYPE
+    )
+
+    _, body = extract_email_text(eml_path)
+
+    assert "[Text truncated at 200 characters.]" in body
+    marker = "--- Attachment: big.xlsx ---"
+    end_marker = "--- End Attachment: big.xlsx ---"
+    inner = body.split(marker)[1].split(end_marker)[0]
+    assert len(inner) < 400
+
+
+def test_extract_email_text_notes_corrupt_xlsx(tmp_path):
+    eml_path = _write_attachment_email(
+        tmp_path, "broken.xlsx", b"not a real xlsx file", "application", XLSX_MIME_SUBTYPE
+    )
+
+    _, body = extract_email_text(eml_path)
+
+    assert "--- Attachment: broken.xlsx ---" in body
+    assert "[Could not read spreadsheet (corrupt or unsupported format).]" in body
+
+
+def test_extract_email_text_includes_csv_attachment(tmp_path):
+    csv_content = (
+        "Diameter,Thickness,Grade,Length\n"
+        "6.625,0.375,A572-50,100\n"
+        "8.625,0.375,A572-50,300\n"
+    ).encode()
+    eml_path = _write_attachment_email(tmp_path, "order.csv", csv_content, "text", "csv")
+
+    _, body = extract_email_text(eml_path)
+
+    assert "--- Attachment: order.csv ---" in body
+    assert "Diameter | Thickness | Grade | Length" in body
+    assert "8.625 | 0.375 | A572-50 | 300" in body
+    assert "--- End Attachment: order.csv ---" in body
+
+
+def test_extract_email_text_detects_csv_by_filename(tmp_path):
+    """A .csv sent as text/plain is extracted as a CSV attachment, not inline text."""
+    eml_path = _write_attachment_email(
+        tmp_path, "order.csv", b"Diameter,Grade\n6.625,A572-50\n", "text", "plain"
+    )
+
+    _, body = extract_email_text(eml_path)
+
+    assert "--- Attachment: order.csv ---" in body
+    assert "6.625 | A572-50" in body
+
+
+def test_extract_email_text_truncates_oversized_csv(tmp_path, monkeypatch):
+    monkeypatch.setattr(parser, "MAX_SPREADSHEET_EXTRACTION_CHARS", 100)
+    rows = "\n".join(f"row-{i},value-{i}" for i in range(100))
+    eml_path = _write_attachment_email(tmp_path, "big.csv", rows.encode(), "text", "csv")
+
+    _, body = extract_email_text(eml_path)
+
+    assert "[Text truncated at 100 characters.]" in body
+    assert "row-0 | value-0" in body
+    assert "row-99 | value-99" not in body
+
+
 def test_parse_rfq_uses_llm_po_number():
     """PO number from model response should be preserved."""
     email_content = (

@@ -1,11 +1,12 @@
 """RFQ email parser using LLM."""
 
+import csv
 import email
 import re
 from dataclasses import dataclass, field
 from email.message import Message
 from email.utils import parseaddr
-from io import BytesIO
+from io import BytesIO, StringIO
 from pathlib import Path
 from typing import Any
 
@@ -63,6 +64,11 @@ DEFAULT_RFQ_CLASSIFY_BODY_CHARS = 500
 MAX_PDF_ATTACHMENT_BYTES = 15 * 1024 * 1024
 MAX_PDF_EXTRACTION_PAGES = 10
 MAX_PDF_EXTRACTION_CHARS = 30_000
+MAX_SPREADSHEET_ATTACHMENT_BYTES = 15 * 1024 * 1024
+MAX_SPREADSHEET_EXTRACTION_CHARS = 30_000
+# Real RFQ workbooks carry huge irrelevant tabs (e.g. a 4,570-row pipeline-asset
+# dump alongside an 11-row order sheet), so each sheet gets a row budget too.
+MAX_XLSX_SHEET_ROWS = 200
 INTERNAL_EMAIL_DOMAINS = {"allanedwards.com"}
 GENERIC_EMAIL_DOMAINS = {
     "aol.com",
@@ -420,12 +426,163 @@ def _extract_pdf_attachment_text(msg: Message) -> str:
     return f"--- Attachment: {filename} ---\n{content}\n--- End Attachment: {filename} ---"
 
 
+def _is_xlsx_attachment(msg: Message) -> bool:
+    """Return whether a MIME part is an Excel (.xlsx) attachment."""
+    filename = msg.get_filename() or ""
+    return (
+        msg.get_content_type()
+        == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        or filename.lower().endswith(".xlsx")
+    )
+
+
+def _is_csv_attachment(msg: Message) -> bool:
+    """Return whether a MIME part is a CSV attachment."""
+    filename = msg.get_filename() or ""
+    return msg.get_content_type() == "text/csv" or filename.lower().endswith(".csv")
+
+
+def _render_cells(cells: list[Any]) -> str:
+    """Render one spreadsheet row as pipe-delimited text, dropping trailing blanks."""
+    values = ["" if cell is None else str(cell).strip() for cell in cells]
+    while values and not values[-1]:
+        values.pop()
+    return " | ".join(values)
+
+
+def _wrap_attachment_text(filename: str, content: str) -> str:
+    return f"--- Attachment: {filename} ---\n{content}\n--- End Attachment: {filename} ---"
+
+
+def _extract_xlsx_attachment_text(msg: Message) -> str:
+    """Extract bounded text from an .xlsx MIME part for the RFQ prompt."""
+    filename = msg.get_filename() or "attachment.xlsx"
+    payload = msg.get_payload(decode=True) or b""
+
+    if len(payload) > MAX_SPREADSHEET_ATTACHMENT_BYTES:
+        limit_mb = MAX_SPREADSHEET_ATTACHMENT_BYTES // (1024 * 1024)
+        content = f"[Spreadsheet exceeds the {limit_mb} MB extraction limit.]"
+        return _wrap_attachment_text(filename, content)
+    if not payload:
+        return _wrap_attachment_text(filename, "[No extractable data found in spreadsheet.]")
+
+    try:
+        from openpyxl import load_workbook
+
+        workbook = load_workbook(BytesIO(payload), read_only=True, data_only=True)
+    except Exception:
+        return _wrap_attachment_text(
+            filename, "[Could not read spreadsheet (corrupt or unsupported format).]"
+        )
+
+    parts: list[str] = []
+    remaining_chars = MAX_SPREADSHEET_EXTRACTION_CHARS
+    text_truncated = False
+
+    try:
+        for sheet in workbook.worksheets:
+            if remaining_chars <= 0:
+                text_truncated = True
+                break
+
+            lines: list[str] = [f"=== Sheet: {sheet.title} ==="]
+            data_rows = 0
+            rows_truncated = False
+            for row in sheet.iter_rows(values_only=True):
+                rendered = _render_cells(list(row))
+                if not rendered:
+                    continue
+                if data_rows >= MAX_XLSX_SHEET_ROWS:
+                    rows_truncated = True
+                    break
+                lines.append(rendered)
+                data_rows += 1
+
+            if rows_truncated:
+                lines.append(f"[Sheet truncated after the first {MAX_XLSX_SHEET_ROWS} rows.]")
+
+            sheet_text = "\n".join(lines)
+            separator_chars = 2 if parts else 0
+            if len(sheet_text) + separator_chars > remaining_chars:
+                allowed_chars = max(remaining_chars - separator_chars, 0)
+                if allowed_chars:
+                    parts.append(sheet_text[:allowed_chars])
+                text_truncated = True
+                break
+
+            parts.append(sheet_text)
+            remaining_chars -= len(sheet_text) + separator_chars
+    finally:
+        workbook.close()
+
+    content = "\n\n".join(parts).strip()
+    if not content:
+        content = "[No extractable data found in spreadsheet.]"
+    if text_truncated:
+        content = "\n".join(
+            [content, f"[Text truncated at {MAX_SPREADSHEET_EXTRACTION_CHARS:,} characters.]"]
+        )
+    return _wrap_attachment_text(filename, content)
+
+
+def _extract_csv_attachment_text(msg: Message) -> str:
+    """Extract bounded text from a CSV MIME part for the RFQ prompt."""
+    filename = msg.get_filename() or "attachment.csv"
+    payload = msg.get_payload(decode=True) or b""
+
+    if len(payload) > MAX_SPREADSHEET_ATTACHMENT_BYTES:
+        limit_mb = MAX_SPREADSHEET_ATTACHMENT_BYTES // (1024 * 1024)
+        content = f"[CSV exceeds the {limit_mb} MB extraction limit.]"
+        return _wrap_attachment_text(filename, content)
+    if not payload:
+        return _wrap_attachment_text(filename, "[No extractable data found in CSV.]")
+
+    charset = msg.get_content_charset() or "utf-8"
+    text = payload.decode(charset, errors="replace")
+
+    lines: list[str] = []
+    remaining_chars = MAX_SPREADSHEET_EXTRACTION_CHARS
+    text_truncated = False
+    try:
+        for row in csv.reader(StringIO(text)):
+            rendered = _render_cells(row)
+            if not rendered:
+                continue
+            separator_chars = 1 if lines else 0
+            if len(rendered) + separator_chars > remaining_chars:
+                allowed_chars = max(remaining_chars - separator_chars, 0)
+                if allowed_chars:
+                    lines.append(rendered[:allowed_chars])
+                text_truncated = True
+                break
+            lines.append(rendered)
+            remaining_chars -= len(rendered) + separator_chars
+    except csv.Error:
+        text_truncated = len(text) > MAX_SPREADSHEET_EXTRACTION_CHARS
+        lines = [text[:MAX_SPREADSHEET_EXTRACTION_CHARS]]
+
+    content = "\n".join(lines).strip()
+    if not content:
+        content = "[No extractable data found in CSV.]"
+    if text_truncated:
+        content = "\n".join(
+            [content, f"[Text truncated at {MAX_SPREADSHEET_EXTRACTION_CHARS:,} characters.]"]
+        )
+    return _wrap_attachment_text(filename, content)
+
+
 def _extract_message_text(msg: Message) -> str:
     """Recursively extract readable text from an email message tree."""
     content_type = msg.get_content_type()
 
     if _is_pdf_attachment(msg):
         return _extract_pdf_attachment_text(msg)
+
+    if _is_xlsx_attachment(msg):
+        return _extract_xlsx_attachment_text(msg)
+
+    if _is_csv_attachment(msg):
+        return _extract_csv_attachment_text(msg)
 
     if content_type in {"text/plain", "text/html"}:
         payload = msg.get_payload(decode=True)
