@@ -69,6 +69,12 @@ MAX_SPREADSHEET_EXTRACTION_CHARS = 30_000
 # Real RFQ workbooks carry huge irrelevant tabs (e.g. a 4,570-row pipeline-asset
 # dump alongside an 11-row order sheet), so each sheet gets a row budget too.
 MAX_XLSX_SHEET_ROWS = 200
+# Sheets that are both long and wide are asset dumps, never order sheets; feeding
+# even a capped slice of one bloats the prompt and tempts the model into emitting
+# spurious line items, so they are dropped outright. A long-but-narrow sheet only
+# gets dropped past an extreme row count, since a legitimate order list is narrow.
+XLSX_NOISE_SHEET_MIN_COLS = 25
+XLSX_NOISE_SHEET_MAX_ROWS = 2000
 INTERNAL_EMAIL_DOMAINS = {"allanedwards.com"}
 GENERIC_EMAIL_DOMAINS = {
     "aol.com",
@@ -487,18 +493,31 @@ def _extract_xlsx_attachment_text(msg: Message) -> str:
 
             lines: list[str] = [f"=== Sheet: {sheet.title} ==="]
             data_rows = 0
-            rows_truncated = False
+            max_cols = 0
             for row in sheet.iter_rows(values_only=True):
-                rendered = _render_cells(list(row))
-                if not rendered:
+                cells = ["" if cell is None else str(cell).strip() for cell in row]
+                while cells and not cells[-1]:
+                    cells.pop()
+                if not cells:
                     continue
-                if data_rows >= MAX_XLSX_SHEET_ROWS:
-                    rows_truncated = True
-                    break
-                lines.append(rendered)
                 data_rows += 1
+                max_cols = max(max_cols, len(cells))
+                if data_rows <= MAX_XLSX_SHEET_ROWS:
+                    lines.append(" | ".join(cells))
+                elif data_rows > XLSX_NOISE_SHEET_MAX_ROWS:
+                    # Definitely a noise sheet; no need to scan further.
+                    break
 
-            if rows_truncated:
+            is_noise_sheet = data_rows > XLSX_NOISE_SHEET_MAX_ROWS or (
+                data_rows > MAX_XLSX_SHEET_ROWS and max_cols >= XLSX_NOISE_SHEET_MIN_COLS
+            )
+            if is_noise_sheet:
+                lines = [
+                    lines[0],
+                    f"[Sheet skipped: {data_rows}+ data rows x {max_cols} columns "
+                    "does not look like an order sheet.]",
+                ]
+            elif data_rows > MAX_XLSX_SHEET_ROWS:
                 lines.append(f"[Sheet truncated after the first {MAX_XLSX_SHEET_ROWS} rows.]")
 
             sheet_text = "\n".join(lines)
