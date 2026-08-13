@@ -234,6 +234,48 @@ def test_extract_email_text_caps_noise_sheet_rows(tmp_path):
     assert "asset-200" not in body
 
 
+def test_extract_email_text_drops_wide_asset_dump_sheet(tmp_path):
+    """A long AND wide asset-dump tab is dropped entirely; the order sheet survives."""
+    noise_rows = [[f"asset-{i}-{j}" for j in range(30)] for i in range(300)]
+    content = _build_xlsx(
+        {
+            "Order": [["Diameter", "Grade"], [6.625, "A572-50"]],
+            "PODs Pipe Segment": noise_rows,
+        }
+    )
+    eml_path = _write_attachment_email(
+        tmp_path, "bp-order.xlsx", content, "application", XLSX_MIME_SUBTYPE
+    )
+
+    _, body = extract_email_text(eml_path)
+
+    assert "6.625 | A572-50" in body
+    assert "=== Sheet: PODs Pipe Segment ===" in body
+    assert "does not look like an order sheet" in body
+    assert "asset-0-0" not in body
+    assert "asset-199-0" not in body
+
+
+def test_extract_email_text_drops_extremely_long_narrow_sheet(tmp_path):
+    """A narrow sheet past the extreme row threshold is dropped, not row-capped."""
+    noise_rows = [[f"asset-{i}", "pipeline"] for i in range(2100)]
+    content = _build_xlsx(
+        {
+            "Order": [["Diameter", "Grade"], [6.625, "A572-50"]],
+            "Assets": noise_rows,
+        }
+    )
+    eml_path = _write_attachment_email(
+        tmp_path, "bp-order.xlsx", content, "application", XLSX_MIME_SUBTYPE
+    )
+
+    _, body = extract_email_text(eml_path)
+
+    assert "6.625 | A572-50" in body
+    assert "does not look like an order sheet" in body
+    assert "asset-0 |" not in body
+
+
 def test_extract_email_text_truncates_oversized_xlsx_text(tmp_path, monkeypatch):
     monkeypatch.setattr(parser, "MAX_SPREADSHEET_EXTRACTION_CHARS", 200)
     content = _build_xlsx(
@@ -1320,45 +1362,78 @@ def test_classify_prompt_does_not_instruct_false_positive_bias():
     assert "personal messages" in prompt
 
 
-def test_claude_provider_retries_on_json_decode_error(monkeypatch):
-    """complete_json should retry once when Claude returns malformed JSON."""
-    import json
-    from unittest.mock import patch, MagicMock
+def _fake_claude_message(text: str, stop_reason: str = "end_turn"):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(content=[SimpleNamespace(text=text)], stop_reason=stop_reason)
+
+
+def _claude_provider_with_responses(responses: list, calls: list):
+    """Build an uninitialized ClaudeProvider whose _create_message pops canned messages."""
+    from unittest.mock import patch
     from allenedwards.providers.claude import ClaudeProvider
 
-    call_count = [0]
-    good_response = '{"is_rfq": true}'
-    bad_response = '{"is_rfq": true,}'  # trailing comma — invalid JSON
+    def fake_create_message(self, prompt, system, max_tokens):
+        calls.append(max_tokens)
+        return responses[min(len(calls) - 1, len(responses) - 1)]
 
-    def fake_complete(self, prompt, system=None):
-        call_count[0] += 1
-        if call_count[0] == 1:
-            return bad_response
-        return good_response
+    patcher = patch.object(ClaudeProvider, "_create_message", fake_create_message)
+    provider = ClaudeProvider.__new__(ClaudeProvider)
+    provider.json_max_tokens = ClaudeProvider.JSON_MAX_TOKENS
+    return patcher, provider
 
-    with patch.object(ClaudeProvider, "complete", fake_complete):
-        provider = ClaudeProvider.__new__(ClaudeProvider)
+
+def test_claude_provider_retries_on_json_decode_error(monkeypatch):
+    """complete_json should retry once when Claude returns malformed JSON."""
+    calls: list = []
+    responses = [
+        _fake_claude_message('{"is_rfq": true,}'),  # trailing comma — invalid JSON
+        _fake_claude_message('{"is_rfq": true}'),
+    ]
+    patcher, provider = _claude_provider_with_responses(responses, calls)
+    with patcher:
         result = provider.complete_json("test prompt")
 
-    assert call_count[0] == 2
+    assert len(calls) == 2
     assert result == {"is_rfq": True}
 
 
 def test_claude_provider_raises_on_repeated_json_decode_error(monkeypatch):
     """complete_json should raise JSONDecodeError if both attempts return bad JSON."""
     import json
-    from unittest.mock import patch
-    from allenedwards.providers.claude import ClaudeProvider
 
-    bad_response = '{"broken": ,}'
+    calls: list = []
+    responses = [_fake_claude_message('{"broken": ,}')]
+    patcher, provider = _claude_provider_with_responses(responses, calls)
+    with patcher, pytest.raises(json.JSONDecodeError):
+        provider.complete_json("test prompt")
 
-    def fake_complete(self, prompt, system=None):
-        return bad_response
 
-    with patch.object(ClaudeProvider, "complete", fake_complete):
-        provider = ClaudeProvider.__new__(ClaudeProvider)
-        try:
-            provider.complete_json("test prompt")
-            assert False, "Expected JSONDecodeError"
-        except json.JSONDecodeError:
-            pass
+def test_claude_provider_retries_truncated_response_with_doubled_budget():
+    """A max_tokens-truncated response is retried once with double the token budget."""
+    calls: list = []
+    responses = [
+        _fake_claude_message('{"quotes": [{"customer_na', stop_reason="max_tokens"),
+        _fake_claude_message('{"quotes": []}'),
+    ]
+    patcher, provider = _claude_provider_with_responses(responses, calls)
+    with patcher:
+        result = provider.complete_json("test prompt")
+
+    assert result == {"quotes": []}
+    assert calls == [16384, 32768]
+
+
+def test_claude_provider_raises_clear_error_when_truncated_twice():
+    """Repeated truncation raises LLMResponseTruncated, never a bare JSONDecodeError."""
+    from allenedwards.providers.base import LLMResponseTruncated
+
+    calls: list = []
+    responses = [
+        _fake_claude_message('{"quotes": [{"customer_na', stop_reason="max_tokens"),
+    ]
+    patcher, provider = _claude_provider_with_responses(responses, calls)
+    with patcher, pytest.raises(LLMResponseTruncated, match="max_tokens"):
+        provider.complete_json("test prompt")
+
+    assert len(calls) == 2

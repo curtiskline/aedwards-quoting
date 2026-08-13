@@ -4,6 +4,10 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 
+class LLMResponseTruncated(Exception):
+    """The model stopped at its output-token limit, so the response is incomplete."""
+
+
 class LLMProvider(ABC):
     """Abstract base class for LLM providers."""
 
