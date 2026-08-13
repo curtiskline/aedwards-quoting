@@ -396,6 +396,74 @@ class TestParseMessageAttachments:
         assert rfqs is not None
         assert len(rfqs) >= 1
 
+    def test_xlsx_attachment_text_reaches_parser(self):
+        """An .xlsx attachment fetched from Graph is extracted into the parse prompt."""
+        from io import BytesIO
+
+        from openpyxl import Workbook
+
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Order"
+        sheet.append(["Diameter", "Thickness", "Grade"])
+        sheet.append([6.625, 0.375, "A572-50"])
+        buffer = BytesIO()
+        workbook.save(buffer)
+
+        msg = _make_msg(has_attachments=True)
+        attachments = [
+            OutlookAttachment(
+                filename="bp-sleeve-order.xlsx",
+                content_bytes=buffer.getvalue(),
+                content_type=(
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                ),
+            )
+        ]
+
+        class RecordingProvider(FakeProvider):
+            def __init__(self):
+                self.parse_prompt = ""
+
+            def complete_json(self, prompt: str, system: str = "") -> dict:
+                if prompt.startswith("Parse this RFQ email"):
+                    self.parse_prompt = prompt
+                return super().complete_json(prompt, system)
+
+        provider = RecordingProvider()
+        rfqs = _parse_message_to_rfqs(msg, msg.body_content, provider, attachments)
+
+        assert rfqs is not None
+        assert "Attachment: bp-sleeve-order.xlsx" in provider.parse_prompt
+        assert "6.625 | 0.375 | A572-50" in provider.parse_prompt
+
+    def test_csv_attachment_text_reaches_parser(self):
+        """A .csv attachment fetched from Graph is extracted into the parse prompt."""
+        msg = _make_msg(has_attachments=True)
+        attachments = [
+            OutlookAttachment(
+                filename="order.csv",
+                content_bytes=b"Diameter,Grade\n6.625,A572-50\n",
+                content_type="text/csv",
+            )
+        ]
+
+        class RecordingProvider(FakeProvider):
+            def __init__(self):
+                self.parse_prompt = ""
+
+            def complete_json(self, prompt: str, system: str = "") -> dict:
+                if prompt.startswith("Parse this RFQ email"):
+                    self.parse_prompt = prompt
+                return super().complete_json(prompt, system)
+
+        provider = RecordingProvider()
+        rfqs = _parse_message_to_rfqs(msg, msg.body_content, provider, attachments)
+
+        assert rfqs is not None
+        assert "Attachment: order.csv" in provider.parse_prompt
+        assert "6.625 | A572-50" in provider.parse_prompt
+
     def test_no_attachments_still_works(self):
         """Passing empty attachments works the same as before."""
         msg = _make_msg()
