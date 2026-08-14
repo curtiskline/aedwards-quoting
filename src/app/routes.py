@@ -70,7 +70,7 @@ from .models import (
     ShipToAddress,
     User,
 )
-from .quotes import _generate_quote_number
+from .quote_numbers import generate_quote_number
 
 main_bp = Blueprint("main", __name__)
 
@@ -1649,7 +1649,7 @@ def quote_duplicate(quote_id: int):
     for _ in range(2):
         try:
             new_quote = Quote(
-                quote_number=_generate_quote_number(),
+                quote_number=generate_quote_number(),
                 status=QuoteStatus.NEW,
                 project_name=source.project_name,
                 notes_customer=source.notes_customer,

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import asdict
-from datetime import datetime
 from decimal import Decimal
 
 from flask import Flask
@@ -72,46 +71,6 @@ def _normalize_company_name(name: str) -> str:
     # Collapse whitespace
     s = re.sub(r"\s+", " ", s).strip()
     return s
-
-
-def _generate_fiscal_quote_number() -> str:
-    """Generate sequential quote number with fiscal-year prefix (e.g., 126-001).
-
-    Fiscal year prefix: last digit of century + two-digit year (2026 → 126).
-    Sequence resets each fiscal year.
-    """
-    now = datetime.utcnow()
-    year = now.year
-    prefix = f"1{year % 100}"  # 2026 → "126"
-
-    # Compute the next sequence by parsing the SEQUENCE segment of every
-    # existing quote number for this prefix, not by string-max + last segment.
-    #
-    # A quote number is "{prefix}-{seq:03d}" and a revision appends a suffix
-    # ("{prefix}-{seq:03d}-R{n}", see routes._revision_quote_number). The old
-    # code took the string max and read split("-")[-1] as the sequence; once
-    # revisions existed the string max was a revision, so [-1] grabbed the
-    # revision suffix ("R1" → ValueError → seq=1; "02" → seq=3) and regenerated
-    # an existing number, failing the UNIQUE constraint and blocking ALL new
-    # auto-quotes (prod outage 2026-08-13). Parse the sequence field (index 1;
-    # the prefix has no internal hyphen) and take the numeric max instead — this
-    # is immune to revision suffixes and to string-sort edge cases.
-    pattern = f"{prefix}-%"
-    rows = db.session.query(DBQuote.quote_number).filter(
-        DBQuote.quote_number.like(pattern)
-    ).all()
-
-    max_seq = 0
-    for (quote_number,) in rows:
-        parts = quote_number.split("-")
-        if len(parts) < 2:
-            continue
-        try:
-            max_seq = max(max_seq, int(parts[1]))
-        except ValueError:
-            continue
-
-    return f"{prefix}-{max_seq + 1:03d}"
 
 
 # Minimum similarity ratio for fuzzy company name matching.
