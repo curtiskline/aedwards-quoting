@@ -65,11 +65,14 @@ auto-quotes; for a **multi-RFQ** email the `-NN` suffix dodged the exact-dup
 constraint and instead produced the "child of an unrelated quote" numbers seen in
 100/101.
 
-This generator bug was **fixed in task 374** (commit `f0f4302`): the sequence is
-now parsed from the sequence segment (`parts[1]`) and the numeric max is taken,
-which is immune to revision/child suffixes. With the fix, a multi-RFQ email's
-base is always strictly greater than every existing sequence, so its `-NN`
-children cannot alias any existing quote.
+This generator bug was **fixed in task 374** (commit `f0f4302`) and the three
+duplicated generators were then **consolidated in task 377** (commit `8a0f568`)
+into the single canonical `app/quote_numbers.py::generate_quote_number`, which
+anchors a regex on the base shape `^{prefix}-(\d+)$` so revision/child suffixes
+are ignored entirely. With the fix, a multi-RFQ email's base is always strictly
+greater than every existing sequence, so its `-NN` children cannot alias any
+existing quote. The monitor's DB path (`_generate_db_quote_number`) and the
+db_writer both now call this one function.
 
 ## Change made in task 378
 
@@ -84,11 +87,13 @@ by **task 377** — no second guard added here), task 378 delivers:
    (`126-001..126-003` plus a prior child `126-003-01`) and asserts the resulting
    numbers neither equal nor nest under any existing quote number.
 
-**Negative test performed:** reverting `_generate_fiscal_quote_number` to the old
-string-max/`split("-")[-1]` logic makes the test fail *on the assertion* — the
-buggy generator yields base `126-002`, children `126-002-01/-02` that nest under
-the unrelated standalone `126-002`. The fixed generator yields `126-004-01/-02`,
-aliasing nothing.
+**Negative test performed:** reverting the canonical
+`app/quote_numbers.py::generate_quote_number` to the old string-max/`split("-")[-1]`
+logic makes the test fail *on the assertion* (`AssertionError:
+['126-002-01', '126-002-02'] == ['126-004-01', '126-004-02']`) — the buggy
+generator yields base `126-002`, children `126-002-01/-02` that nest under the
+unrelated standalone `126-002`. The fixed canonical generator yields
+`126-004-01/-02`, aliasing nothing.
 
 ## Recommendation
 
