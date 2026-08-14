@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from sqlalchemy.exc import IntegrityError
+
 from .email_provider import EmailMessage, EmailProvider
 from .outlook import OutlookAttachment, OutlookClient, OutlookMessage
 from .parser import ParsedRFQ, classify_rfq, parse_rfq_multi
@@ -315,6 +317,23 @@ class InboxMonitor:
                         commit=False,
                     )
                 db.session.commit()
+            except IntegrityError as error:
+                db.session.rollback()
+                # A quote_number UNIQUE violation means the generator handed out
+                # a number that already exists (the 2026-08-13 outage). The
+                # generator fix should prevent this, but surface it unambiguously
+                # rather than as a bare IntegrityError so it is not mistaken for a
+                # parsing/decoding failure. The batch is not retried: numbers are
+                # assigned upstream (pricing/PDF), so a fresh email re-triggers.
+                if "quote.quote_number" in str(error.orig):
+                    numbers = [qn for _, _, qn in quotes]
+                    logger.error(
+                        "Quote-number collision writing message %s (numbers=%s): %s",
+                        msg.id,
+                        numbers,
+                        error.orig,
+                    )
+                raise
             except Exception:
                 db.session.rollback()
                 raise
