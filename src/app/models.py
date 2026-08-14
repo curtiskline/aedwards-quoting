@@ -291,6 +291,39 @@ class RejectedEmail(db.Model):
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
 
 
+class FailedIntake(db.Model):
+    """A visible record of an RFQ the monitor could not turn into a quote.
+
+    When the inbox monitor cannot produce a quote (parse failure, LLM response
+    truncation, DB/quote-number error, or any other exception in the processing
+    path) it quarantines the message so it is not retried forever.  Without a
+    durable record that quarantine is silent — the sender hears nothing and no
+    one on staff can see the RFQ ever arrived (Chip's 2026-08-13 report, I130).
+    This table makes every such failure visible in the app so it can be handled
+    manually.
+    """
+
+    __tablename__ = "failed_intake"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    received_at: Mapped[datetime] = mapped_column(nullable=False, index=True)
+    source_email_id: Mapped[str | None] = mapped_column(index=True)
+    sender_name: Mapped[str | None]
+    sender_email: Mapped[str | None]
+    subject: Mapped[str | None]
+    # A coarse label for where processing failed (e.g. "parse_truncated",
+    # "db_write", "processing"), derived from the exception type.
+    failure_stage: Mapped[str] = mapped_column(nullable=False, default="processing")
+    error_type: Mapped[str | None]
+    error_detail: Mapped[str | None] = mapped_column(Text)
+    # Whether an acknowledgment was sent back to the sender (opt-in feature).
+    acknowledged: Mapped[bool] = mapped_column(default=False, nullable=False)
+    # Set when a human marks the intake as handled, so it drops off the
+    # outstanding list without deleting the audit trail.
+    resolved_at: Mapped[datetime | None] = mapped_column(nullable=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
+
+
 class AuditLog(TimestampMixin, db.Model):
     __tablename__ = "audit_log"
 
