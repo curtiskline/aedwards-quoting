@@ -6,8 +6,10 @@ from flask import Blueprint, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 from sqlalchemy import desc
 
+from datetime import datetime
+
 from .extensions import db
-from .models import RejectedEmail, User
+from .models import FailedIntake, RejectedEmail, User
 
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -91,3 +93,41 @@ def rejected_emails():
         rejected_emails=pagination.items,
         pagination=pagination,
     )
+
+
+@admin_bp.get("/failed-intakes")
+@login_required
+def failed_intakes():
+    page = request.args.get("page", 1, type=int)
+    show_resolved = request.args.get("resolved") == "1"
+    per_page = 50
+    query = FailedIntake.query
+    if not show_resolved:
+        query = query.filter(FailedIntake.resolved_at.is_(None))
+    pagination = (
+        query
+        .order_by(desc(FailedIntake.received_at))
+        .paginate(page=page, per_page=per_page, error_out=False)
+    )
+    outstanding_count = FailedIntake.query.filter(FailedIntake.resolved_at.is_(None)).count()
+    return render_template(
+        "admin/failed_intakes.html",
+        failed_intakes=pagination.items,
+        pagination=pagination,
+        show_resolved=show_resolved,
+        outstanding_count=outstanding_count,
+    )
+
+
+@admin_bp.post("/failed-intakes/<int:intake_id>/resolve")
+@login_required
+def resolve_failed_intake(intake_id: int):
+    intake = db.session.get(FailedIntake, intake_id)
+    if not intake:
+        flash("Failed-intake record not found.", "error")
+        return redirect(url_for("admin.failed_intakes"))
+    if intake.resolved_at is None:
+        intake.resolved_at = datetime.utcnow()
+        db.session.commit()
+        flash("Marked intake as handled.", "success")
+    return redirect(url_for("admin.failed_intakes"))
