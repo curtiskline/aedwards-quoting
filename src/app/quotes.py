@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from datetime import datetime, timedelta
 
 from flask import Blueprint, abort, jsonify, redirect, render_template, request, url_for
@@ -12,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 
 from .extensions import db
 from .models import AuditLog, Quote, QuoteStatus, User
+from .quote_numbers import generate_quote_number
 
 quotes_bp = Blueprint("quotes", __name__, url_prefix="/quotes")
 
@@ -162,29 +162,13 @@ def badge():
     return ""
 
 
-def _generate_quote_number() -> str:
-    """Generate next fiscal-year quote number (e.g. 126-001 for 2026)."""
-    year = datetime.utcnow().year
-    prefix = f"1{year % 100}"
-    pattern = re.compile(rf"^{re.escape(prefix)}-(\d+)$")
-    sequences = (
-        int(match.group(1))
-        for (quote_number,) in db.session.query(Quote.quote_number)
-        .filter(Quote.quote_number.like(f"{prefix}-%"))
-        .all()
-        if (match := pattern.match(quote_number))
-    )
-    seq = max(sequences, default=0) + 1
-    return f"{prefix}-{seq:03d}"
-
-
 @quotes_bp.post("/")
 @login_required
 def create():
     """Create a blank quote and redirect to its editor."""
     for _ in range(2):
         try:
-            quote_number = _generate_quote_number()
+            quote_number = generate_quote_number()
             quote = Quote(quote_number=quote_number, status=QuoteStatus.NEW)
             db.session.add(quote)
             db.session.flush()
