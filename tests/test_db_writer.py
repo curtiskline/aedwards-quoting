@@ -352,6 +352,58 @@ def test_fiscal_quote_number_sequence(app):
         assert num2 == "126-002"
 
 
+def test_fiscal_quote_number_ignores_revision_suffix(app):
+    """A revision-suffixed number must not be read as the sequence.
+
+    Regression for the 2026-08-13 prod outage: with a revision present
+    (126-097-R1), the old split("-")[-1] logic read the revision suffix as the
+    sequence and regenerated an existing base number (126-001/126-003), tripping
+    the UNIQUE constraint and blocking ALL new auto-quotes. The next number must
+    follow the SEQUENCE segment: 126-098.
+    """
+    with app.app_context():
+        db.session.add(DBQuote(quote_number="126-097", status=QuoteStatus.NEW))
+        db.session.add(DBQuote(quote_number="126-097-R1", status=QuoteStatus.NEW))
+        db.session.commit()
+
+        assert _generate_fiscal_quote_number() == "126-098"
+
+
+def test_fiscal_quote_number_ignores_numeric_revision_suffix(app):
+    """Same defense for a numeric revision suffix (126-097-02 style).
+
+    The old code's split("-")[-1] would read "02" here and produce 126-003.
+    """
+    with app.app_context():
+        db.session.add(DBQuote(quote_number="126-097", status=QuoteStatus.NEW))
+        db.session.add(DBQuote(quote_number="126-097-02", status=QuoteStatus.NEW))
+        db.session.commit()
+
+        assert _generate_fiscal_quote_number() == "126-098"
+
+
+def test_fiscal_quote_number_no_collision_over_sequence_with_revisions(app):
+    """Generating N sequential quotes never collides even when revisions exist."""
+    with app.app_context():
+        # Seed a base and a revision of it.
+        db.session.add(DBQuote(quote_number="126-005", status=QuoteStatus.NEW))
+        db.session.add(DBQuote(quote_number="126-005-R1", status=QuoteStatus.NEW))
+        db.session.commit()
+
+        seen = {"126-005", "126-005-R1"}
+        for _ in range(5):
+            num = _generate_fiscal_quote_number()
+            assert num not in seen, f"collision on {num}"
+            seen.add(num)
+            # Persist it so the next call advances (mirrors real inserts).
+            db.session.add(DBQuote(quote_number=num, status=QuoteStatus.NEW))
+            db.session.commit()
+
+        # Sequence continued past the seeded base, ignoring the revision suffix.
+        assert "126-006" in seen
+        assert "126-010" in seen
+
+
 # --- Normalize company name tests ---
 
 def test_normalize_strips_legal_suffixes():

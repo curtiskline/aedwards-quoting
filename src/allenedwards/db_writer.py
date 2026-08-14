@@ -84,21 +84,34 @@ def _generate_fiscal_quote_number() -> str:
     year = now.year
     prefix = f"1{year % 100}"  # 2026 → "126"
 
-    # Find the highest existing quote number with this prefix
+    # Compute the next sequence by parsing the SEQUENCE segment of every
+    # existing quote number for this prefix, not by string-max + last segment.
+    #
+    # A quote number is "{prefix}-{seq:03d}" and a revision appends a suffix
+    # ("{prefix}-{seq:03d}-R{n}", see routes._revision_quote_number). The old
+    # code took the string max and read split("-")[-1] as the sequence; once
+    # revisions existed the string max was a revision, so [-1] grabbed the
+    # revision suffix ("R1" → ValueError → seq=1; "02" → seq=3) and regenerated
+    # an existing number, failing the UNIQUE constraint and blocking ALL new
+    # auto-quotes (prod outage 2026-08-13). Parse the sequence field (index 1;
+    # the prefix has no internal hyphen) and take the numeric max instead — this
+    # is immune to revision suffixes and to string-sort edge cases.
     pattern = f"{prefix}-%"
-    result = db.session.query(func.max(DBQuote.quote_number)).filter(
+    rows = db.session.query(DBQuote.quote_number).filter(
         DBQuote.quote_number.like(pattern)
-    ).scalar()
+    ).all()
 
-    if result:
+    max_seq = 0
+    for (quote_number,) in rows:
+        parts = quote_number.split("-")
+        if len(parts) < 2:
+            continue
         try:
-            seq = int(result.split("-")[-1]) + 1
-        except (ValueError, IndexError):
-            seq = 1
-    else:
-        seq = 1
+            max_seq = max(max_seq, int(parts[1]))
+        except ValueError:
+            continue
 
-    return f"{prefix}-{seq:03d}"
+    return f"{prefix}-{max_seq + 1:03d}"
 
 
 # Minimum similarity ratio for fuzzy company name matching.
