@@ -352,6 +352,118 @@ def test_fiscal_quote_number_sequence(app):
         assert num2 == "126-002"
 
 
+class _MultiRFQProvider:
+    """Stub LLM provider: classifies as RFQ and extracts TWO quotes from one email.
+
+    Mirrors the shape the real parser expects so the monitor takes its multi-RFQ
+    numbering branch ("{base}-01", "{base}-02").
+    """
+
+    def _quote(self, city):
+        return {
+            "project_line": None,
+            "ship_to": {"company": "Test Corp", "city": city, "state": "TX"},
+            "po_number": None,
+            "items": [
+                {
+                    "product_type": "sleeve",
+                    "quantity": 10,
+                    "diameter": "6.625",
+                    "wall_thickness": "0.25",
+                    "grade": "50",
+                    "length_ft": 40,
+                    "milling": False,
+                    "painting": False,
+                    "description": "6-5/8 x 0.25 GR50 sleeve",
+                }
+            ],
+        }
+
+    def complete_json(self, prompt: str, system: str = "") -> dict:
+        if "Classify" in system or "classifier" in system:
+            return {"is_rfq": True, "confidence": 0.95, "reason": "pipe products"}
+        return {
+            "customer_name": "Test Corp",
+            "contact_name": "Test User",
+            "contact_email": "test@example.com",
+            "contact_phone": None,
+            "quote_number": None,
+            "quotes": [self._quote("Houston"), self._quote("Dallas")],
+            "urgency": "normal",
+            "notes": None,
+            "confidence": 0.9,
+        }
+
+
+def test_multi_rfq_email_numbers_never_alias_existing_quote(app, tmp_path):
+    """A multi-RFQ email's base + -NN children never alias an existing quote (task 378).
+
+    End-to-end regression for the 2026-08-13 symptom where a 2-RFQ email was
+    numbered 126-003-01/-02 and appeared to be revisions of the UNRELATED
+    standalone quote 126-003. Root cause was the T374 quote-number generator
+    collision (fixed): the base equalled an existing quote number, so the -NN
+    children landed inside that quote's number namespace.
+
+    We seed the exact hazard: standalones 126-001..126-003 plus a prior multi-RFQ
+    child 126-003-01. The OLD generator (string-max + split("-")[-1]) picks that
+    child as the lexicographic max, reads "01" as the sequence, and hands back base
+    126-002 — whose children 126-002-01/-02 nest under the unrelated standalone
+    126-002 (the aliasing this task is about). The fixed generator parses the
+    sequence segment, returns base 126-004, and its children (126-004-01/-02) alias
+    nothing. Drive the real monitor path so the generator, the inline -NN suffixing,
+    and the DB write are all exercised.
+    """
+    from allenedwards.outlook import OutlookMessage
+
+    with app.app_context():
+        for number in ("126-001", "126-002", "126-003", "126-003-01"):
+            db.session.add(DBQuote(quote_number=number, status=QuoteStatus.NEW))
+        db.session.commit()
+        existing_numbers = {q.quote_number for q in DBQuote.query.all()}
+
+    msg = OutlookMessage(
+        id="multi-rfq-msg",
+        subject="RFQ - two sleeve orders",
+        sender_name="Test User",
+        sender_email="test@example.com",
+        body_preview="Please quote two sleeve orders",
+        body_content="Please quote 10 pcs 6-5/8 x 0.25 GR50 sleeves for two sites",
+        body_content_type="text",
+        internet_message_id="<multi@example.com>",
+        received_datetime="2026-08-14T12:00:00Z",
+        has_attachments=False,
+    )
+
+    monitor = InboxMonitor(
+        outlook=MagicMock(),
+        provider=_MultiRFQProvider(),
+        poll_interval_seconds=60,
+        state_path=tmp_path / "state.json",
+        output_dir=tmp_path / "quotes",
+        enable_db_writes=True,
+        enable_outlook_drafts=False,
+        flask_app=app,
+    )
+
+    assert monitor._process_message(msg) is True
+
+    with app.app_context():
+        new_quotes = DBQuote.query.filter_by(source_email_id="multi-rfq-msg").all()
+        assert len(new_quotes) == 2
+        new_numbers = sorted(q.quote_number for q in new_quotes)
+        assert new_numbers == ["126-004-01", "126-004-02"]
+
+        for number in new_numbers:
+            # No new number equals an existing quote number...
+            assert number not in existing_numbers
+            # ...and none nests under (reads as a revision/child of) an existing
+            # quote, which is exactly the folding this task is about.
+            for existing in existing_numbers:
+                assert not number.startswith(f"{existing}-"), (
+                    f"{number} nests under unrelated existing quote {existing}"
+                )
+
+
 def test_fiscal_quote_number_ignores_revision_suffix(app):
     """A revision-suffixed number must not be read as the sequence.
 
