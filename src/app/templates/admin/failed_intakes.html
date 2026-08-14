@@ -1,0 +1,80 @@
+{% extends "layout.html" %}
+{% block title %}Failed Intakes{% endblock %}
+{% block body %}
+  <h1>Failed Intakes</h1>
+  <p>
+    RFQs that reached the inbox but could not be turned into a quote
+    automatically (parse failure, response truncation, or a database error).
+    These need to be handled manually so nothing is lost.
+  </p>
+
+  <div style="margin-bottom:1rem;">
+    {% if show_resolved %}
+      <a href="{{ url_for('admin.failed_intakes') }}">Show outstanding only</a>
+    {% else %}
+      <a href="{{ url_for('admin.failed_intakes', resolved=1) }}">Show all (incl. handled)</a>
+    {% endif %}
+  </div>
+
+  {% if failed_intakes %}
+    <table>
+      <thead>
+        <tr>
+          <th>Received</th>
+          <th>Sender</th>
+          <th>Subject</th>
+          <th>Failure</th>
+          <th>Ack</th>
+          <th>Status</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for intake in failed_intakes %}
+          <tr>
+            <td>{{ intake.received_at.strftime('%Y-%m-%d %H:%M UTC') }}</td>
+            <td>
+              {% if intake.sender_name %}{{ intake.sender_name }}<br>{% endif %}
+              {% if intake.sender_email %}<code>{{ intake.sender_email }}</code>{% endif %}
+            </td>
+            <td>{{ intake.subject or '' }}</td>
+            <td>
+              <strong>{{ intake.failure_stage }}</strong>
+              {% if intake.error_type %}<br><small>{{ intake.error_type }}</small>{% endif %}
+              {% if intake.error_detail %}<br><small><code>{{ intake.error_detail }}</code></small>{% endif %}
+            </td>
+            <td>{{ 'sent' if intake.acknowledged else '—' }}</td>
+            <td>
+              {% if intake.resolved_at %}
+                handled<br><small>{{ intake.resolved_at.strftime('%Y-%m-%d %H:%M UTC') }}</small>
+              {% else %}
+                outstanding
+              {% endif %}
+            </td>
+            <td>
+              {% if not intake.resolved_at %}
+                <form method="post" action="{{ url_for('admin.resolve_failed_intake', intake_id=intake.id) }}">
+                  <button type="submit">Mark handled</button>
+                </form>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {% if pagination.pages > 1 %}
+      <div style="margin-top:1rem;display:flex;gap:0.5rem;align-items:center;">
+        {% if pagination.has_prev %}
+          <a href="{{ url_for('admin.failed_intakes', page=pagination.prev_num, resolved=1 if show_resolved else None) }}">Previous</a>
+        {% endif %}
+        <span>Page {{ pagination.page }} of {{ pagination.pages }}</span>
+        {% if pagination.has_next %}
+          <a href="{{ url_for('admin.failed_intakes', page=pagination.next_num, resolved=1 if show_resolved else None) }}">Next</a>
+        {% endif %}
+      </div>
+    {% endif %}
+  {% else %}
+    <p>No failed intakes {{ 'recorded' if show_resolved else 'outstanding' }}.</p>
+  {% endif %}
+{% endblock %}

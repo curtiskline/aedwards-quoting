@@ -20,7 +20,7 @@ from .outlook import OutlookAttachment, OutlookClient, OutlookMessage
 from .parser import ParsedRFQ, classify_rfq, parse_rfq_multi
 from .pdf_generator import generate_quote_pdf
 from .pricing import Quote, generate_quote
-from .providers.base import LLMProvider
+from .providers.base import LLMProvider, LLMResponseTruncated
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +118,9 @@ class InboxMonitor:
         processed_folder_name: str | None = None,
         enable_db_writes: bool = False,
         enable_outlook_drafts: bool = True,
+        enable_failure_ack: bool = False,
+        mailbox_address: str | None = None,
+        ack_skip_domains: list[str] | None = None,
         flask_app: Any | None = None,
     ):
         if email_client is None and outlook is None:
@@ -135,6 +138,13 @@ class InboxMonitor:
         self._shutdown_event = threading.Event()
         self.enable_db_writes = enable_db_writes
         self.enable_outlook_drafts = enable_outlook_drafts
+        # Sending an acknowledgment back to the sender is opt-in and off by
+        # default: it is an outbound email to an external party and must not be
+        # enabled without deliberate configuration (loop and internal/test
+        # sender guards live in _acknowledge_failed_intake).
+        self.enable_failure_ack = enable_failure_ack
+        self._mailbox_address = (mailbox_address or "").strip().lower() or None
+        self._ack_skip_domains = {d.strip().lower() for d in (ack_skip_domains or []) if d.strip()}
         self._flask_app = flask_app
 
     def _shutdown_signal(self, signum: int, _frame: Any) -> None:
@@ -186,7 +196,7 @@ class InboxMonitor:
                 handled = self._process_message(msg)
                 if handled:
                     processed_count += 1
-            except Exception:
+            except Exception as error:
                 logger.exception(
                     "Failed processing message %s; quarantining to avoid retry loop "
                     "(subject=%r, sender=%r, received=%r)",
@@ -195,6 +205,11 @@ class InboxMonitor:
                     getattr(msg, "sender_email", None),
                     getattr(msg, "received_datetime", None),
                 )
+                # An RFQ must never disappear silently. Record a visible
+                # failed-intake row (and optionally acknowledge the sender) so
+                # staff can pick it up manually. Recording must not itself raise
+                # — a bookkeeping failure cannot be allowed to crash the loop.
+                self._record_failed_intake(msg, error)
         if messages:
             self.state.save()
 
@@ -379,6 +394,113 @@ class InboxMonitor:
             db.session.add(record)
             db.session.commit()
 
+    def _record_failed_intake(self, msg: EmailMessage, error: Exception) -> None:
+        """Persist a visible record of an RFQ that could not be processed.
+
+        Guarded so a bookkeeping failure never crashes the polling loop: any
+        exception here is logged and swallowed. When DB writes are disabled the
+        quarantine log line remains the only record, but the loud ``logger``
+        line above still fires either way.
+        """
+        stage = _classify_failure_stage(error)
+        acknowledged = False
+        try:
+            acknowledged = self._acknowledge_failed_intake(msg, stage)
+        except Exception:
+            logger.exception(
+                "Failed to acknowledge sender for quarantined message %s",
+                getattr(msg, "id", None),
+            )
+
+        if not self.enable_db_writes or not self._flask_app:
+            return
+
+        try:
+            from datetime import datetime
+
+            from app.extensions import db
+            from app.models import FailedIntake
+
+            received_at = _received_at_or_now(getattr(msg, "received_datetime", None))
+            detail = str(error) or repr(error)
+            record = FailedIntake(
+                received_at=received_at,
+                source_email_id=getattr(msg, "id", None),
+                sender_name=getattr(msg, "sender_name", None),
+                sender_email=getattr(msg, "sender_email", None),
+                subject=getattr(msg, "subject", None),
+                failure_stage=stage,
+                error_type=type(error).__name__,
+                error_detail=detail[:2000],
+                acknowledged=acknowledged,
+            )
+            with self._flask_app.app_context():
+                db.session.add(record)
+                db.session.commit()
+        except Exception:
+            logger.exception(
+                "Failed to record failed-intake row for message %s",
+                getattr(msg, "id", None),
+            )
+
+    def _acknowledge_failed_intake(self, msg: EmailMessage, stage: str) -> bool:
+        """Optionally email the sender that their RFQ needs manual handling.
+
+        Returns True only if an acknowledgment was actually sent. Off by default
+        (``enable_failure_ack``); when on, it declines to send to internal/test
+        senders, our own mailbox, or automated addresses (loop avoidance).
+        """
+        if not self.enable_failure_ack:
+            return False
+        if not hasattr(self.email_client, "send_mail"):
+            logger.warning(
+                "Failure ack enabled but provider %s cannot send mail; skipping",
+                type(self.email_client).__name__,
+            )
+            return False
+
+        sender_email = (getattr(msg, "sender_email", None) or "").strip()
+        if not self._is_ackable_sender(sender_email):
+            logger.info("Not acknowledging quarantined message from %r", sender_email or "<none>")
+            return False
+
+        subject = "We received your request — manual review needed"
+        original_subject = getattr(msg, "subject", None)
+        if original_subject:
+            subject = f"Re: {original_subject}"
+        body = (
+            "Thank you for your request. It reached us, but our system could "
+            "not process it automatically, so a member of our team will handle "
+            "it manually and follow up with you.\n\n"
+            "No action is needed on your part.\n\n"
+            "Allan Edwards, Inc."
+        )
+        self.email_client.send_mail(
+            to_email=sender_email,
+            subject=subject,
+            body_text=body,
+            cc_email=self.quote_email_cc,
+        )
+        logger.info("Acknowledged quarantined RFQ to %s (stage=%s)", sender_email, stage)
+        return True
+
+    def _is_ackable_sender(self, sender_email: str) -> bool:
+        """Whether an automatic acknowledgment may be sent to *sender_email*."""
+        email = (sender_email or "").strip().lower()
+        if not email or "@" not in email:
+            return False
+        if self._mailbox_address and email == self._mailbox_address:
+            return False  # never acknowledge our own mailbox — that is a loop
+        local_part, _, domain = email.partition("@")
+        if domain in self._ack_skip_domains:
+            return False
+        # Automated / non-human addresses: replying invites mail loops.
+        noreply_markers = ("noreply", "no-reply", "donotreply", "do-not-reply",
+                           "mailer-daemon", "postmaster", "bounce")
+        if any(marker in local_part for marker in noreply_markers):
+            return False
+        return True
+
     def _generate_db_quote_number(self) -> str:
         """Generate a sequential quote number from the database."""
         from .db_writer import _generate_fiscal_quote_number
@@ -431,6 +553,24 @@ class InboxMonitor:
             self.email_client.mark_read(message_id)
 
         self.state.add(message_id)
+
+
+def _classify_failure_stage(error: Exception) -> str:
+    """Map an exception to a coarse failure-stage label for the intake record."""
+    if isinstance(error, LLMResponseTruncated):
+        return "parse_truncated"
+    if isinstance(error, IntegrityError):
+        return "db_write"
+    return "processing"
+
+
+def _received_at_or_now(received_datetime: str | None) -> datetime:
+    """Parse an inbox timestamp, falling back to now when it is missing/invalid."""
+    if received_datetime:
+        parsed = _parse_datetime(received_datetime)
+        if parsed is not None:
+            return parsed
+    return datetime.now(timezone.utc)
 
 
 def _normalize_body(content: str, preview: str) -> str:

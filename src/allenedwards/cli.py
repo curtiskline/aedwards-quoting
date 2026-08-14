@@ -564,6 +564,11 @@ def monitor(
 
         enable_db = os.environ.get("ENABLE_DB_WRITES", "").lower() in ("1", "true", "yes")
         enable_drafts = os.environ.get("ENABLE_OUTLOOK_DRAFTS", "true").lower() not in ("0", "false", "no")
+        # Outbound acknowledgment to the sender is off unless explicitly enabled.
+        enable_failure_ack = os.environ.get("ENABLE_FAILURE_ACK", "").lower() in ("1", "true", "yes")
+        ack_skip_domains_raw = os.environ.get("ACK_SKIP_DOMAINS", "")
+        ack_skip_domains = [d for d in (s.strip() for s in ack_skip_domains_raw.split(",")) if d]
+        mailbox_address = os.environ.get("O365_EMAIL") or os.environ.get("GMAIL_EMAIL")
 
         flask_app = None
         if enable_db:
@@ -580,6 +585,9 @@ def monitor(
             processed_folder_name=processed_folder,
             enable_db_writes=enable_db,
             enable_outlook_drafts=enable_drafts,
+            enable_failure_ack=enable_failure_ack,
+            mailbox_address=mailbox_address,
+            ack_skip_domains=ack_skip_domains,
             flask_app=flask_app,
         )
 
