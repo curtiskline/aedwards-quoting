@@ -26,12 +26,12 @@ from allenedwards.monitor import InboxMonitor
 from allenedwards.db_writer import (
     MAX_ATTACHMENT_BYTES,
     write_quote_to_db,
-    _generate_fiscal_quote_number,
     _normalize_company_name,
     _match_customer,
     _name_similarity,
     _extract_email_domain,
 )
+from app.quote_numbers import generate_quote_number
 from allenedwards.outlook import OutlookMessage
 from allenedwards.outlook import OutlookAttachment
 from allenedwards.parser import ParsedRFQ, ShipTo
@@ -340,7 +340,7 @@ def test_customer_auto_match_by_email_when_no_customer_name(app, msg, rfq, price
 
 def test_fiscal_quote_number_sequence(app):
     with app.app_context():
-        num1 = _generate_fiscal_quote_number()
+        num1 = generate_quote_number()
         assert num1 == "126-001"
 
         # Write a quote to advance the sequence
@@ -348,7 +348,7 @@ def test_fiscal_quote_number_sequence(app):
         db.session.add(q)
         db.session.commit()
 
-        num2 = _generate_fiscal_quote_number()
+        num2 = generate_quote_number()
         assert num2 == "126-002"
 
 
@@ -478,7 +478,7 @@ def test_fiscal_quote_number_ignores_revision_suffix(app):
         db.session.add(DBQuote(quote_number="126-097-R1", status=QuoteStatus.NEW))
         db.session.commit()
 
-        assert _generate_fiscal_quote_number() == "126-098"
+        assert generate_quote_number() == "126-098"
 
 
 def test_fiscal_quote_number_ignores_numeric_revision_suffix(app):
@@ -491,7 +491,7 @@ def test_fiscal_quote_number_ignores_numeric_revision_suffix(app):
         db.session.add(DBQuote(quote_number="126-097-02", status=QuoteStatus.NEW))
         db.session.commit()
 
-        assert _generate_fiscal_quote_number() == "126-098"
+        assert generate_quote_number() == "126-098"
 
 
 def test_fiscal_quote_number_no_collision_over_sequence_with_revisions(app):
@@ -504,7 +504,7 @@ def test_fiscal_quote_number_no_collision_over_sequence_with_revisions(app):
 
         seen = {"126-005", "126-005-R1"}
         for _ in range(5):
-            num = _generate_fiscal_quote_number()
+            num = generate_quote_number()
             assert num not in seen, f"collision on {num}"
             seen.add(num)
             # Persist it so the next call advances (mirrors real inserts).

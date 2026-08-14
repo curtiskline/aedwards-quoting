@@ -234,7 +234,7 @@ class InboxMonitor:
         if self.enable_db_writes:
             base_quote_number = self._generate_db_quote_number()
         else:
-            base_quote_number = _generate_quote_number()
+            base_quote_number = _fallback_quote_number()
 
         quotes = []
         for idx, rfq in enumerate(rfqs):
@@ -380,14 +380,19 @@ class InboxMonitor:
             db.session.commit()
 
     def _generate_db_quote_number(self) -> str:
-        """Generate a sequential quote number from the database."""
-        from .db_writer import _generate_fiscal_quote_number
+        """Generate a sequential quote number from the database.
+
+        Uses the canonical generator (app.quote_numbers) under an app context.
+        Falls back to the timestamp-based number only when no Flask app is wired
+        up, i.e. there is no DB to query for the next sequence.
+        """
+        from app.quote_numbers import generate_quote_number
 
         if not self._flask_app:
-            return _generate_quote_number()
+            return _fallback_quote_number()
 
         with self._flask_app.app_context():
-            return _generate_fiscal_quote_number()
+            return generate_quote_number()
 
     def _build_quote_pdf(self, quote: Quote) -> tuple[str, bytes]:
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -454,8 +459,15 @@ def _format_datetime(value: datetime) -> str:
     return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
-def _generate_quote_number() -> str:
-    # Keep existing quote-number shape for compatibility with current tooling.
+def _fallback_quote_number() -> str:
+    """Best-effort quote number for the no-DB path (DB writes disabled).
+
+    The canonical generator (app.quote_numbers.generate_quote_number) needs a
+    DB to compute the next sequence. When DB writes are off there is nothing to
+    query, so fall back to a timestamp-derived number that keeps the existing
+    "126-NNN" shape for downstream tooling. Not collision-proof by design — it
+    only runs when we are not persisting quotes.
+    """
     stamp = int(time.time()) % 1000
     return f"126-{stamp:03d}"
 
