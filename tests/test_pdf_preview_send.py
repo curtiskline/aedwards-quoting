@@ -375,6 +375,26 @@ def test_send_without_o365_creds_shows_error(tmp_path):
         assert "O365 credentials are not configured" in html
 
 
+@patch("allenedwards.outlook.OutlookClient")
+def test_send_route_blocks_delivery_when_environment_is_isolated(mock_outlook_class, tmp_path, monkeypatch):
+    app = _make_app(tmp_path)
+    quote_id, user_id = _seed_quote(app)
+    monkeypatch.setenv("O365_EMAIL", "responder@allanedwards.com")
+    monkeypatch.setenv("O365_PASSWORD", "live-password-must-not-be-used")
+    monkeypatch.setenv("EMAIL_DELIVERY_ENABLED", "false")
+
+    with app.test_client() as client:
+        _login(client, user_id)
+        response = client.post(
+            f"/quotes/{quote_id}/send",
+            data={"to_email": "customer@example.com", "subject": "Test Quote"},
+        )
+
+    assert response.status_code == 200
+    assert "Email delivery is disabled" in response.data.decode()
+    mock_outlook_class.assert_not_called()
+
+
 def test_send_without_to_email_returns_400(tmp_path):
     app = _make_app(tmp_path)
     quote_id, user_id = _seed_quote(app)
