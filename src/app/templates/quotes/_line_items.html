@@ -208,12 +208,46 @@
           clearTimeout(leaveTimer);
           leaveTimer = setTimeout(() => {
             if (form.contains(document.activeElement)) return;
+            if (!dirtyForms.has(form)) return;
             if (window.htmx) window.htmx.trigger(form, "submit");
           }, 200);
         });
         form.addEventListener("focusin", () => {
           clearTimeout(leaveTimer);
         });
+      });
+
+      // Every other button in this section (Save Totals, Add Line Item, Up,
+      // Down, Remove) swaps #editor-line-items with HTML rendered from the
+      // database. If a line-item form is still dirty when that swap lands,
+      // its pending 200ms autosave fires against a detached form and htmx
+      // drops the request — silently reverting the edit (task 386). Capture
+      // the dirty edits and the clicked action up front, save the edits
+      // first, then replay the action.
+      root.addEventListener("htmx:confirm", (evt) => {
+        const elt = evt.detail.elt || evt.target;
+        if (!elt || !elt.tagName || elt.tagName !== "FORM") return;
+        if (elt.closest(".line-item-form")) return;
+        if (dirtyForms.size === 0) return;
+        if (elt.getAttribute("hx-target") !== "#editor-line-items") return;
+
+        evt.preventDefault();
+        const snapshot = (form) => {
+          const values = {};
+          new FormData(form).forEach((value, key) => { values[key] = value; });
+          return { action: form.getAttribute("action"), values };
+        };
+        const pendingSaves = Array.from(dirtyForms, snapshot);
+        dirtyForms.clear();
+        const original = snapshot(elt);
+        const post = (req) => window.htmx.ajax("POST", req.action, {
+          target: "#editor-line-items",
+          swap: "outerHTML",
+          values: req.values,
+        });
+        let chain = Promise.resolve();
+        pendingSaves.forEach((req) => { chain = chain.then(() => post(req)); });
+        chain.then(() => post(original));
       });
 
       root.querySelectorAll(".line-item-form .js-product-type-select").forEach((select) => {
