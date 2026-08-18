@@ -2710,6 +2710,15 @@ def quote_send(quote_id: int):
     quote = _get_active_quote_or_404(quote_id)
     user = _current_user()
 
+    from .email_service import email_delivery_enabled
+    if not email_delivery_enabled():
+        return render_template(
+            "quotes/_send_result.html",
+            success=False,
+            error="Email delivery is disabled in this environment.",
+            quote=quote,
+        )
+
     if _quote_needs_pricing(quote):
         return render_template(
             "quotes/_send_result.html",

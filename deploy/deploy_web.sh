@@ -44,6 +44,8 @@ MINIMAX_API_KEY="${MINIMAX_API_KEY:-$(read_from_dotenv MINIMAX_API_KEY || true)}
 MINIMAX_BASE_URL="${MINIMAX_BASE_URL:-$(read_from_dotenv MINIMAX_BASE_URL || true)}"
 APP_URL="${APP_URL:-$(read_from_dotenv APP_URL || true)}"
 QUOTE_ARTIFACT_DIR="${QUOTE_ARTIFACT_DIR:-$(read_from_dotenv QUOTE_ARTIFACT_DIR || true)}"
+SERVER_NAME="${SERVER_NAME:-_}"
+EMAIL_DELIVERY_ENABLED="${EMAIL_DELIVERY_ENABLED:-true}"
 
 DATABASE_URL="${DATABASE_URL:-sqlite:////opt/aedwards/instance/allenedwards.db}"
 QUOTE_ARTIFACT_DIR="${QUOTE_ARTIFACT_DIR:-${APP_DIR}/instance/quote_versions}"
@@ -58,7 +60,7 @@ fi
 
 
 REMOTE_GMAIL_SERVICE_ACCOUNT_FILE=""
-if [[ -n "${LOCAL_GMAIL_SERVICE_ACCOUNT_FILE}" ]]; then
+if [[ "${EMAIL_DELIVERY_ENABLED,,}" != "false" && "${EMAIL_DELIVERY_ENABLED,,}" != "0" && "${EMAIL_DELIVERY_ENABLED,,}" != "no" && -n "${LOCAL_GMAIL_SERVICE_ACCOUNT_FILE}" ]]; then
   if [[ ! -f "${LOCAL_GMAIL_SERVICE_ACCOUNT_FILE}" ]]; then
     echo "GMAIL_SERVICE_ACCOUNT_FILE not found: ${LOCAL_GMAIL_SERVICE_ACCOUNT_FILE}" >&2
     exit 1
@@ -71,6 +73,7 @@ trap 'rm -rf "${TMP_DIR}"' EXIT
 
 SRC_TARBALL="${TMP_DIR}/aedwards-src.tgz"
 ENV_FILE="${TMP_DIR}/.env"
+RENDERED_NGINX_FILE="${TMP_DIR}/${SERVICE_NAME}.nginx"
 
 tar \
   --exclude='.git' \
@@ -104,25 +107,26 @@ tar \
   echo "O365_CLIENT_ID=${O365_CLIENT_ID}"
   echo "O365_SCOPES=${O365_SCOPES}"
   echo "LLM_PROVIDER=${LLM_PROVIDER}"
-  if [[ -n "${O365_EMAIL}" ]]; then
+  echo "EMAIL_DELIVERY_ENABLED=${EMAIL_DELIVERY_ENABLED}"
+  if [[ "${EMAIL_DELIVERY_ENABLED,,}" != "false" && "${EMAIL_DELIVERY_ENABLED,,}" != "0" && "${EMAIL_DELIVERY_ENABLED,,}" != "no" && -n "${O365_EMAIL}" ]]; then
     echo "O365_EMAIL=${O365_EMAIL}"
   fi
-  if [[ -n "${O365_PASSWORD}" ]]; then
+  if [[ "${EMAIL_DELIVERY_ENABLED,,}" != "false" && "${EMAIL_DELIVERY_ENABLED,,}" != "0" && "${EMAIL_DELIVERY_ENABLED,,}" != "no" && -n "${O365_PASSWORD}" ]]; then
     echo "O365_PASSWORD=${O365_PASSWORD}"
   fi
-  if [[ -n "${GMAIL_EMAIL}" ]]; then
+  if [[ "${EMAIL_DELIVERY_ENABLED,,}" != "false" && "${EMAIL_DELIVERY_ENABLED,,}" != "0" && "${EMAIL_DELIVERY_ENABLED,,}" != "no" && -n "${GMAIL_EMAIL}" ]]; then
     echo "GMAIL_EMAIL=${GMAIL_EMAIL}"
   fi
-  if [[ -n "${GMAIL_CLIENT_ID}" ]]; then
+  if [[ "${EMAIL_DELIVERY_ENABLED,,}" != "false" && "${EMAIL_DELIVERY_ENABLED,,}" != "0" && "${EMAIL_DELIVERY_ENABLED,,}" != "no" && -n "${GMAIL_CLIENT_ID}" ]]; then
     echo "GMAIL_CLIENT_ID=${GMAIL_CLIENT_ID}"
   fi
-  if [[ -n "${GMAIL_CLIENT_SECRET}" ]]; then
+  if [[ "${EMAIL_DELIVERY_ENABLED,,}" != "false" && "${EMAIL_DELIVERY_ENABLED,,}" != "0" && "${EMAIL_DELIVERY_ENABLED,,}" != "no" && -n "${GMAIL_CLIENT_SECRET}" ]]; then
     echo "GMAIL_CLIENT_SECRET=${GMAIL_CLIENT_SECRET}"
   fi
-  if [[ -n "${GMAIL_REFRESH_TOKEN}" ]]; then
+  if [[ "${EMAIL_DELIVERY_ENABLED,,}" != "false" && "${EMAIL_DELIVERY_ENABLED,,}" != "0" && "${EMAIL_DELIVERY_ENABLED,,}" != "no" && -n "${GMAIL_REFRESH_TOKEN}" ]]; then
     echo "GMAIL_REFRESH_TOKEN=${GMAIL_REFRESH_TOKEN}"
   fi
-  if [[ -n "${GMAIL_SCOPES}" ]]; then
+  if [[ "${EMAIL_DELIVERY_ENABLED,,}" != "false" && "${EMAIL_DELIVERY_ENABLED,,}" != "0" && "${EMAIL_DELIVERY_ENABLED,,}" != "no" && -n "${GMAIL_SCOPES}" ]]; then
     echo "GMAIL_SCOPES=${GMAIL_SCOPES}"
   fi
   if [[ -n "${REMOTE_GMAIL_SERVICE_ACCOUNT_FILE}" ]]; then
@@ -151,11 +155,13 @@ tar \
   fi
 } > "${ENV_FILE}"
 
+sed "s|__SERVER_NAME__|${SERVER_NAME}|g" "${NGINX_FILE}" > "${RENDERED_NGINX_FILE}"
+
 SSH_OPTS=(-i "${KEY_PATH}" -o StrictHostKeyChecking=accept-new)
 
 scp "${SSH_OPTS[@]}" "${SRC_TARBALL}" "${SSH_USER}@${HOST}:/tmp/aedwards-src.tgz"
 scp "${SSH_OPTS[@]}" "${SERVICE_FILE}" "${SSH_USER}@${HOST}:/tmp/${SERVICE_NAME}.service"
-scp "${SSH_OPTS[@]}" "${NGINX_FILE}" "${SSH_USER}@${HOST}:/tmp/${SERVICE_NAME}.nginx"
+scp "${SSH_OPTS[@]}" "${RENDERED_NGINX_FILE}" "${SSH_USER}@${HOST}:/tmp/${SERVICE_NAME}.nginx"
 scp "${SSH_OPTS[@]}" "${ENV_FILE}" "${SSH_USER}@${HOST}:/tmp/aedwards-web.env"
 if [[ -n "${REMOTE_GMAIL_SERVICE_ACCOUNT_FILE}" ]]; then
   scp "${SSH_OPTS[@]}" "${LOCAL_GMAIL_SERVICE_ACCOUNT_FILE}" "${SSH_USER}@${HOST}:/tmp/gmail-service-account.json"
@@ -210,6 +216,13 @@ while IFS= read -r line || [[ -n "${line}" ]]; do
   sudo sed -i "/^${key}=/d" /tmp/aedwards-existing.env
   printf '%s=%s\n' "${key}" "${value}" | sudo tee -a /tmp/aedwards-existing.env >/dev/null
 done < /tmp/aedwards-web.env
+
+if grep -qiE '^EMAIL_DELIVERY_ENABLED=(false|0|no)$' /tmp/aedwards-existing.env; then
+  # The merge-on-deploy behavior must not preserve mail credentials left by a
+  # prior deploy when a host is converted to an isolated staging environment.
+  sudo sed -i -E '/^(O365_EMAIL|O365_PASSWORD|O365_CLIENT_SECRET|O365_TENANT_ID|GMAIL_EMAIL|GMAIL_CLIENT_ID|GMAIL_CLIENT_SECRET|GMAIL_REFRESH_TOKEN|GMAIL_SERVICE_ACCOUNT_FILE)=/d' /tmp/aedwards-existing.env
+  sudo rm -f "${APP_DIR}/secrets/gmail-service-account.json"
+fi
 
 # Generate SECRET_KEY on server if not already set
 if ! grep -q '^SECRET_KEY=' /tmp/aedwards-existing.env || [[ -z "$(sed -n 's/^SECRET_KEY=//p' /tmp/aedwards-existing.env)" ]]; then
