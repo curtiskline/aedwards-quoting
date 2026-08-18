@@ -34,6 +34,7 @@ DATABASE_URL="${DATABASE_URL:-$(read_from_dotenv DATABASE_URL || true)}"
 SECRET_KEY="${SECRET_KEY:-$(read_from_dotenv SECRET_KEY || true)}"
 APP_URL="${APP_URL:-$(read_from_dotenv APP_URL || true)}"
 QUOTE_ARTIFACT_DIR="${QUOTE_ARTIFACT_DIR:-$(read_from_dotenv QUOTE_ARTIFACT_DIR || true)}"
+ENABLE_MONITOR="${ENABLE_MONITOR:-true}"
 
 O365_CLIENT_ID="${O365_CLIENT_ID:-d3590ed6-52b3-4102-aeff-aad2292ab01c}"
 O365_SCOPES="${O365_SCOPES:-https://graph.microsoft.com/.default}"
@@ -44,7 +45,7 @@ if [[ -z "${SECRET_KEY}" ]]; then
   SECRET_KEY="$(openssl rand -hex 32)"
 fi
 
-if [[ -z "${O365_EMAIL}" ]]; then
+if [[ "${ENABLE_MONITOR,,}" != "false" && "${ENABLE_MONITOR,,}" != "0" && "${ENABLE_MONITOR,,}" != "no" && -z "${O365_EMAIL}" ]]; then
   echo "O365_EMAIL is required (export it or set it in ${DOTENV_FILE})." >&2
   exit 1
 fi
@@ -90,12 +91,15 @@ tar \
   -C "${ROOT_DIR}" .
 
 {
-  echo "O365_EMAIL=${O365_EMAIL}"
-  if [[ -n "${O365_PASSWORD}" ]]; then
-    echo "O365_PASSWORD=${O365_PASSWORD}"
+  echo "ENABLE_MONITOR=${ENABLE_MONITOR}"
+  if [[ "${ENABLE_MONITOR,,}" != "false" && "${ENABLE_MONITOR,,}" != "0" && "${ENABLE_MONITOR,,}" != "no" ]]; then
+    echo "O365_EMAIL=${O365_EMAIL}"
+    if [[ -n "${O365_PASSWORD}" ]]; then
+      echo "O365_PASSWORD=${O365_PASSWORD}"
+    fi
+    echo "O365_CLIENT_ID=${O365_CLIENT_ID}"
+    echo "O365_SCOPES=${O365_SCOPES}"
   fi
-  echo "O365_CLIENT_ID=${O365_CLIENT_ID}"
-  echo "O365_SCOPES=${O365_SCOPES}"
   echo "LLM_PROVIDER=${LLM_PROVIDER}"
   echo "DATABASE_URL=${DATABASE_URL}"
   echo "QUOTE_ARTIFACT_DIR=${QUOTE_ARTIFACT_DIR}"
@@ -170,12 +174,25 @@ while IFS= read -r line || [[ -n "${line}" ]]; do
   printf '%s=%s\n' "${key}" "${value}" | sudo tee -a /tmp/aedwards-existing.env >/dev/null
 done < /tmp/aedwards.env
 
+if grep -qiE '^ENABLE_MONITOR=(false|0|no)$' /tmp/aedwards-existing.env; then
+  # Do not retain a live mailbox credential from an earlier deploy on a host
+  # whose monitor is intentionally disabled.
+  sudo sed -i -E '/^(O365_EMAIL|O365_PASSWORD|O365_CLIENT_SECRET|O365_TENANT_ID|GMAIL_EMAIL|GMAIL_CLIENT_ID|GMAIL_CLIENT_SECRET|GMAIL_REFRESH_TOKEN|GMAIL_SERVICE_ACCOUNT_FILE)=/d' /tmp/aedwards-existing.env
+fi
+
 sudo install -m 600 -o "${APP_USER}" -g "${APP_USER}" /tmp/aedwards-existing.env "${APP_DIR}/.env"
 sudo install -m 644 /tmp/${SERVICE_NAME}.service /etc/systemd/system/${SERVICE_NAME}.service
 sudo systemctl daemon-reload
-sudo systemctl enable "${SERVICE_NAME}"
-sudo systemctl restart "${SERVICE_NAME}"
-sudo systemctl --no-pager status "${SERVICE_NAME}" || true
+if grep -qiE '^ENABLE_MONITOR=(false|0|no)$' "${APP_DIR}/.env"; then
+  # A staging host must never poll a live mailbox.  Stop and disable the unit
+  # explicitly rather than merely omitting its credentials.
+  sudo systemctl disable --now "${SERVICE_NAME}" || true
+  echo "${SERVICE_NAME} is disabled by ENABLE_MONITOR in ${APP_DIR}/.env."
+else
+  sudo systemctl enable "${SERVICE_NAME}"
+  sudo systemctl restart "${SERVICE_NAME}"
+  sudo systemctl --no-pager status "${SERVICE_NAME}" || true
+fi
 if sudo systemctl is-enabled aedwards-web >/dev/null 2>&1; then
   sudo systemctl restart aedwards-web
   sudo systemctl --no-pager status aedwards-web || true

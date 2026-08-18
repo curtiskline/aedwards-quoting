@@ -11,6 +11,11 @@ class EmailDeliveryError(RuntimeError):
     """Raised when magic-link email delivery fails."""
 
 
+def email_delivery_enabled() -> bool:
+    """Whether this environment is permitted to send external email."""
+    return os.getenv("EMAIL_DELIVERY_ENABLED", "true").strip().lower() not in ("0", "false", "no")
+
+
 def send_as_user_enabled() -> bool:
     """Whether the O365_SEND_AS_USER feature flag is on (default off)."""
     return os.getenv("O365_SEND_AS_USER", "").strip().lower() in ("1", "true", "yes")
@@ -48,6 +53,9 @@ def resolve_quote_sender(
 
 def send_magic_link_email(*, to_email: str, magic_link: str) -> None:
     """Send a sign-in link through O365 Graph."""
+    if not email_delivery_enabled():
+        raise EmailDeliveryError("Email delivery is disabled in this environment")
+
     sender_email = os.getenv("O365_EMAIL")
     sender_password = os.getenv("O365_PASSWORD")
     client_id = os.getenv("O365_CLIENT_ID")
