@@ -187,7 +187,7 @@ if grep -qiE '^ENABLE_MONITOR=(false|0|no)$' "${APP_DIR}/.env"; then
   # A staging host must never poll a live mailbox.  Stop and disable the unit
   # explicitly rather than merely omitting its credentials.
   sudo systemctl disable --now "${SERVICE_NAME}" || true
-  echo "${SERVICE_NAME} is disabled (ENABLE_MONITOR=${ENABLE_MONITOR})."
+  echo "${SERVICE_NAME} is disabled by ENABLE_MONITOR in ${APP_DIR}/.env."
 else
   sudo systemctl enable "${SERVICE_NAME}"
   sudo systemctl restart "${SERVICE_NAME}"
