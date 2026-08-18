@@ -35,6 +35,10 @@ dev = [
     "pytest-cov>=4.0",
     "ruff>=0.1",
     "pyinstaller>=6.0",
+    # Browser-level regression tests (tests/test_line_item_save_race.py) skip
+    # when playwright or its chromium build is missing; install with:
+    #   pip install playwright && playwright install chromium-headless-shell
+    "playwright>=1.40",
 ]
 
 [project.scripts]
