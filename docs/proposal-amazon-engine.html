@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Allan Edwards Back-End Automation Engine — Proposal</title>
+<style>
+  :root {
+    --ink: #1a2332;
+    --muted: #5a6678;
+    --accent: #1c4e80;
+    --rule: #d8dee6;
+    --paper: #ffffff;
+    --wash: #f4f6f9;
+    --flag: #fff3bf;
+    --live: #e8f3ea;
+    --live-edge: #4a7d55;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: Georgia, 'Times New Roman', serif;
+    color: var(--ink);
+    background: #e9ecf0;
+    line-height: 1.55;
+  }
+  .page {
+    max-width: 820px;
+    margin: 2rem auto;
+    background: var(--paper);
+    padding: 3.2rem 3.4rem 3.6rem;
+    box-shadow: 0 2px 14px rgba(20,30,50,.12);
+  }
+  .draft-banner {
+    background: var(--flag);
+    border: 1px solid #e6c94c;
+    color: #6b5900;
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: .8rem;
+    letter-spacing: .12em;
+    text-align: center;
+    padding: .4rem;
+    margin-bottom: 2.2rem;
+    text-transform: uppercase;
+  }
+  header .kicker {
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: .78rem;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: .5rem;
+  }
+  h1 { font-size: 1.9rem; font-weight: normal; line-height: 1.2; margin-bottom: .4rem; }
+  .subtitle { color: var(--muted); font-size: 1.05rem; margin-bottom: 1.4rem; }
+  .meta {
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: .82rem;
+    color: var(--muted);
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+    padding: .6rem 0;
+    margin-bottom: 2.4rem;
+    display: flex;
+    gap: 2.5rem;
+    flex-wrap: wrap;
+  }
+  .meta span b { color: var(--ink); font-weight: 600; }
+  h2 {
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: 1.02rem;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 2.4rem 0 .8rem;
+    padding-top: .4rem;
+  }
+  h3 {
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: .95rem;
+    margin: 1.6rem 0 .5rem;
+  }
+  p { margin-bottom: .9rem; }
+  ul, ol { margin: 0 0 1rem 1.4rem; }
+  li { margin-bottom: .45rem; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: .9rem;
+    margin: .8rem 0 1.2rem;
+  }
+  th {
+    text-align: left;
+    font-size: .78rem;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 2px solid var(--ink);
+    padding: .45rem .6rem .45rem 0;
+  }
+  td {
+    border-bottom: 1px solid var(--rule);
+    padding: .55rem .6rem .55rem 0;
+    vertical-align: top;
+  }
+  .money { white-space: nowrap; font-weight: 600; }
+  .stage-io {
+    background: var(--wash);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: .7rem 1rem;
+    margin: .6rem 0 1.2rem;
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: .85rem;
+  }
+  .stage-io b { display: inline-block; min-width: 6.5em; color: var(--muted); font-weight: 600; }
+  .flow {
+    margin: 1.4rem 0 1.6rem;
+    font-family: Helvetica, Arial, sans-serif;
+  }
+  .flow-row {
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    flex-wrap: nowrap;
+    gap: .3rem;
+  }
+  .flow-box {
+    border: 1.5px solid var(--accent);
+    border-radius: 6px;
+    padding: .5rem .45rem;
+    font-size: .7rem;
+    line-height: 1.35;
+    text-align: center;
+    flex: 1 1 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .flow-box b { font-size: .8rem; display: block; margin-bottom: .15rem; }
+  .flow-box .tag {
+    display: block;
+    font-size: .62rem;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    margin-top: .3rem;
+    color: var(--muted);
+  }
+  .flow-box.live {
+    background: var(--live);
+    border-color: var(--live-edge);
+  }
+  .flow-box.live .tag { color: var(--live-edge); font-weight: 700; }
+  .flow-arrow {
+    align-self: center;
+    color: var(--muted);
+    font-size: 1.1rem;
+    padding: 0 .05rem;
+  }
+  .flow-legend {
+    text-align: center;
+    font-size: .75rem;
+    color: var(--muted);
+    margin-top: .7rem;
+  }
+  .flow-legend .chip {
+    display: inline-block;
+    width: .8em; height: .8em;
+    border-radius: 3px;
+    vertical-align: -.08em;
+    margin-right: .3em;
+  }
+  .chip-live { background: var(--live); border: 1.5px solid var(--live-edge); }
+  .chip-new { background: var(--paper); border: 1.5px solid var(--accent); }
+  .note-to-devin {
+    background: #eef4fb;
+    border: 1px dashed #9ab4d0;
+    border-radius: 6px;
+    padding: .7rem 1rem;
+    margin: 1rem 0;
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: .82rem;
+    color: #33506e;
+  }
+  .note-to-devin b { text-transform: uppercase; letter-spacing: .08em; font-size: .75rem; }
+  .sig-table { margin-top: 2.2rem; }
+  .sig-table td { border-bottom: none; padding: 0 2.5rem 2.2rem 0; }
+  .sig-cell.sig-date { width: 28%; padding-right: 0; }
+  .sig-line { border-bottom: 1px solid var(--ink); height: 1.6rem; }
+  .sig-label { font-size: .78rem; color: var(--muted); margin-top: .3rem; }
+  footer {
+    margin-top: 3rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--rule);
+    font-family: Helvetica, Arial, sans-serif;
+    font-size: .8rem;
+    color: var(--muted);
+  }
+  @media print {
+    body { background: #fff; }
+    .page { box-shadow: none; margin: 0; padding: 1rem 0; max-width: none; }
+    .draft-banner, .note-to-devin { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="draft-banner">Draft — for discussion, not yet sent</div>
+
+  <header>
+    <div class="kicker">Proposal</div>
+    <h1>The Back-End Automation Engine</h1>
+    <div class="subtitle">Extending the quote system that is already running: from inbound email all the way to the truck.</div>
+    <div class="meta">
+      <span>Prepared for: <b>Chip Edwards, Allan Edwards Inc.</b></span>
+      <span>Prepared by: <b>Devin &middot; 918 Software</b></span>
+      <span>Date: <b>August 2026</b></span>
+    </div>
+  </header>
+
+  <h2>What Is Already Running</h2>
+  <p>Your quote system is live in production today. It watches the RFQ inbox, reads each
+  email and its attachments, pulls out the customer, the products, the sizes, and the
+  quantities, prices the standard items from your formulas and catalog, and writes a
+  finished quote with a PDF into Outlook Drafts. A person reviews the draft and clicks
+  send. Anything the system cannot price cleanly is marked "needs pricing" and waits for
+  a human. That part is done and working.</p>
+  <p>This engagement extends that same pipeline. It is not a new system. Each piece below
+  picks up where the last one stops, until a quote that a customer accepts turns into an
+  order, a pick list, a ping to the shop, and a stock count that reorders on its own.</p>
+
+  <h2>The Whole Path</h2>
+  <div class="flow" aria-label="Flow diagram: intake to auto-quote to send gate to order to shop ping to reorder">
+    <div class="flow-row">
+      <div class="flow-box live"><b>Intake</b>RFQ email read and decoded<span class="tag">Running today</span></div>
+      <div class="flow-arrow">&#9654;</div>
+      <div class="flow-box live"><b>Auto-quote</b>priced, PDF drafted<span class="tag">Running today</span></div>
+      <div class="flow-arrow">&#9654;</div>
+      <div class="flow-box"><b>Send gate</b>human gate that relaxes in stages<span class="tag">This engagement</span></div>
+      <div class="flow-arrow">&#9654;</div>
+      <div class="flow-box"><b>Order</b>accepted quote becomes an order<span class="tag">This engagement</span></div>
+      <div class="flow-arrow">&#9654;</div>
+      <div class="flow-box"><b>Shop ping</b>pick list, "put it on the truck"<span class="tag">This engagement</span></div>
+      <div class="flow-arrow">&#9654;</div>
+      <div class="flow-box"><b>Reorder</b>stock counted, restocked at min<span class="tag">This engagement</span></div>
+    </div>
+    <div class="flow-legend">
+      <span><span class="chip chip-live"></span>Live in production now</span>
+      &nbsp;&nbsp;&nbsp;
+      <span><span class="chip chip-new"></span>Built in this engagement</span>
+    </div>
+  </div>
+
+  <h2>The Foundation Work First</h2>
+  <p>Before anything in this system is allowed to act on its own, the plumbing underneath
+  it gets hardened. Today the engine drafts quotes and a person sends them, so a rare
+  hiccup costs nothing: a duplicate draft sits in Outlook and gets deleted. Once the
+  engine can send a quote, create an order, or reorder stock by itself, the same hiccup
+  would reach a customer or a supplier. So the engagement starts with that foundation:</p>
+  <ul>
+    <li>The background worker restarts cleanly during deploys instead of being cut off mid-job.</li>
+    <li>Every inbound email is tracked in a ledger, so if the system ever re-reads a
+    message it recognizes it and does nothing, instead of making a second quote.</li>
+    <li>The database is checked and, if needed, upgraded so that orders, shop updates, and
+    stock counts can all write at the same time without stepping on each other.</li>
+  </ul>
+  <p>None of this changes what you see day to day. It is the reason the automatic stages
+  can be trusted to fire.</p>
+
+  <h2>The New Stages, One at a Time</h2>
+
+  <h3>1. The send gate: from "a person clicks send" to "it sends the safe ones itself"</h3>
+  <div class="stage-io">
+    <div><b>Goes in:</b> the finished quote drafts the system already produces</div>
+    <div><b>Comes out:</b> quotes sent to customers, some by a person, over time most by the engine</div>
+  </div>
+  <p>Today every quote is sent by a person. This stage replaces that fixed rule with a
+  gate that relaxes in steps. Each quote gets a confidence score built from specific
+  checks: did every line decode cleanly, is every line priced, is this a known customer
+  with a confirmed address, and is the price in line with what we have quoted them
+  before.</p>
+  <p>The gate opens in stages. First the engine only recommends: it shows you the score
+  and the reasons, and a person still clicks send. Then quotes that pass every check, to
+  known customers, send themselves, and everything else waits for a person. Over time
+  the automatic slice widens until only the exceptions wait: new customers, unusual
+  prices, big dollar amounts.</p>
+  <p>To be plain about it: this is a gate that relaxes as the engine earns trust, not a
+  switch that flips. A quote with any unpriced line never sends itself. Every automatic
+  send is logged with the checks it passed. And there is a kill switch that puts every
+  quote back in human hands instantly.</p>
+
+  <h3>2. Orders: an accepted quote becomes a real order</h3>
+  <div class="stage-io">
+    <div><b>Goes in:</b> a sent quote and the customer's "yes"</div>
+    <div><b>Comes out:</b> an order record, with a status you can watch from accepted to shipped</div>
+  </div>
+  <p>Today the system's world ends when a quote is sent. Nothing in it knows whether the
+  customer said yes. This stage adds the order itself: a record created from the exact
+  quote the customer saw, line for line, that then moves through accepted, ordered, and
+  fulfilled.</p>
+  <p>One decision here is yours to make: how the system learns that a customer said yes.
+  It can be an explicit "accepted" click by whoever takes the call, it can be triggered
+  by a PO arriving, or the engine can read reply emails. My recommendation is to start
+  with the explicit click, because it can never misread a "thanks, we'll think about it"
+  as a yes, and add reply-reading later behind the same kind of confidence gate as the
+  send stage. We will settle that together before this stage is built.</p>
+
+  <h3>3. Fulfillment: the pick list and the shop ping</h3>
+  <div class="stage-io">
+    <div><b>Goes in:</b> a confirmed order</div>
+    <div><b>Comes out:</b> a pick list for the shop and a notification: put this on the truck</div>
+  </div>
+  <p>When an order is confirmed, the engine writes the pick list itself: exactly what was
+  quoted, in whole pieces and pallets the way the yard actually stocks and ships, and
+  tells the shop. This is the stage that replaces the hand-typed sales order. The pick
+  list comes from the same frozen copy of the quote the customer accepted, so what the
+  shop pulls is what the customer was quoted, with no re-typing in between.</p>
+  <p>The ping starts in the form the shop already uses: a printed sheet for the driver,
+  a call or message to the floor. Structured screens in the shop can come later. Each
+  order tracks its progress: queued, picked, loaded, shipped.</p>
+
+  <h3>4. Inventory: stock counts, minimums, and automatic reorder</h3>
+  <div class="stage-io">
+    <div><b>Goes in:</b> every fulfillment (stock goes down), every receipt (stock goes up)</div>
+    <div><b>Comes out:</b> a live on-hand count per item, and a reorder to the shop when an item hits its minimum</div>
+  </div>
+  <p>The last stage gives every stocked item a live count. When fulfillment ships
+  something, the count goes down. Each item carries a minimum and a maximum you set.
+  When the count crosses the minimum, the engine sends a reorder through the same shop
+  channel the fulfillment stage uses, and every movement lands in a ledger so you can
+  see why any count is what it is.</p>
+  <p>One factual question comes first, and it is for you: where do today's stock numbers
+  live, if anywhere, and what should seed the starting counts and the min/max levels.
+  The build of this stage starts from that answer.</p>
+
+  <h2>Order of Work</h2>
+  <table>
+    <thead>
+      <tr><th style="width:26%">Checkpoint</th><th>What is working when it lands</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><b>1 — Foundation</b></td>
+        <td>Discovery and hardening: clean restarts, the message ledger, the database
+        decision. The base the automatic stages sit on.</td>
+      </tr>
+      <tr>
+        <td><b>2 — Send gate</b></td>
+        <td>The confidence score and the dashboard, starting in recommend-only mode,
+        then automatic sending for the safe slice.</td>
+      </tr>
+      <tr>
+        <td><b>3 — Orders</b></td>
+        <td>The order record and the acceptance step, using whichever "customer said
+        yes" signal we settle on.</td>
+      </tr>
+      <tr>
+        <td><b>4 — Fulfillment</b></td>
+        <td>Pick lists generated from accepted orders and the shop notified, paper and
+        phone first.</td>
+      </tr>
+      <tr>
+        <td><b>5 — Inventory</b></td>
+        <td>Stock counts live, minimums set, and the first automatic reorder firing
+        when a count crosses its line.</td>
+      </tr>
+    </tbody>
+  </table>
+  <p>Each checkpoint is something you can see working before the next one starts. The
+  order is fixed by dependency, not preference: nothing sends itself before the
+  foundation is hardened, nothing fulfills before there is an order, and nothing
+  reorders before fulfillment is counting stock down.</p>
+
+  <h2>Price and Terms</h2>
+  <p>This is one engagement at one price: <span class="money">$12,000, fixed</span>. It
+  covers everything described above, delivered in the five checkpoints in the order
+  listed. <span class="money">$3,000</span> (25%) is due to start; the remaining
+  <span class="money">$9,000</span> is due net-45 from completion. No per-stage
+  invoices, no meter.</p>
+
+  <h2>Acceptance</h2>
+  <p>This page is the agreement. Signing it covers the work described above, delivered
+  in five checkpoints for <span class="money">$12,000 fixed</span>, with
+  <span class="money">$3,000</span> down and the balance net-45. It extends the quote
+  system you already own; like that system, the code and the data are yours, running on
+  the private server we manage for you. Sign and send back any copy, paper or PDF both
+  fine.</p>
+  <table class="sig-table">
+    <tbody>
+      <tr>
+        <td class="sig-cell">
+          <div class="sig-line">&nbsp;</div>
+          <div class="sig-label">Chip Edwards, Allan Edwards Inc.</div>
+        </td>
+        <td class="sig-cell sig-date">
+          <div class="sig-line">&nbsp;</div>
+          <div class="sig-label">Date</div>
+        </td>
+      </tr>
+      <tr>
+        <td class="sig-cell">
+          <div class="sig-line">&nbsp;</div>
+          <div class="sig-label">Devin Venable, 918 Software</div>
+        </td>
+        <td class="sig-cell sig-date">
+          <div class="sig-line">&nbsp;</div>
+          <div class="sig-label">Date</div>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+
+  <footer>
+    Prepared by 918 Software &middot; Devin &middot; devin@918.software
+  </footer>
+
+</div>
+</body>
+</html>
