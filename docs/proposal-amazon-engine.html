@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Allan Edwards Back-End Automation Engine — Proposal</title>
+<title>Allan Edwards Back-End Automation Engine Proposal</title>
 <style>
   :root {
     --ink: #1a2332;
@@ -207,7 +207,7 @@
 <body>
 <div class="page">
 
-  <div class="draft-banner">Draft — for discussion, not yet sent</div>
+  <div class="draft-banner">Draft: for discussion, not yet sent</div>
 
   <header>
     <div class="kicker">Proposal</div>
@@ -342,27 +342,27 @@
     </thead>
     <tbody>
       <tr>
-        <td><b>1 — Foundation</b></td>
+        <td><b>1. Foundation</b></td>
         <td>Discovery and hardening: clean restarts, the message ledger, the database
         decision. The base the automatic stages sit on.</td>
       </tr>
       <tr>
-        <td><b>2 — Send gate</b></td>
+        <td><b>2. Send gate</b></td>
         <td>The confidence score and the dashboard, starting in recommend-only mode,
         then automatic sending for the safe slice.</td>
       </tr>
       <tr>
-        <td><b>3 — Orders</b></td>
+        <td><b>3. Orders</b></td>
         <td>The order record and the acceptance step, using whichever "customer said
         yes" signal we settle on.</td>
       </tr>
       <tr>
-        <td><b>4 — Fulfillment</b></td>
+        <td><b>4. Fulfillment</b></td>
         <td>Pick lists generated from accepted orders and the shop notified, paper and
         phone first.</td>
       </tr>
       <tr>
-        <td><b>5 — Inventory</b></td>
+        <td><b>5. Inventory</b></td>
         <td>Stock counts live, minimums set, and the first automatic reorder firing
         when a count crosses its line.</td>
       </tr>
@@ -379,11 +379,15 @@
   listed. <span class="money">$3,000</span> (25%) is due to start; the remaining
   <span class="money">$9,000</span> is due net-45 from completion. No per-stage
   invoices, no meter.</p>
+  <p>Hosting is <span class="money">$100/month</span>. That covers the private server
+  the engine runs on, its backups, and keeping it online. It is separate from the
+  one-time build price above and starts when the first stage goes live.</p>
 
   <h2>Acceptance</h2>
   <p>This page is the agreement. Signing it covers the work described above, delivered
   in five checkpoints for <span class="money">$12,000 fixed</span>, with
-  <span class="money">$3,000</span> down and the balance net-45. It extends the quote
+  <span class="money">$3,000</span> down and the balance net-45, plus
+  <span class="money">$100/month</span> hosting once the first stage is live. It extends the quote
   system you already own; like that system, the code and the data are yours, running on
   the private server we manage for you. Sign and send back any copy, paper or PDF both
   fine.</p>
