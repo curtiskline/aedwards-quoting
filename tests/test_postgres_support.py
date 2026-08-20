@@ -47,13 +47,15 @@ def sqlite_source(tmp_path):
     db_path = tmp_path / "source.db"
     _alembic_upgrade_head(f"sqlite:///{db_path}")
 
+    from datetime import datetime
+
     from app import create_app
     from app.config import Config
     from app.extensions import db
     from app.models import (
         AuditLog,
-        Customer,
         Contact,
+        Customer,
         FailedIntake,
         ProcessedInboundEmail,
         Quote,
@@ -65,7 +67,6 @@ def sqlite_source(tmp_path):
         ShipToAddress,
         User,
     )
-    from datetime import datetime
 
     old_uri = Config.SQLALCHEMY_DATABASE_URI
     Config.SQLALCHEMY_DATABASE_URI = f"sqlite:///{db_path}"

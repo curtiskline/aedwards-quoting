@@ -1,8 +1,11 @@
 # Staging deployment
 
 The permanent staging site is `https://staging.quotes.vectorforgeinteractive.com`.
-It runs on a separate DigitalOcean droplet and uses its own SQLite database at
-`/opt/aedwards/instance/allenedwards.db`; it must never use production data.
+It runs on a separate DigitalOcean droplet with its own database; it must never
+use production data. Since the 2026-08-20 CP-1 rehearsal (task 397) staging runs
+droplet-local PostgreSQL (`postgresql://aedwards@/aedwards?host=/var/run/postgresql`);
+the old SQLite file remains at `/opt/aedwards/instance/allenedwards.db*` as the
+rehearsal's rollback artifact.
 
 Deploy staging with its safety gates explicitly enabled:
 
@@ -12,7 +15,7 @@ export ENABLE_MONITOR=false
 export EMAIL_DELIVERY_ENABLED=false
 export SERVER_NAME=staging.quotes.vectorforgeinteractive.com
 export APP_URL=https://staging.quotes.vectorforgeinteractive.com
-export DATABASE_URL=sqlite:////opt/aedwards/instance/allenedwards.db
+export DATABASE_URL='postgresql://aedwards@/aedwards?host=/var/run/postgresql'
 bash deploy/deploy.sh <staging-ip>
 bash deploy/deploy_web.sh <staging-ip>
 ```
@@ -33,7 +36,7 @@ ssh -i "$KEY_PATH" root@<staging-ip> \
 
 Expected results: the monitor is `disabled` and `inactive`, there are no live
 mailbox credential lines, `EMAIL_DELIVERY_ENABLED=false`, and the database URL
-points at `/opt/aedwards/instance/allenedwards.db` on this host.
+points at the local PostgreSQL socket on this host.
 
 For TLS, once the DNS A record resolves, run:
 

@@ -19,9 +19,8 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
-from alembic import op
 import sqlalchemy as sa
-
+from alembic import op
 
 revision = "20260730_0001"
 down_revision = "20260721_0001"

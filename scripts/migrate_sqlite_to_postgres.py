@@ -48,8 +48,8 @@ BATCH_SIZE = 500
 
 def _connect_metadata():
     """Import the app's model metadata without needing a Flask app context."""
-    from app.extensions import db  # noqa: F401  (registers models on import)
     import app.models  # noqa: F401
+    from app.extensions import db  # noqa: F401  (registers models on import)
 
     # A SQL NULL read from the source comes back as Python None; with
     # SQLAlchemy's default none_as_null=False that would be re-inserted as the
