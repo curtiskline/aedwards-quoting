@@ -29,7 +29,7 @@ product_type = sa.table(
 
 
 def upgrade() -> None:
-    op.execute(sa.text("UPDATE product_type SET is_active = 0 WHERE name = 'oversleeve'"))
+    op.execute(sa.text("UPDATE product_type SET is_active = FALSE WHERE name = 'oversleeve'"))
     op.execute(sa.text("DELETE FROM product_type WHERE name = 'oversleeve'"))
 
 

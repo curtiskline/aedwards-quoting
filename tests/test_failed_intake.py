@@ -28,12 +28,11 @@ from allenedwards.providers.base import LLMResponseTruncated
 
 
 @pytest.fixture()
-def app(tmp_path: Path):
-    db_path = tmp_path / "test.db"
+def app(db_url):
     previous_database_url = os.environ.get("DATABASE_URL")
     previous_config_database_url = Config.SQLALCHEMY_DATABASE_URI
-    os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
-    Config.SQLALCHEMY_DATABASE_URI = f"sqlite:///{db_path}"
+    os.environ["DATABASE_URL"] = db_url
+    Config.SQLALCHEMY_DATABASE_URI = db_url
     application = create_app()
     application.config["TESTING"] = True
     with application.app_context():

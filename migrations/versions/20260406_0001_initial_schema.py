@@ -17,21 +17,27 @@ branch_labels = None
 depends_on = None
 
 
+# The application (SQLAlchemy sa.Enum over app.models.QuoteStatus) persists the
+# enum member NAMES ("NEW", "IN_REVIEW", ...), not the values, and every stored
+# row holds those names. On SQLite the column is a plain VARCHAR so the original
+# lowercase-value definition here never mattered; on PostgreSQL the enum is a
+# native type that rejects anything else, so this definition must match what the
+# app actually writes.
 quote_status = sa.Enum(
-    "new",
-    "in_review",
-    "needs_pricing",
-    "ready",
-    "sent",
-    "archived",
+    "NEW",
+    "IN_REVIEW",
+    "NEEDS_PRICING",
+    "READY",
+    "SENT",
+    "ARCHIVED",
     name="quote_status",
 )
 
 
 def upgrade() -> None:
-    bind = op.get_bind()
-    quote_status.create(bind, checkfirst=True)
-
+    # No explicit quote_status.create() here: on PostgreSQL, op.create_table
+    # below auto-creates the native enum type, and an explicit create first
+    # makes that second CREATE TYPE fail (it does not checkfirst).
     op.create_table(
         "user",
         sa.Column("id", sa.Integer(), primary_key=True),

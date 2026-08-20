@@ -14,12 +14,11 @@ from app.extensions import db
 from app.models import AuditLog, Quote, QuoteLineItem, QuoteStatus, QuoteVersion, User
 
 
-def _make_app(tmp_path):
-    db_path = tmp_path / "pdf-preview-send.db"
-    os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
-    Config.SQLALCHEMY_DATABASE_URI = f"sqlite:///{db_path}"
+def _make_app(db_url, tmp_path):
+    os.environ["DATABASE_URL"] = db_url
+    Config.SQLALCHEMY_DATABASE_URI = db_url
     app = create_app()
-    app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_path}"
+    app.config["SQLALCHEMY_DATABASE_URI"] = db_url
     app.config["TESTING"] = True
     # Mirrors production: artifacts live beside the deploy-persistent DB, not
     # under the source tree that deploy_web.sh replaces.
@@ -94,8 +93,8 @@ def _seed_quote(app):
         return quote.id, user.id
 
 
-def test_preview_pdf_returns_pdf(tmp_path):
-    app = _make_app(tmp_path)
+def test_preview_pdf_returns_pdf(db_url, tmp_path):
+    app = _make_app(db_url, tmp_path)
     quote_id, user_id = _seed_quote(app)
 
     with app.test_client() as client:
@@ -107,8 +106,8 @@ def test_preview_pdf_returns_pdf(tmp_path):
         assert b"inline" in resp.headers.get("Content-Disposition", "").encode()
 
 
-def test_preview_pdf_regenerates_on_each_call(tmp_path):
-    app = _make_app(tmp_path)
+def test_preview_pdf_regenerates_on_each_call(db_url, tmp_path):
+    app = _make_app(db_url, tmp_path)
     quote_id, user_id = _seed_quote(app)
 
     with app.test_client() as client:
@@ -123,8 +122,8 @@ def test_preview_pdf_regenerates_on_each_call(tmp_path):
 
 
 @patch("app.routes.generate_quote_pdf")
-def test_preview_pdf_uses_shipping_summary_field_not_line_item(mock_generate_quote_pdf, tmp_path):
-    app = _make_app(tmp_path)
+def test_preview_pdf_uses_shipping_summary_field_not_line_item(mock_generate_quote_pdf, db_url, tmp_path):
+    app = _make_app(db_url, tmp_path)
     quote_id, user_id = _seed_quote(app)
     with app.app_context():
         db.session.add(
@@ -161,8 +160,8 @@ def test_preview_pdf_uses_shipping_summary_field_not_line_item(mock_generate_quo
 
 
 @patch("app.routes.generate_quote_pdf")
-def test_preview_pdf_includes_manual_tax_in_totals(mock_generate_quote_pdf, tmp_path):
-    app = _make_app(tmp_path)
+def test_preview_pdf_includes_manual_tax_in_totals(mock_generate_quote_pdf, db_url, tmp_path):
+    app = _make_app(db_url, tmp_path)
     quote_id, user_id = _seed_quote(app)
     with app.app_context():
         quote = db.session.get(Quote, quote_id)
@@ -186,8 +185,8 @@ def test_preview_pdf_includes_manual_tax_in_totals(mock_generate_quote_pdf, tmp_
 
 
 @patch("app.routes.generate_quote_pdf")
-def test_preview_pdf_maps_ship_to_address_line_into_street_field(mock_generate_quote_pdf, tmp_path):
-    app = _make_app(tmp_path)
+def test_preview_pdf_maps_ship_to_address_line_into_street_field(mock_generate_quote_pdf, db_url, tmp_path):
+    app = _make_app(db_url, tmp_path)
     quote_id, user_id = _seed_quote(app)
 
     def _fake_generate(pricing_quote, output_path):
@@ -214,10 +213,10 @@ def test_preview_pdf_maps_ship_to_address_line_into_street_field(mock_generate_q
 
 
 @patch("app.routes.generate_quote_pdf")
-def test_preview_pdf_maps_bill_to_json_into_pricing_quote(mock_generate_quote_pdf, tmp_path):
+def test_preview_pdf_maps_bill_to_json_into_pricing_quote(mock_generate_quote_pdf, db_url, tmp_path):
     """Task 332: the DB quote's bill_to_json is handed to the PDF as pricing_quote.bill_to
     (canonical shape), so the Bill To block can render the signature address."""
-    app = _make_app(tmp_path)
+    app = _make_app(db_url, tmp_path)
     quote_id, user_id = _seed_quote(app)
 
     def _fake_generate(pricing_quote, output_path):
@@ -243,8 +242,8 @@ def test_preview_pdf_maps_bill_to_json_into_pricing_quote(mock_generate_quote_pd
     }
 
 
-def test_send_form_returns_html(tmp_path):
-    app = _make_app(tmp_path)
+def test_send_form_returns_html(db_url, tmp_path):
+    app = _make_app(db_url, tmp_path)
     quote_id, user_id = _seed_quote(app)
 
     with app.test_client() as client:
@@ -258,8 +257,8 @@ def test_send_form_returns_html(tmp_path):
 
 
 @patch("app.routes.generate_quote_pdf")
-def test_preview_pdf_adds_needs_pricing_banner(mock_generate_quote_pdf, tmp_path):
-    app = _make_app(tmp_path)
+def test_preview_pdf_adds_needs_pricing_banner(mock_generate_quote_pdf, db_url, tmp_path):
+    app = _make_app(db_url, tmp_path)
     quote_id, user_id = _seed_quote(app)
     with app.app_context():
         quote = db.session.get(Quote, quote_id)
@@ -280,8 +279,8 @@ def test_preview_pdf_adds_needs_pricing_banner(mock_generate_quote_pdf, tmp_path
 
 
 @patch("app.routes.generate_quote_pdf")
-def test_send_blocks_needs_pricing_quote_before_generating_pdf(mock_generate_quote_pdf, tmp_path):
-    app = _make_app(tmp_path)
+def test_send_blocks_needs_pricing_quote_before_generating_pdf(mock_generate_quote_pdf, db_url, tmp_path):
+    app = _make_app(db_url, tmp_path)
     quote_id, user_id = _seed_quote(app)
     with app.app_context():
         quote = db.session.get(Quote, quote_id)
@@ -302,8 +301,8 @@ def test_send_blocks_needs_pricing_quote_before_generating_pdf(mock_generate_quo
 
 
 @patch("app.routes.generate_quote_pdf")
-def test_send_blocks_tbd_line_even_when_quote_status_is_ready(mock_generate_quote_pdf, tmp_path):
-    app = _make_app(tmp_path)
+def test_send_blocks_tbd_line_even_when_quote_status_is_ready(mock_generate_quote_pdf, db_url, tmp_path):
+    app = _make_app(db_url, tmp_path)
     quote_id, user_id = _seed_quote(app)
     with app.app_context():
         item = db.session.query(QuoteLineItem).filter_by(quote_id=quote_id).first()
@@ -324,8 +323,8 @@ def test_send_blocks_tbd_line_even_when_quote_status_is_ready(mock_generate_quot
 
 
 @patch("allenedwards.outlook.OutlookClient")
-def test_send_allows_editor_created_no_charge_line(mock_outlook_class, tmp_path):
-    app = _make_app(tmp_path)
+def test_send_allows_editor_created_no_charge_line(mock_outlook_class, db_url, tmp_path):
+    app = _make_app(db_url, tmp_path)
     quote_id, user_id = _seed_quote(app)
     mock_client = MagicMock()
     mock_outlook_class.return_value = mock_client
@@ -357,8 +356,8 @@ def test_send_allows_editor_created_no_charge_line(mock_outlook_class, tmp_path)
     mock_client.send_mail.assert_called_once()
 
 
-def test_send_without_o365_creds_shows_error(tmp_path):
-    app = _make_app(tmp_path)
+def test_send_without_o365_creds_shows_error(db_url, tmp_path):
+    app = _make_app(db_url, tmp_path)
     quote_id, user_id = _seed_quote(app)
 
     with app.test_client() as client:
@@ -376,8 +375,8 @@ def test_send_without_o365_creds_shows_error(tmp_path):
 
 
 @patch("allenedwards.outlook.OutlookClient")
-def test_send_route_blocks_delivery_when_environment_is_isolated(mock_outlook_class, tmp_path, monkeypatch):
-    app = _make_app(tmp_path)
+def test_send_route_blocks_delivery_when_environment_is_isolated(mock_outlook_class, db_url, tmp_path, monkeypatch):
+    app = _make_app(db_url, tmp_path)
     quote_id, user_id = _seed_quote(app)
     monkeypatch.setenv("O365_EMAIL", "responder@allanedwards.com")
     monkeypatch.setenv("O365_PASSWORD", "live-password-must-not-be-used")
@@ -395,8 +394,8 @@ def test_send_route_blocks_delivery_when_environment_is_isolated(mock_outlook_cl
     mock_outlook_class.assert_not_called()
 
 
-def test_send_without_to_email_returns_400(tmp_path):
-    app = _make_app(tmp_path)
+def test_send_without_to_email_returns_400(db_url, tmp_path):
+    app = _make_app(db_url, tmp_path)
     quote_id, user_id = _seed_quote(app)
 
     with app.test_client() as client:
@@ -409,8 +408,8 @@ def test_send_without_to_email_returns_400(tmp_path):
 
 
 @patch("allenedwards.outlook.OutlookClient")
-def test_send_quote_success(mock_outlook_class, tmp_path):
-    app = _make_app(tmp_path)
+def test_send_quote_success(mock_outlook_class, db_url, tmp_path):
+    app = _make_app(db_url, tmp_path)
     quote_id, user_id = _seed_quote(app)
 
     mock_client = MagicMock()
@@ -523,8 +522,8 @@ def test_send_quote_success(mock_outlook_class, tmp_path):
 
 
 @patch("allenedwards.outlook.OutlookClient")
-def test_send_quote_also_creates_draft_when_enabled(mock_outlook_class, tmp_path):
-    app = _make_app(tmp_path)
+def test_send_quote_also_creates_draft_when_enabled(mock_outlook_class, db_url, tmp_path):
+    app = _make_app(db_url, tmp_path)
     quote_id, user_id = _seed_quote(app)
 
     mock_client = MagicMock()
@@ -556,9 +555,9 @@ def test_send_quote_also_creates_draft_when_enabled(mock_outlook_class, tmp_path
 
 
 @patch("allenedwards.outlook.OutlookClient")
-def test_sent_quote_is_retained_when_follow_up_draft_fails(mock_outlook_class, tmp_path):
+def test_sent_quote_is_retained_when_follow_up_draft_fails(mock_outlook_class, db_url, tmp_path):
     """A successful customer delivery cannot lose its archive to draft failure."""
-    app = _make_app(tmp_path)
+    app = _make_app(db_url, tmp_path)
     quote_id, user_id = _seed_quote(app)
     mock_client = MagicMock()
     mock_client.create_draft.side_effect = Exception("Drafts API unavailable")
@@ -588,8 +587,8 @@ def test_sent_quote_is_retained_when_follow_up_draft_fails(mock_outlook_class, t
         assert Path(version.pdf_path).is_file()
 
 
-def test_editor_has_preview_and_send_buttons(tmp_path):
-    app = _make_app(tmp_path)
+def test_editor_has_preview_and_send_buttons(db_url, tmp_path):
+    app = _make_app(db_url, tmp_path)
     quote_id, user_id = _seed_quote(app)
 
     with app.test_client() as client:

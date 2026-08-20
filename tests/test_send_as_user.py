@@ -70,12 +70,11 @@ def test_flag_on_invalid_email_falls_back(monkeypatch):
 # --- Send route integration tests (mocked Graph client, no real sends) ---
 
 
-def _make_app(tmp_path):
-    db_path = tmp_path / "send-as-user.db"
-    os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
-    Config.SQLALCHEMY_DATABASE_URI = f"sqlite:///{db_path}"
+def _make_app(db_url):
+    os.environ["DATABASE_URL"] = db_url
+    Config.SQLALCHEMY_DATABASE_URI = db_url
     app = create_app()
-    app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_path}"
+    app.config["SQLALCHEMY_DATABASE_URI"] = db_url
     app.config["TESTING"] = True
     return app
 
@@ -138,8 +137,8 @@ def _post_send(app, quote_id, user_id):
 
 
 @patch("allenedwards.outlook.OutlookClient")
-def test_send_flag_off_uses_shared_mailbox(mock_outlook_class, tmp_path, monkeypatch):
-    app = _make_app(tmp_path)
+def test_send_flag_off_uses_shared_mailbox(mock_outlook_class, db_url, monkeypatch):
+    app = _make_app(db_url)
     quote_id, user_id = _seed_quote(app, "chip@allanedwards.com")
     mock_outlook_class.return_value = MagicMock()
     _o365_env(monkeypatch, send_as_user=None)
@@ -152,8 +151,8 @@ def test_send_flag_off_uses_shared_mailbox(mock_outlook_class, tmp_path, monkeyp
 
 
 @patch("allenedwards.outlook.OutlookClient")
-def test_send_flag_on_uses_logged_in_users_mailbox(mock_outlook_class, tmp_path, monkeypatch):
-    app = _make_app(tmp_path)
+def test_send_flag_on_uses_logged_in_users_mailbox(mock_outlook_class, db_url, monkeypatch):
+    app = _make_app(db_url)
     quote_id, user_id = _seed_quote(app, "chip@allanedwards.com")
     mock_client = MagicMock()
     mock_outlook_class.return_value = mock_client
@@ -174,9 +173,9 @@ def test_send_flag_on_uses_logged_in_users_mailbox(mock_outlook_class, tmp_path,
 
 @patch("allenedwards.outlook.OutlookClient")
 def test_send_flag_on_uses_session_user_not_first_database_user(
-    mock_outlook_class, tmp_path, monkeypatch
+    mock_outlook_class, db_url, monkeypatch
 ):
-    app = _make_app(tmp_path)
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         db.session.add(User(email="devin@918.software", name="Devin", password_hash="x"))
@@ -198,9 +197,9 @@ def test_send_flag_on_uses_session_user_not_first_database_user(
 
 @patch("allenedwards.outlook.OutlookClient")
 def test_send_flag_on_external_user_falls_back_to_shared_mailbox(
-    mock_outlook_class, tmp_path, monkeypatch
+    mock_outlook_class, db_url, monkeypatch
 ):
-    app = _make_app(tmp_path)
+    app = _make_app(db_url)
     quote_id, user_id = _seed_quote(app, "devin@918.software")
     mock_outlook_class.return_value = MagicMock()
     _o365_env(monkeypatch, send_as_user="true")
@@ -218,9 +217,9 @@ def test_send_flag_on_external_user_falls_back_to_shared_mailbox(
 
 @patch("allenedwards.outlook.OutlookClient")
 def test_send_flag_on_password_auth_falls_back_to_shared_mailbox(
-    mock_outlook_class, tmp_path, monkeypatch
+    mock_outlook_class, db_url, monkeypatch
 ):
-    app = _make_app(tmp_path)
+    app = _make_app(db_url)
     quote_id, user_id = _seed_quote(app, "chip@allanedwards.com")
     mock_outlook_class.return_value = MagicMock()
     _o365_env(monkeypatch, send_as_user="true")

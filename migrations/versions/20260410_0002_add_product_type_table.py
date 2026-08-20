@@ -36,7 +36,7 @@ def upgrade() -> None:
         sa.Column("name", sa.String(), nullable=False),
         sa.Column("display_label", sa.String(), nullable=False),
         sa.Column("sort_order", sa.Integer(), nullable=False),
-        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.text("1")),
+        sa.Column("is_active", sa.Boolean(), nullable=False, server_default=sa.true()),
         sa.Column("created_at", sa.DateTime(), nullable=False, server_default=sa.func.now()),
         sa.UniqueConstraint("name"),
     )
@@ -68,6 +68,15 @@ def upgrade() -> None:
             for idx, (name, label) in enumerate(defaults, start=1)
         ],
     )
+
+    # The seed rows above carry explicit ids, which on PostgreSQL bypasses (and
+    # therefore does not advance) the identity sequence; realign it so the next
+    # app-side insert does not collide.
+    if op.get_bind().dialect.name == "postgresql":
+        op.execute(
+            "SELECT setval(pg_get_serial_sequence('product_type', 'id'), "
+            "(SELECT MAX(id) FROM product_type))"
+        )
 
 
 def downgrade() -> None:

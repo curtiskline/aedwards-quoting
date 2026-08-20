@@ -10,11 +10,10 @@ from app.models import AuditLog, Customer, Quote, QuoteLineItem, QuoteStatus, Us
 
 
 @pytest.fixture()
-def app(tmp_path, monkeypatch):
+def app(db_url, monkeypatch):
     from app.config import Config
 
-    db_path = tmp_path / "test.db"
-    monkeypatch.setattr(Config, "SQLALCHEMY_DATABASE_URI", f"sqlite:///{db_path}")
+    monkeypatch.setattr(Config, "SQLALCHEMY_DATABASE_URI", db_url)
     monkeypatch.setattr(Config, "TESTING", True, raising=False)
     application = create_app()
 

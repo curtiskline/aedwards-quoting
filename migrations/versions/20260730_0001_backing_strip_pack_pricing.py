@@ -41,13 +41,27 @@ _OLD_KEY_FIELDS = {"key": "backing_strip", "unit": "each"}
 _NEW_KEY_FIELDS = {"key": "backing_strip", "unit": "per_pack_of_10"}
 
 
+def _key_fields_match(conn, key_fields: dict):
+    """Equality predicate on the JSON key_fields column, per dialect.
+
+    PostgreSQL's json type has no = operator; compare as jsonb (which is also
+    key-order-insensitive). SQLite compares the serialized JSON text directly.
+    """
+    key_fields_json = sa.type_coerce(key_fields, sa.JSON())
+    if conn.dialect.name == "postgresql":
+        from sqlalchemy.dialects.postgresql import JSONB
+
+        return sa.cast(pricing_table.c.key_fields, JSONB) == sa.cast(key_fields_json, JSONB)
+    return pricing_table.c.key_fields == key_fields_json
+
+
 def _replace_row(old_key_fields: dict, new_key_fields: dict, price: Decimal) -> None:
     conn = op.get_bind()
     for key_fields in (old_key_fields, new_key_fields):
         conn.execute(
             pricing_table.delete()
             .where(pricing_table.c.product_type == "accessory")
-            .where(pricing_table.c.key_fields == sa.type_coerce(key_fields, sa.JSON()))
+            .where(_key_fields_match(conn, key_fields))
         )
     op.bulk_insert(
         pricing_table,

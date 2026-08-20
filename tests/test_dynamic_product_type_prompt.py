@@ -18,12 +18,11 @@ from allenedwards.parser import ParsedItem
 from allenedwards.pricing import price_item
 
 
-def _make_app(tmp_path):
-    db_path = tmp_path / "product-type-prompt.db"
-    os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
-    Config.SQLALCHEMY_DATABASE_URI = f"sqlite:///{db_path}"
+def _make_app(db_url):
+    os.environ["DATABASE_URL"] = db_url
+    Config.SQLALCHEMY_DATABASE_URI = db_url
     app = create_app()
-    app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_path}"
+    app.config["SQLALCHEMY_DATABASE_URI"] = db_url
     app.config["TESTING"] = True
     return app
 
@@ -40,9 +39,9 @@ def test_prompt_uses_default_types_without_app_context():
     assert "sleeve|" in prompt
 
 
-def test_prompt_reads_live_product_type_table(tmp_path):
+def test_prompt_reads_live_product_type_table(db_url):
     """Editing the ProductType table changes the prompt with no code change."""
-    app = _make_app(tmp_path)
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         db.session.add_all(
@@ -68,9 +67,9 @@ def test_prompt_reads_live_product_type_table(tmp_path):
     assert "sleeve|composite|megasleeve" in prompt
 
 
-def test_prompt_falls_back_when_product_type_table_absent(tmp_path):
+def test_prompt_falls_back_when_product_type_table_absent(db_url):
     """App context but no product_type table -> graceful default (no crash)."""
-    app = _make_app(tmp_path)
+    app = _make_app(db_url)
     with app.app_context():
         # Deliberately do NOT create tables.
         prompt = parser._parse_system_prompt()

@@ -14,10 +14,9 @@ from app.models import Contact, Customer, ShipToAddress, User
 
 
 @pytest.fixture()
-def app(tmp_path, monkeypatch):
+def app(db_url, monkeypatch):
     """Create a test app with an in-memory-like SQLite DB."""
-    db_path = tmp_path / "test.db"
-    monkeypatch.setattr(Config, "SQLALCHEMY_DATABASE_URI", f"sqlite:///{db_path}")
+    monkeypatch.setattr(Config, "SQLALCHEMY_DATABASE_URI", db_url)
     monkeypatch.setattr(Config, "TESTING", True, raising=False)
     app = create_app()
 

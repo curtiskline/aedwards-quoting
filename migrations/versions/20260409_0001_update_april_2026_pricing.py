@@ -48,14 +48,26 @@ UPDATES: list[tuple[str, dict, Decimal, Decimal]] = [
 ]
 
 
+def _key_fields_match(conn, key_fields: dict):
+    """Equality predicate on the JSON key_fields column, per dialect.
+
+    PostgreSQL's json type has no = operator; compare as jsonb (which is also
+    key-order-insensitive). SQLite compares the serialized JSON text directly.
+    """
+    key_fields_json = sa.type_coerce(key_fields, sa.JSON())
+    if conn.dialect.name == "postgresql":
+        from sqlalchemy.dialects.postgresql import JSONB
+
+        return sa.cast(pricing_table.c.key_fields, JSONB) == sa.cast(key_fields_json, JSONB)
+    return pricing_table.c.key_fields == key_fields_json
+
+
 def _update_price(conn, product_type: str, key_fields: dict, old_price: Decimal, new_price: Decimal) -> None:
     """Update a single pricing_table row matched by product_type and key_fields."""
-    # Use JSON matching — SQLite and PostgreSQL both support this via cast
-    key_fields_json = sa.type_coerce(key_fields, sa.JSON())
     conn.execute(
         pricing_table.update()
         .where(pricing_table.c.product_type == product_type)
-        .where(pricing_table.c.key_fields == key_fields_json)
+        .where(_key_fields_match(conn, key_fields))
         .values(price=new_price, updated_at=sa.func.now())
     )
 
@@ -82,9 +94,8 @@ def downgrade() -> None:
         _update_price(conn, product_type, key_fields, new_price, old_price)
 
     # Remove concrete_coating row
-    key_fields_json = sa.type_coerce({"key": "concrete_coating", "unit": "per_inch_od_per_foot"}, sa.JSON())
     conn.execute(
         pricing_table.delete()
         .where(pricing_table.c.product_type == "accessory")
-        .where(pricing_table.c.key_fields == key_fields_json)
+        .where(_key_fields_match(conn, {"key": "concrete_coating", "unit": "per_inch_od_per_foot"}))
     )

@@ -36,12 +36,11 @@ from decimal import Decimal
 _SLEEVE = dict(diameter=36.0, wall_thickness=0.375, grade=65, length_ft=20.0)
 
 
-def _make_app(tmp_path):
-    db_path = tmp_path / "rfq-freight.db"
-    os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
-    Config.SQLALCHEMY_DATABASE_URI = f"sqlite:///{db_path}"
+def _make_app(db_url):
+    os.environ["DATABASE_URL"] = db_url
+    Config.SQLALCHEMY_DATABASE_URI = db_url
     app = create_app()
-    app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_path}"
+    app.config["SQLALCHEMY_DATABASE_URI"] = db_url
     app.config["TESTING"] = True
     return app
 
@@ -147,9 +146,9 @@ def _shipping_items(app, quote_id: int):
         )
 
 
-def test_editing_a_line_adds_no_freight_when_the_rfq_designated_no_ship_to(tmp_path):
+def test_editing_a_line_adds_no_freight_when_the_rfq_designated_no_ship_to(db_url):
     """Chip's rule: "if people don't provide ship to we just price the product only"."""
-    app = _make_app(tmp_path)
+    app = _make_app(db_url)
     quote_id, item_id, user_id = _seed_rfq_quote(app, "126-337A", None)
 
     with app.app_context():
@@ -160,9 +159,9 @@ def test_editing_a_line_adds_no_freight_when_the_rfq_designated_no_ship_to(tmp_p
     assert _shipping_items(app, quote_id) == []
 
 
-def test_editing_a_line_adds_no_freight_for_a_foreign_ship_to(tmp_path):
+def test_editing_a_line_adds_no_freight_for_a_foreign_ship_to(db_url):
     """The 126-086 collision: Malaysian 40160 is also US ZIP 40160 (Vine Grove, KY)."""
-    app = _make_app(tmp_path)
+    app = _make_app(db_url)
     quote_id, item_id, user_id = _seed_rfq_quote(
         app,
         "126-337B",
@@ -181,9 +180,9 @@ def test_editing_a_line_adds_no_freight_for_a_foreign_ship_to(tmp_path):
     assert _shipping_items(app, quote_id) == []
 
 
-def test_editing_a_line_adds_no_freight_when_the_ship_to_scrubbed_to_nothing(tmp_path):
+def test_editing_a_line_adds_no_freight_when_the_ship_to_scrubbed_to_nothing(db_url):
     """"FOB Tulsa" is a freight term, not a destination — 331 scrubs it, leaving nothing."""
-    app = _make_app(tmp_path)
+    app = _make_app(db_url)
 
     scrubbed = _parse_ship_to(
         {"street": "FOB Tulsa", "city": "", "state": "", "postal_code": "", "country": None},
@@ -198,13 +197,13 @@ def test_editing_a_line_adds_no_freight_when_the_ship_to_scrubbed_to_nothing(tmp
     assert _shipping_items(app, quote_id) == []
 
 
-def test_editing_a_line_does_add_freight_for_a_domestic_ship_to(tmp_path):
+def test_editing_a_line_does_add_freight_for_a_domestic_ship_to(db_url):
     """Control: same postcode as the Malaysian case, this time actually in Kentucky.
 
     Without this the three no-freight cases above would also pass with freight
     switched off entirely.
     """
-    app = _make_app(tmp_path)
+    app = _make_app(db_url)
     quote_id, item_id, user_id = _seed_rfq_quote(
         app,
         "126-337D",

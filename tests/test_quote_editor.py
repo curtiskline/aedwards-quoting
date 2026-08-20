@@ -21,12 +21,11 @@ from app.models import (
 )
 
 
-def _make_app(tmp_path):
-    db_path = tmp_path / "quote-editor.db"
-    os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
-    Config.SQLALCHEMY_DATABASE_URI = f"sqlite:///{db_path}"
+def _make_app(db_url):
+    os.environ["DATABASE_URL"] = db_url
+    Config.SQLALCHEMY_DATABASE_URI = db_url
     app = create_app()
-    app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_path}"
+    app.config["SQLALCHEMY_DATABASE_URI"] = db_url
     app.config["TESTING"] = True
     return app
 
@@ -37,8 +36,8 @@ def _login(client, user_id: int) -> None:
         session["_fresh"] = True
 
 
-def test_quote_detail_loads_and_locks_by_user(tmp_path):
-    app = _make_app(tmp_path)
+def test_quote_detail_loads_and_locks_by_user(db_url):
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         reviewer = User(email="reviewer@example.com", name="Reviewer One", password_hash="x")
@@ -76,8 +75,8 @@ def test_quote_detail_loads_and_locks_by_user(tmp_path):
         assert updated.reviewed_by is not None
 
 
-def test_line_item_update_recalculates_and_generates_sleeve_part(tmp_path):
-    app = _make_app(tmp_path)
+def test_line_item_update_recalculates_and_generates_sleeve_part(db_url):
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         user = User(email="editor@example.com", name="Editor", password_hash="x")
@@ -127,9 +126,9 @@ def test_line_item_update_recalculates_and_generates_sleeve_part(tmp_path):
         assert (updated.part_number or "").startswith("S-")
 
 
-def test_service_item_number_can_be_edited_and_renders_in_preview_pdf(tmp_path):
+def test_service_item_number_can_be_edited_and_renders_in_preview_pdf(db_url):
     """A manually entered service Item Number must reach the customer PDF."""
-    app = _make_app(tmp_path)
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         user = User(email="training@example.com", name="Training Editor", password_hash="x")
@@ -175,9 +174,9 @@ def test_service_item_number_can_be_edited_and_renders_in_preview_pdf(tmp_path):
     assert b'name="part_number"' in update_response.data
 
 
-def test_hydrated_ship_to_renders_unverified_confirmation_flag(tmp_path):
+def test_hydrated_ship_to_renders_unverified_confirmation_flag(db_url):
     """A stored default still hydrates, but must ask a human to confirm it."""
-    app = _make_app(tmp_path)
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         user = User(email="ship-to-reviewer@example.com", name="Ship-To Reviewer", password_hash="x")
@@ -224,9 +223,9 @@ def test_hydrated_ship_to_renders_unverified_confirmation_flag(tmp_path):
     assert "Shah Alam" in pdf_text
 
 
-def test_canada_as_us_ship_to_hydrates_and_renders_unverified_flag(tmp_path):
+def test_canada_as_us_ship_to_hydrates_and_renders_unverified_flag(db_url):
     """The Canada-as-US production shape remains visible, but is never silently trusted."""
-    app = _make_app(tmp_path)
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         user = User(email="calgary-reviewer@example.com", name="Calgary Reviewer", password_hash="x")
@@ -263,8 +262,8 @@ def test_canada_as_us_ship_to_hydrates_and_renders_unverified_flag(tmp_path):
     assert "Unverified ship-to — confirm before sending" in html
 
 
-def test_editor_autosave_creates_an_unconfirmed_ship_to(tmp_path):
-    app = _make_app(tmp_path)
+def test_editor_autosave_creates_an_unconfirmed_ship_to(db_url):
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         user = User(email="autosave-reviewer@example.com", name="Autosave Reviewer", password_hash="x")
@@ -304,8 +303,8 @@ def test_editor_autosave_creates_an_unconfirmed_ship_to(tmp_path):
         assert address.human_confirmed is False
 
 
-def test_confirming_ship_to_clears_flag_and_survives_autosave(tmp_path):
-    app = _make_app(tmp_path)
+def test_confirming_ship_to_clears_flag_and_survives_autosave(db_url):
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         user = User(email="confirm-reviewer@example.com", name="Confirm Reviewer", password_hash="x")
@@ -358,8 +357,8 @@ def test_confirming_ship_to_clears_flag_and_survives_autosave(tmp_path):
     assert "Unverified ship-to — confirm before sending" not in client.get(f"/quotes/{quote_id}").get_data(as_text=True)
 
 
-def test_human_confirmed_ship_to_does_not_render_flag(tmp_path):
-    app = _make_app(tmp_path)
+def test_human_confirmed_ship_to_does_not_render_flag(db_url):
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         user = User(email="human-confirmed@example.com", name="Human Confirmed", password_hash="x")
@@ -396,8 +395,8 @@ def test_human_confirmed_ship_to_does_not_render_flag(tmp_path):
     assert "Unverified ship-to — confirm before sending" not in html
 
 
-def test_product_catalog_search_and_lookup_endpoints(tmp_path):
-    app = _make_app(tmp_path)
+def test_product_catalog_search_and_lookup_endpoints(db_url):
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         user = User(email="catalog@example.com", name="Catalog User", password_hash="x")
@@ -440,8 +439,8 @@ def test_product_catalog_search_and_lookup_endpoints(tmp_path):
     assert "Half Sole" in lookup_data["description"]
 
 
-def test_girth_weld_update_preserves_part_number_without_length_spec(tmp_path):
-    app = _make_app(tmp_path)
+def test_girth_weld_update_preserves_part_number_without_length_spec(db_url):
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         user = User(email="girth@example.com", name="Girth User", password_hash="x")
@@ -486,8 +485,8 @@ def test_girth_weld_update_preserves_part_number_without_length_spec(tmp_path):
         assert updated.description == "Updated GTW description"
 
 
-def test_quantity_update_preserves_existing_part_number_without_regenerable_specs(tmp_path):
-    app = _make_app(tmp_path)
+def test_quantity_update_preserves_existing_part_number_without_regenerable_specs(db_url):
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         user = User(email="quantity@example.com", name="Quantity User", password_hash="x")
@@ -533,8 +532,8 @@ def test_quantity_update_preserves_existing_part_number_without_regenerable_spec
         assert updated.part_number == "SVC-FIELD"
 
 
-def test_add_manual_no_charge_line_is_allowed(tmp_path):
-    app = _make_app(tmp_path)
+def test_add_manual_no_charge_line_is_allowed(db_url):
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         user = User(email="delivery@example.com", name="Delivery User", password_hash="x")
@@ -577,8 +576,8 @@ def test_add_manual_no_charge_line_is_allowed(tmp_path):
         assert dict(delivery.specs_json or {}).get("manual_no_charge") is True
 
 
-def test_line_item_calc_total_returns_partial_without_db_write(tmp_path):
-    app = _make_app(tmp_path)
+def test_line_item_calc_total_returns_partial_without_db_write(db_url):
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         user = User(email="calc@example.com", name="Calc User", password_hash="x")
@@ -621,8 +620,8 @@ def test_line_item_calc_total_returns_partial_without_db_write(tmp_path):
         assert float(unchanged.line_total) == 15.0
 
 
-def test_add_remove_move_and_status_transitions(tmp_path):
-    app = _make_app(tmp_path)
+def test_add_remove_move_and_status_transitions(db_url):
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         user = User(email="queue@example.com", name="Queue User", password_hash="x")
@@ -700,8 +699,8 @@ def test_add_remove_move_and_status_transitions(tmp_path):
     assert b"500 pcs" not in detail_resp.data
 
 
-def test_line_item_type_dropdown_uses_active_db_product_types(tmp_path):
-    app = _make_app(tmp_path)
+def test_line_item_type_dropdown_uses_active_db_product_types(db_url):
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         db.session.add_all(
@@ -733,8 +732,8 @@ def test_line_item_type_dropdown_uses_active_db_product_types(tmp_path):
     assert b"Other / Custom" not in response.data
 
 
-def test_line_item_type_dropdown_seeded_defaults_omit_oversleeve(tmp_path):
-    app = _make_app(tmp_path)
+def test_line_item_type_dropdown_seeded_defaults_omit_oversleeve(db_url):
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         user = User(email="seeded@example.com", name="Seeded User", password_hash="x")
@@ -754,8 +753,8 @@ def test_line_item_type_dropdown_seeded_defaults_omit_oversleeve(tmp_path):
     assert b"Shipping &amp; Handling" not in response.data
 
 
-def test_add_shipping_line_item(tmp_path):
-    app = _make_app(tmp_path)
+def test_add_shipping_line_item(db_url):
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         user = User(email="ship@example.com", name="Ship User", password_hash="x")
@@ -789,8 +788,8 @@ def test_add_shipping_line_item(tmp_path):
         assert float(line_item.line_total) == 1250.0
 
 
-def test_add_shipping_line_item_auto_trigger_uses_calculation(tmp_path):
-    app = _make_app(tmp_path)
+def test_add_shipping_line_item_auto_trigger_uses_calculation(db_url):
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         user = User(email="ship-auto@example.com", name="Ship Auto", password_hash="x")
@@ -852,8 +851,8 @@ def test_add_shipping_line_item_auto_trigger_uses_calculation(tmp_path):
         assert specs.get("manual_override") is False
 
 
-def test_auto_calculates_shipping_from_weight_and_distance(tmp_path):
-    app = _make_app(tmp_path)
+def test_auto_calculates_shipping_from_weight_and_distance(db_url):
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         user = User(email="auto-ship@example.com", name="Auto Ship", password_hash="x")
@@ -907,8 +906,8 @@ def test_auto_calculates_shipping_from_weight_and_distance(tmp_path):
         assert specs.get("manual_override") is False
 
 
-def test_manual_shipping_override_is_preserved(tmp_path):
-    app = _make_app(tmp_path)
+def test_manual_shipping_override_is_preserved(db_url):
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         user = User(email="manual-ship@example.com", name="Manual Ship", password_hash="x")
@@ -1003,8 +1002,8 @@ def test_manual_shipping_override_is_preserved(tmp_path):
         assert specs.get("manual_override") is True
 
 
-def test_totals_form_saves_manual_shipping_and_tax(tmp_path):
-    app = _make_app(tmp_path)
+def test_totals_form_saves_manual_shipping_and_tax(db_url):
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         user = User(email="totals@example.com", name="Totals User", password_hash="x")
@@ -1067,8 +1066,8 @@ def test_totals_form_saves_manual_shipping_and_tax(tmp_path):
         assert specs.get("manual_override") is True
 
 
-def test_totals_form_blank_shipping_reverts_to_auto(tmp_path):
-    app = _make_app(tmp_path)
+def test_totals_form_blank_shipping_reverts_to_auto(db_url):
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         user = User(email="totals-auto@example.com", name="Totals Auto", password_hash="x")
@@ -1135,8 +1134,8 @@ def test_totals_form_blank_shipping_reverts_to_auto(tmp_path):
         assert specs.get("auto_calculated_shipping") is True
 
 
-def test_totals_form_unchanged_auto_shipping_stays_auto(tmp_path):
-    app = _make_app(tmp_path)
+def test_totals_form_unchanged_auto_shipping_stays_auto(db_url):
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         user = User(email="totals-auto-unchanged@example.com", name="Totals Auto Unchanged", password_hash="x")
@@ -1233,8 +1232,8 @@ def test_totals_form_unchanged_auto_shipping_stays_auto(tmp_path):
         assert specs.get("auto_calculated_shipping") is True
 
 
-def test_totals_form_zero_shipping_persists_as_manual_override(tmp_path):
-    app = _make_app(tmp_path)
+def test_totals_form_zero_shipping_persists_as_manual_override(db_url):
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         user = User(email="totals-zero@example.com", name="Totals Zero", password_hash="x")
@@ -1333,8 +1332,8 @@ def test_totals_form_zero_shipping_persists_as_manual_override(tmp_path):
         assert specs.get("auto_calculated_shipping") is False
 
 
-def test_totals_form_blank_shipping_without_breakdown_stays_zero(tmp_path):
-    app = _make_app(tmp_path)
+def test_totals_form_blank_shipping_without_breakdown_stays_zero(db_url):
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         user = User(email="totals-blank-zero@example.com", name="Totals Blank Zero", password_hash="x")
@@ -1379,11 +1378,11 @@ def test_totals_form_blank_shipping_without_breakdown_stays_zero(tmp_path):
         assert specs.get("auto_calculated_shipping") is True
 
 
-def test_shipping_calc_line_hidden_during_manual_override(tmp_path):
+def test_shipping_calc_line_hidden_during_manual_override(db_url):
     """The auto 'Shipping Calc' breakdown must not display while a manual freight
     override is active — it previously showed a contradictory auto number next to
     the 'Manual override active' note."""
-    app = _make_app(tmp_path)
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         user = User(email="shipcalc@example.com", name="Ship Calc", password_hash="x")
@@ -1473,14 +1472,14 @@ def _shipping_items(app, quote_id: int):
         )
 
 
-def test_foreign_postcode_colliding_with_us_zip_produces_no_freight(tmp_path):
+def test_foreign_postcode_colliding_with_us_zip_produces_no_freight(db_url):
     """Prod quote 126-086: Malaysian postcode 40160 is also US ZIP 40160 (Vine Grove, KY).
 
     Without a country check the ZIP-centroid lookup happily resolves the Malaysian
     address to Kentucky and bills a distance-derived charge for a shipment that is
     not going to Kentucky.
     """
-    app = _make_app(tmp_path)
+    app = _make_app(db_url)
     quote_id, user_id = _seed_priced_quote(app, "126-320", "foreign-zip@example.com")
 
     client = app.test_client()
@@ -1532,9 +1531,9 @@ def test_foreign_postcode_colliding_with_us_zip_produces_no_freight(tmp_path):
     assert float(domestic_shipping[0].line_total) > 0
 
 
-def test_clearing_ship_to_removes_the_auto_freight_line(tmp_path):
+def test_clearing_ship_to_removes_the_auto_freight_line(db_url):
     """Requirement (c): no ship-to means no freight, including freight already added."""
-    app = _make_app(tmp_path)
+    app = _make_app(db_url)
     quote_id, user_id = _seed_priced_quote(app, "126-322", "clear-ship-to@example.com")
 
     client = app.test_client()
@@ -1575,8 +1574,8 @@ def test_clearing_ship_to_removes_the_auto_freight_line(tmp_path):
     assert _shipping_items(app, quote_id) == []
 
 
-def test_switching_ship_to_abroad_removes_the_auto_freight_line(tmp_path):
-    app = _make_app(tmp_path)
+def test_switching_ship_to_abroad_removes_the_auto_freight_line(db_url):
+    app = _make_app(db_url)
     quote_id, user_id = _seed_priced_quote(app, "126-323", "abroad-ship-to@example.com")
 
     client = app.test_client()
@@ -1608,9 +1607,9 @@ def test_switching_ship_to_abroad_removes_the_auto_freight_line(tmp_path):
     assert _shipping_items(app, quote_id) == []
 
 
-def test_manual_freight_survives_a_foreign_ship_to(tmp_path):
+def test_manual_freight_survives_a_foreign_ship_to(db_url):
     """D12's implicit user override must keep working when auto declines to price."""
-    app = _make_app(tmp_path)
+    app = _make_app(db_url)
     quote_id, user_id = _seed_priced_quote(
         app,
         "126-324",
@@ -1657,9 +1656,9 @@ def test_manual_freight_survives_a_foreign_ship_to(tmp_path):
     assert float(remaining[0].line_total) == 1850
 
 
-def test_ship_to_company_and_attention_survive_a_customer_info_save(tmp_path):
+def test_ship_to_company_and_attention_survive_a_customer_info_save(db_url):
     """The editor used to drop company/attention because the form never sent them."""
-    app = _make_app(tmp_path)
+    app = _make_app(db_url)
     quote_id, user_id = _seed_priced_quote(
         app,
         "126-325",
@@ -1732,8 +1731,8 @@ _PRICE_38 = 4010.05
 _PRICE_12 = 5248.19
 
 
-def _sleeve_quote(tmp_path, quote_number, *, specs=None, unit_price=_PRICE_38, description=None):
-    app = _make_app(tmp_path)
+def _sleeve_quote(db_url, quote_number, *, specs=None, unit_price=_PRICE_38, description=None):
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         user = User(email=f"{quote_number}@example.com", name="Editor", password_hash="x")
@@ -1774,8 +1773,8 @@ def _blur_payload(**overrides):
     return payload
 
 
-def test_wall_thickness_edit_recalculates_price_on_autosave(tmp_path):
-    app, quote_id, item_id, user_id = _sleeve_quote(tmp_path, "126-329A")
+def test_wall_thickness_edit_recalculates_price_on_autosave(db_url):
+    app, quote_id, item_id, user_id = _sleeve_quote(db_url, "126-329A")
     client = app.test_client()
     _login(client, user_id)
 
@@ -1803,9 +1802,9 @@ def test_wall_thickness_edit_recalculates_price_on_autosave(tmp_path):
         assert updated.part_number == "S-36-12-65-20"
 
 
-def test_repeated_blur_after_spec_edit_does_not_freeze_a_stale_price(tmp_path):
+def test_repeated_blur_after_spec_edit_does_not_freeze_a_stale_price(db_url):
     """A second blur carrying the pre-recalc price must not become an override."""
-    app, quote_id, item_id, user_id = _sleeve_quote(tmp_path, "126-329B")
+    app, quote_id, item_id, user_id = _sleeve_quote(db_url, "126-329B")
     client = app.test_client()
     _login(client, user_id)
 
@@ -1845,8 +1844,8 @@ def test_repeated_blur_after_spec_edit_does_not_freeze_a_stale_price(tmp_path):
         assert float(updated.unit_price) == _PRICE_12
 
 
-def test_typed_unit_price_survives_later_spec_edits(tmp_path):
-    app, quote_id, item_id, user_id = _sleeve_quote(tmp_path, "126-329C")
+def test_typed_unit_price_survives_later_spec_edits(db_url):
+    app, quote_id, item_id, user_id = _sleeve_quote(db_url, "126-329C")
     client = app.test_client()
     _login(client, user_id)
 
@@ -1894,11 +1893,11 @@ def test_typed_unit_price_survives_later_spec_edits(tmp_path):
         assert float(updated.unit_price) == _PRICE_12
 
 
-def test_manual_no_charge_line_is_never_auto_priced(tmp_path):
+def test_manual_no_charge_line_is_never_auto_priced(db_url):
     specs = dict(_SLEEVE_SPECS_38)
     specs["manual_no_charge"] = True
     app, quote_id, item_id, user_id = _sleeve_quote(
-        tmp_path, "126-329D", specs=specs, unit_price=0
+        db_url, "126-329D", specs=specs, unit_price=0
     )
     client = app.test_client()
     _login(client, user_id)
@@ -1916,10 +1915,10 @@ def test_manual_no_charge_line_is_never_auto_priced(tmp_path):
         assert specs.get("price_stale") is None
 
 
-def test_spec_edit_without_full_specs_flags_price_as_not_recalculated(tmp_path):
+def test_spec_edit_without_full_specs_flags_price_as_not_recalculated(db_url):
     """Legacy rows created before specs were persisted must not be guess-priced."""
     app, quote_id, item_id, user_id = _sleeve_quote(
-        tmp_path,
+        db_url,
         "126-329E",
         specs={"weight_per_ft": "72.91", "price_per_lb": "2.75", "notes": 'wall thickness defaulted to 3/8"'},
         unit_price=4855.66,
@@ -1954,10 +1953,10 @@ def test_spec_edit_without_full_specs_flags_price_as_not_recalculated(tmp_path):
         assert specs["wall_thickness"] == "0.5"
 
 
-def test_full_spec_entry_on_legacy_row_prices_the_line(tmp_path):
+def test_full_spec_entry_on_legacy_row_prices_the_line(db_url):
     """Filling in every spec clears the warning and prices from those specs."""
     app, quote_id, item_id, user_id = _sleeve_quote(
-        tmp_path,
+        db_url,
         "126-329F",
         specs={"weight_per_ft": "72.91", "price_per_lb": "2.75"},
         unit_price=4855.66,
@@ -1985,8 +1984,8 @@ def test_full_spec_entry_on_legacy_row_prices_the_line(tmp_path):
         assert updated.description == "Half Sole sleeve"
 
 
-def test_quantity_only_edit_does_not_reprice(tmp_path):
-    app, quote_id, item_id, user_id = _sleeve_quote(tmp_path, "126-329G")
+def test_quantity_only_edit_does_not_reprice(db_url):
+    app, quote_id, item_id, user_id = _sleeve_quote(db_url, "126-329G")
     client = app.test_client()
     _login(client, user_id)
 
@@ -2002,9 +2001,9 @@ def test_quantity_only_edit_does_not_reprice(tmp_path):
         assert dict(updated.specs_json or {}).get("price_override") is None
 
 
-def test_milling_checkbox_change_reprices_the_line(tmp_path):
+def test_milling_checkbox_change_reprices_the_line(db_url):
     """The checkbox autosave trigger goes through the same recalc path."""
-    app, quote_id, item_id, user_id = _sleeve_quote(tmp_path, "126-329H")
+    app, quote_id, item_id, user_id = _sleeve_quote(db_url, "126-329H")
     client = app.test_client()
     _login(client, user_id)
 
@@ -2021,8 +2020,8 @@ def test_milling_checkbox_change_reprices_the_line(tmp_path):
         assert float(updated.unit_price) > _PRICE_38
 
 
-def test_price_override_is_visible_in_the_editor(tmp_path):
-    app, quote_id, item_id, user_id = _sleeve_quote(tmp_path, "126-329I")
+def test_price_override_is_visible_in_the_editor(db_url):
+    app, quote_id, item_id, user_id = _sleeve_quote(db_url, "126-329I")
     client = app.test_client()
     _login(client, user_id)
 

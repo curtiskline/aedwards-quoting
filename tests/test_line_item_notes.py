@@ -75,12 +75,11 @@ def _quote_with_note(notes: str | None, description: str = "Sleeve, Sealing") ->
     )
 
 
-def _make_app(tmp_path):
-    db_path = tmp_path / "line-item-notes.db"
-    os.environ["DATABASE_URL"] = f"sqlite:///{db_path}"
-    Config.SQLALCHEMY_DATABASE_URI = f"sqlite:///{db_path}"
+def _make_app(db_url):
+    os.environ["DATABASE_URL"] = db_url
+    Config.SQLALCHEMY_DATABASE_URI = db_url
     app = create_app()
-    app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{db_path}"
+    app.config["SQLALCHEMY_DATABASE_URI"] = db_url
     app.config["TESTING"] = True
     return app
 
@@ -233,9 +232,9 @@ def test_pdf_prints_no_note_when_nothing_is_customer_facing():
 # The route that builds the PDF a customer receives
 
 
-def test_quote_pdf_route_carries_notes_out_of_specs_json(tmp_path):
+def test_quote_pdf_route_carries_notes_out_of_specs_json(db_url):
     """Fails against main: _db_quote_to_pricing_quote dropped notes on the floor."""
-    app = _make_app(tmp_path)
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         _, strip_note = _backing_strip_packs(
@@ -283,8 +282,8 @@ def test_quote_pdf_route_carries_notes_out_of_specs_json(tmp_path):
 # be extended to the editor by accident — Chip must keep seeing everything.
 
 
-def test_editor_shows_the_full_internal_note_including_what_the_pdf_hides(tmp_path):
-    app = _make_app(tmp_path)
+def test_editor_shows_the_full_internal_note_including_what_the_pdf_hides(db_url):
+    app = _make_app(db_url)
     with app.app_context():
         db.create_all()
         _, strip_note = _backing_strip_packs(

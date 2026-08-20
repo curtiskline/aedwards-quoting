@@ -14,7 +14,11 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 flask_app = create_app()
-config.set_main_option("sqlalchemy.url", flask_app.config["SQLALCHEMY_DATABASE_URI"])
+# Escape % for configparser interpolation: URLs may legitimately contain
+# percent-encoded parts (unix-socket host paths, encoded password characters).
+config.set_main_option(
+    "sqlalchemy.url", flask_app.config["SQLALCHEMY_DATABASE_URI"].replace("%", "%%")
+)
 target_metadata = db.metadata
 
 

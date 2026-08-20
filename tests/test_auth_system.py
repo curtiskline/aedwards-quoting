@@ -11,9 +11,8 @@ from app.models import AuthToken, User
 
 
 @pytest.fixture
-def app(tmp_path, monkeypatch):
-    db_path = tmp_path / "auth-system.db"
-    monkeypatch.setattr(Config, "SQLALCHEMY_DATABASE_URI", f"sqlite:///{db_path}")
+def app(db_url, monkeypatch):
+    monkeypatch.setattr(Config, "SQLALCHEMY_DATABASE_URI", db_url)
     monkeypatch.setattr(Config, "TESTING", True, raising=False)
     monkeypatch.setattr(Config, "WTF_CSRF_ENABLED", False, raising=False)
 

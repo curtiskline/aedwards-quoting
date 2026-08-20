@@ -54,6 +54,18 @@ _TYPE_TO_FAMILY = {
 }
 
 
+def _report_untriaged(bind) -> None:
+    """Report untriaged rows so the operator sees what still needs a type."""
+    untriaged = bind.execute(
+        sa.text(
+            "SELECT COALESCE(product_family, '(null)'), COUNT(*) FROM product_catalog "
+            "WHERE product_type IS NULL GROUP BY product_family"
+        )
+    ).fetchall()
+    for family, count in untriaged:
+        print(f"[358 migration] {count} catalog rows left type-unset (family={family})")
+
+
 def upgrade() -> None:
     bind = op.get_bind()
 
@@ -74,6 +86,36 @@ def upgrade() -> None:
 
     # --- 2. ProductCatalog: rename sku->part_number (nullable, non-unique),
     #        add product_type, retain product_family as nullable legacy -----
+    case_sql = " ".join(
+        f"WHEN '{family}' THEN '{slug}'" for family, slug in _FAMILY_TO_TYPE.items()
+    )
+    if bind.dialect.name == "postgresql":
+        # PostgreSQL can do every step in place — no table rebuild needed.
+        op.execute(sa.text("ALTER TABLE product_catalog RENAME COLUMN sku TO part_number"))
+        op.execute(sa.text("ALTER TABLE product_catalog ALTER COLUMN part_number DROP NOT NULL"))
+        op.execute(sa.text("ALTER TABLE product_catalog DROP CONSTRAINT product_catalog_sku_key"))
+        # product_family becomes a plain retained-legacy VARCHAR; the native
+        # enum type goes away with it.
+        op.execute(
+            sa.text(
+                "ALTER TABLE product_catalog ALTER COLUMN product_family "
+                "TYPE VARCHAR(18) USING product_family::text"
+            )
+        )
+        op.execute(sa.text("ALTER TABLE product_catalog ALTER COLUMN product_family DROP NOT NULL"))
+        op.execute(sa.text("DROP TYPE IF EXISTS product_family"))
+        op.execute(sa.text("ALTER TABLE product_catalog ADD COLUMN product_type VARCHAR"))
+        op.execute(
+            sa.text(
+                "UPDATE product_catalog SET product_type = "
+                f"CASE UPPER(product_family) {case_sql} ELSE NULL END"
+            )
+        )
+        op.execute(sa.text("ALTER INDEX ix_product_catalog_sku RENAME TO ix_product_catalog_part_number"))
+        op.create_index("ix_product_catalog_product_type", "product_catalog", ["product_type"])
+        _report_untriaged(bind)
+        return
+
     # SQLite cannot drop an unnamed UNIQUE constraint or alter nullability in
     # place, so rebuild the table explicitly. This keeps full control over the
     # family->type population and is exactly what we test against a prod copy.
@@ -94,9 +136,6 @@ def upgrade() -> None:
             """
         )
     )
-    case_sql = " ".join(
-        f"WHEN '{family}' THEN '{slug}'" for family, slug in _FAMILY_TO_TYPE.items()
-    )
     op.execute(
         sa.text(
             "INSERT INTO product_catalog_new "
@@ -115,18 +154,19 @@ def upgrade() -> None:
     op.create_index("ix_product_catalog_product_family", "product_catalog", ["product_family"])
     op.create_index("ix_product_catalog_is_active", "product_catalog", ["is_active"])
 
-    # Report untriaged rows so the operator sees what still needs a type.
-    untriaged = bind.execute(
-        sa.text(
-            "SELECT COALESCE(product_family, '(null)'), COUNT(*) FROM product_catalog "
-            "WHERE product_type IS NULL GROUP BY product_family"
-        )
-    ).fetchall()
-    for family, count in untriaged:
-        print(f"[358 migration] {count} catalog rows left type-unset (family={family})")
+    _report_untriaged(bind)
 
 
 def downgrade() -> None:
+    if op.get_bind().dialect.name == "postgresql":
+        # PostgreSQL adoption happened at head; nothing below head has ever
+        # existed on a PostgreSQL database, so a relational downgrade of this
+        # rebuild has no consumer. Refuse loudly rather than half-restore.
+        raise NotImplementedError(
+            "20260810_0002 downgrade is not supported on PostgreSQL; "
+            "restore from a pg_dump backup instead"
+        )
+
     # --- 2. ProductCatalog: restore sku (NOT NULL UNIQUE), drop product_type,
     #        restore product_family NOT NULL -------------------------------
     op.execute(

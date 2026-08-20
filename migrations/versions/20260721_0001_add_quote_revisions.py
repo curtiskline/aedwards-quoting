@@ -19,7 +19,8 @@ depends_on = None
 def upgrade() -> None:
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
-        op.execute("ALTER TYPE quote_status ADD VALUE IF NOT EXISTS 'replaced'")
+        # The app persists enum member NAMES (see 20260406_0001).
+        op.execute("ALTER TYPE quote_status ADD VALUE IF NOT EXISTS 'REPLACED'")
 
     with op.batch_alter_table("quote") as batch_op:
         batch_op.add_column(sa.Column("replaces_quote_id", sa.Integer(), nullable=True))
