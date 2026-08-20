@@ -342,22 +342,26 @@ def test_unconfirmed_ship_to_not_eligible(mock_outlook, app):
 
 
 @patch("allenedwards.outlook.OutlookClient")
-def test_unknown_price_history_not_eligible(mock_outlook, app):
+def test_unknown_price_history_not_eligible(mock_outlook, app, monkeypatch):
     """No comparable history = unknown = NOT eligible (never treated as pass)."""
     mock_client = _mock_client()
     mock_outlook.return_value = mock_client
+    monkeypatch.setenv("CONFIDENCE_RECOMMEND_THRESHOLD", "0.75")
     quote = _eligible_quote()
     history = _db.session.query(Quote).filter_by(status=QuoteStatus.SENT).one()
     for item in history.line_items:
         item.product_type = "bag"  # no longer comparable
     sync_quote_confidence(quote)
     _db.session.commit()
-    _set_tier(2)
+    # Threshold lowered below the unknown-degraded score (0.80) on purpose:
+    # the REQUIRED-signal gate must block unknown on its own, not lean on
+    # the threshold catching the missing points.
+    _set_tier(2, auto_send_threshold=0.75)
 
     result = maybe_auto_send(quote)
 
     assert result["attempted"] is False
-    assert any("Price in tolerance" in r for r in result["reasons"])
+    assert any("requires Price in tolerance to pass, is unknown" in r for r in result["reasons"])
     mock_client.send_mail.assert_not_called()
 
 
