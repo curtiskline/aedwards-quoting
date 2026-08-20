@@ -47,6 +47,15 @@ QUOTE_ARTIFACT_DIR="${QUOTE_ARTIFACT_DIR:-$(read_from_dotenv QUOTE_ARTIFACT_DIR 
 SERVER_NAME="${SERVER_NAME:-_}"
 EMAIL_DELIVERY_ENABLED="${EMAIL_DELIVERY_ENABLED:-true}"
 
+# The HOST's current DATABASE_URL is authoritative (the Postgres cutover edits
+# it in place on the droplet, runbook docs/runbooks/postgres-cutover.md); only
+# fall back to the sqlite default when neither the caller, the local .env, nor
+# the host has one. Without this, every deploy silently reverted a cut-over
+# host back to SQLite.
+if [[ -z "${DATABASE_URL}" ]]; then
+  DATABASE_URL="$(ssh ${SSH_OPTS:-} -i "${KEY_PATH}" "root@${HOST}" \
+    "sed -n 's/^DATABASE_URL=//p' ${APP_DIR}/.env 2>/dev/null | head -n1" || true)"
+fi
 DATABASE_URL="${DATABASE_URL:-sqlite:////opt/aedwards/instance/allenedwards.db}"
 QUOTE_ARTIFACT_DIR="${QUOTE_ARTIFACT_DIR:-${APP_DIR}/instance/quote_versions}"
 O365_CLIENT_ID="${O365_CLIENT_ID:-d3590ed6-52b3-4102-aeff-aad2292ab01c}"
