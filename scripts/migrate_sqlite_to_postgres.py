@@ -208,13 +208,20 @@ def main() -> int:
         print(f"  quote_attachment sha256: {len(src_blobs)} blobs {'OK' if blob_ok else 'MISMATCH'}")
 
         for probe, label in [
-            ("SELECT status, COUNT(*) FROM quote GROUP BY status ORDER BY status", "quote statuses"),
+            # sorted() in Python, not ORDER BY: PG native enums sort by
+            # declaration order while SQLite text sorts alphabetically, so an
+            # SQL-ordered comparison false-fails on identical data.
+            ("SELECT status, COUNT(*) FROM quote GROUP BY status", "quote statuses"),
             ("SELECT MIN(quote_number), MAX(quote_number) FROM quote", "quote number range"),
-            ("SELECT COUNT(*) FROM quote WHERE ship_to_json IS NOT NULL", "ship_to_json present"),
+            # Exclude JSON literal null on the source: SQLAlchemy loads it as
+            # None and the copy (none_as_null) normalizes it to SQL NULL on the
+            # destination — semantically identical, count it that way.
+            ("SELECT COUNT(*) FROM quote WHERE ship_to_json IS NOT NULL"
+             " AND CAST(ship_to_json AS TEXT) != 'null'", "ship_to_json present"),
             ("SELECT COUNT(*) FROM quote_version WHERE line_items_snapshot IS NOT NULL", "version snapshots"),
         ]:
-            src_val = [tuple(str(c) for c in r) for r in s.execute(sa.text(probe)).fetchall()]
-            dst_val = [tuple(str(c) for c in r) for r in d.execute(sa.text(probe)).fetchall()]
+            src_val = sorted(tuple(str(c) for c in r) for r in s.execute(sa.text(probe)).fetchall())
+            dst_val = sorted(tuple(str(c) for c in r) for r in d.execute(sa.text(probe)).fetchall())
             ok = src_val == dst_val
             if not ok:
                 failures.append(f"spot check mismatch: {label}: {src_val} != {dst_val}")
