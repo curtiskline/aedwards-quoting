@@ -50,7 +50,8 @@ fill.
 
 ## 2. Component architecture
 
-Two long-running processes on one box, sharing one SQLite database:
+Two long-running processes on one box, sharing one PostgreSQL database
+(SQLite before the 2026-08-20 cutover; SQLite remains the dev/test default):
 
 | Process | Entry | What it is |
 |---|---|---|
@@ -125,7 +126,8 @@ investigation docs).
 
 ## 4. Data model
 
-All in `src/app/models.py`. SQLite in prod. **Line numbers here supersede the stale
+All in `src/app/models.py`. PostgreSQL in prod (since 2026-08-20; SQLite in
+dev/test). **Line numbers here supersede the stale
 ones in `docs/research/current-backend-endstate-map.md` (task 365)** — two tables
 (`ProcessedInboundEmail`, `FailedIntake`) were added after that doc was written.
 
@@ -475,19 +477,20 @@ sole sink (see §12.1).
     restarts the service. When `EMAIL_DELIVERY_ENABLED=false` it **strips all
     mailbox credential lines from the host env** (`:220-223`).
   - `provision.sh` / `provision_do.sh`: first-time host setup.
-- **Database**: prod currently runs the single SQLite file
-  `/opt/aedwards/instance/allenedwards.db` (single-writer). **PostgreSQL is now a
-  fully supported target** (task 397, per decision D65: move before the first
-  concurrent writer): the alembic chain runs clean on empty PostgreSQL, the whole
-  test suite passes against it (`TEST_DATABASE_URL`, §11), and
-  `scripts/migrate_sqlite_to_postgres.py` copies a live SQLite DB verbatim with
-  self-verification (row counts, BLOB sha256, status/JSON spot checks).
-  `deploy/provision_pg.sh` provisions droplet-local PostgreSQL (role/db + nightly
-  `pg_dump` cron, 7-day retention). The prod cutover is a gated runbook —
-  `docs/runbooks/postgres-cutover.md` (stop monitor → final sync → switch
-  `DATABASE_URL` → verify → rollback path) — rehearsed on staging first. Until it
-  runs: daily 2 AM sqlite3 backups with 7-day retention under `/opt/aedwards/`
-  per canon I47 — **unverified in repo** (the cron lives on the host).
+- **Database**: prod runs **droplet-local PostgreSQL 16** (cutover executed
+  2026-08-20 per `docs/runbooks/postgres-cutover.md`, task 400; decision D65):
+  `DATABASE_URL=postgresql://aedwards@/aedwards?host=/var/run/postgresql`
+  (unix-socket peer auth, no password). Nightly `pg_dump -Fc` backups, 7-day
+  retention (`/etc/cron.d/aedwards-pg-backup`, 2 AM, to
+  `/opt/aedwards/pg_backups/`). The pre-cutover SQLite files remain at
+  `/opt/aedwards/instance/allenedwards.db*` as rollback artifacts (archive
+  after a quiet week, per the runbook). SQLite remains the dev/test default;
+  the whole test suite also passes against PostgreSQL (`TEST_DATABASE_URL`,
+  §11), and `scripts/migrate_sqlite_to_postgres.py` copies a live SQLite DB
+  verbatim with self-verification (row counts, BLOB sha256, status/JSON spot
+  checks). Cutover note: PG's enforced FKs rejected 3 orphaned `audit_log`
+  rows from previously hard-deleted test quotes — test-record cleanup must
+  delete child rows (audit/line-items/attachments/versions) with the quote.
 - **Retained quote PDFs** live in `QUOTE_ARTIFACT_DIR` beside the DB, deliberately
   outside the deploy-replaced source tree (`config.py:23-26`).
 
