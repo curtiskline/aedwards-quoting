@@ -429,7 +429,7 @@ Enumerated from code (grep of `os.environ`/`os.getenv` over `src/`, 2026-08-19).
 
 | Flag | Default | Read at |
 |---|---|---|
-| `DATABASE_URL` | `sqlite:///<repo>/instance/allenedwards.db` (prod: `sqlite:////opt/aedwards/instance/allenedwards.db`) | `config.py:21`, `deploy/deploy_web.sh:50` |
+| `DATABASE_URL` | `sqlite:///<repo>/instance/allenedwards.db` (prod today: `sqlite:////opt/aedwards/instance/allenedwards.db`; post-cutover: `postgresql://aedwards@/aedwards?host=/var/run/postgresql`). Both engines fully supported (task 397); cutover per `docs/runbooks/postgres-cutover.md` | `config.py:21`, `deploy/deploy_web.sh:50` |
 | `SECRET_KEY` | `dev-secret-key` (deploy generates one if absent, `deploy_web.sh:228`) | `config.py:20` |
 | `QUOTE_ARTIFACT_DIR` | `<repo>/instance/quote_versions` | `config.py:26` |
 | `APP_URL` | unset (magic links fall back to `_external=True`) | `config.py:29` |
@@ -472,11 +472,19 @@ drafts OFF ("DB writes exclusively, no Outlook drafts going forward", D4
     restarts the service. When `EMAIL_DELIVERY_ENABLED=false` it **strips all
     mailbox credential lines from the host env** (`:220-223`).
   - `provision.sh` / `provision_do.sh`: first-time host setup.
-- **Database**: single SQLite file `/opt/aedwards/instance/allenedwards.db` —
-  single-writer; a real constraint before the engine adds concurrent writers (flag
-  Postgres before fan-out). Daily 2 AM sqlite3 backups with 7-day retention under
-  `/opt/aedwards/` per canon I47 — **unverified in repo** (the cron lives on the
-  host).
+- **Database**: prod currently runs the single SQLite file
+  `/opt/aedwards/instance/allenedwards.db` (single-writer). **PostgreSQL is now a
+  fully supported target** (task 397, per decision D65: move before the first
+  concurrent writer): the alembic chain runs clean on empty PostgreSQL, the whole
+  test suite passes against it (`TEST_DATABASE_URL`, §11), and
+  `scripts/migrate_sqlite_to_postgres.py` copies a live SQLite DB verbatim with
+  self-verification (row counts, BLOB sha256, status/JSON spot checks).
+  `deploy/provision_pg.sh` provisions droplet-local PostgreSQL (role/db + nightly
+  `pg_dump` cron, 7-day retention). The prod cutover is a gated runbook —
+  `docs/runbooks/postgres-cutover.md` (stop monitor → final sync → switch
+  `DATABASE_URL` → verify → rollback path) — rehearsed on staging first. Until it
+  runs: daily 2 AM sqlite3 backups with 7-day retention under `/opt/aedwards/`
+  per canon I47 — **unverified in repo** (the cron lives on the host).
 - **Retained quote PDFs** live in `QUOTE_ARTIFACT_DIR` beside the DB, deliberately
   outside the deploy-replaced source tree (`config.py:23-26`).
 
@@ -512,7 +520,13 @@ delete the test records.
   copy. Individual test files build their own fixtures (in-memory Flask apps, mock
   LLM provider `providers/mock.py`, `fixtures_product_catalog_prod.json`).
 - Run: `pytest` from the repo root (`[tool.pytest.ini_options] testpaths=["tests"]`,
-  `pyproject.toml:63-64`). Dev deps: `pip install -e '.[dev]'`; browser-level
+  `pyproject.toml:63-64`). Default DB is SQLite (fast); set `TEST_DATABASE_URL`
+  to a PostgreSQL maintenance URL (role needs CREATEDB) to run the same suite on
+  PostgreSQL — each test gets its own disposable database via the shared
+  `db_url` fixture (`tests/conftest.py`). `tests/test_postgres_support.py` holds
+  the CP-1 acceptance tests (alembic-on-empty-PG, SQLite→PG copy round-trip) and
+  skips unless `TEST_DATABASE_URL` is set. Migration tests that exercise SQLite
+  internals on purpose stay on SQLite regardless. Dev deps: `pip install -e '.[dev]'`; browser-level
   regression tests additionally need
   `pip install playwright && playwright install chromium-headless-shell`
   (`pyproject.toml:33-41`) — these cover the T386 editor autosave race.
@@ -569,8 +583,11 @@ Agents building engine features MUST respect these:
    `SEND_EMAIL_ALLOWLIST`, `ENABLE_FAILURE_ACK` default-off with loop guards).
    New outbound paths must respect the same gates, and staging must stay
    credential-free (deploy strips them, `deploy_web.sh:220-223`).
-7. **Single-writer SQLite** (§10). Concurrent engine writers (orders, inventory,
-   shop notifications) need a Postgres evaluation first.
+7. **Single-writer SQLite in prod — for now** (§10). The Postgres evaluation is
+   done: the codebase, migrations and tests are Postgres-clean (task 397) and the
+   cutover runbook exists (`docs/runbooks/postgres-cutover.md`). Concurrent
+   engine writers (orders, inventory, shop notifications) remain blocked until
+   that cutover has actually run in prod.
 8. **Send-time records are immutable.** `QuoteVersion` rows and their archived PDFs
    are write-once (`os.link` publish + chmod 444, `routes.py:2645-2672`). Never
    mutate them; build downstream objects *from* them (§13).

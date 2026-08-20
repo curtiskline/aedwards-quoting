@@ -41,3 +41,19 @@ For TLS, once the DNS A record resolves, run:
 ssh -i "$KEY_PATH" root@<staging-ip> \
   'certbot --nginx -d staging.quotes.vectorforgeinteractive.com --non-interactive --agree-tos -m devin@918.software'
 ```
+
+
+## PostgreSQL on staging (CP-1 rehearsal, task 397)
+
+Staging is the rehearsal target for the SQLite → PostgreSQL cutover
+(`docs/runbooks/postgres-cutover.md`). To set it up:
+
+```bash
+bash deploy/provision_pg.sh <staging-ip>       # installs PG, role/db, backup cron
+# deploy this branch as above (still on SQLite), then rehearse the cutover:
+# run scripts/migrate_sqlite_to_postgres.py on the host and flip DATABASE_URL to
+#   postgresql://aedwards@/aedwards?host=/var/run/postgresql
+# in /opt/aedwards/.env, restart aedwards-web, and verify the UI.
+```
+
+Staging's database is disposable; `--recreate` reloads are always safe there.
