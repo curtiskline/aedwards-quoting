@@ -438,12 +438,15 @@ Enumerated from code (grep of `os.environ`/`os.getenv` over `src/`, 2026-08-19).
 Env loading in the CLI: `~/.env` → shared project `.env` → worktree `.env`, never
 overriding existing process env (`cli.py:21-44`).
 
-**Production flag state (unverified from this repo):** what prod's
-`/opt/aedwards/.env` actually sets (notably whether `ENABLE_DB_WRITES=true` and
-`ENABLE_OUTLOOK_DRAFTS` are on) lives on the droplet, not in git. Canon
-(allanedwards:D4, I101) and the running system's behavior indicate DB writes ON and
-drafts OFF ("DB writes exclusively, no Outlook drafts going forward", D4
-2026-04-08) — TODO confirm on the box before relying on it.
+**Production flag state (CONFIRMED 2026-08-20, task 396):** read directly from
+`/opt/aedwards/.env` on the prod droplet (157.230.227.28):
+`ENABLE_DB_WRITES=true`, `ENABLE_OUTLOOK_DRAFTS=false`. The `aedwards-monitor`
+systemd unit loads exactly that file (`EnvironmentFile=/opt/aedwards/.env`) and
+was active at confirmation time, so the running monitor uses these values. This
+matches canon (allanedwards:D4, I101: "DB writes exclusively, no Outlook drafts
+going forward"). Prod therefore runs the config the CP-1 idempotency gate
+requires — the `ProcessedInboundEmail` claim is live and drafts are not the
+sole sink (see §12.1).
 
 ## 10. Infrastructure & deploy
 
@@ -540,6 +543,12 @@ Agents building engine features MUST respect these:
      `state.add` (`monitor.py:194`) and draft creation can drop a draft (state says
      processed, no DB claim exists to trigger the retry path — the claim check
      returns `True` unconditionally in no-DB mode, `monitor.py:358-359`).
+     **The idempotency gate therefore REQUIRES `ENABLE_DB_WRITES=true`.** Prod
+     runs that config (confirmed on the droplet 2026-08-20, §9). The monitor
+     logs a startup warning when constructed with DB writes off and drafts as
+     the sole sink (task 396), and the guarantee is regression-tested end-to-end
+     in `tests/test_idempotency_replay.py` (replay no-op, crash-before-commit
+     re-drive, and a guard-absent canary).
    - With DB writes on, a kill after commit but before draft creation/finalize can
      duplicate the *Outlook draft* on retry-adjacent paths, never the DB quote.
    - Any engine step with irreversible external effects (auto-send, order
