@@ -2,23 +2,92 @@
   <h2 style="margin-top:0;">Trust Ramp</h2>
   <p class="form-help">
     The engine scores every quote and, at Tier 1, <strong>recommends</strong> high-confidence
-    ones for send. Every send is still clicked by a person. Tier 0 is the kill-switch:
-    recommendations are suspended and everything is fully manual. Auto-send tiers (2-3)
-    arrive in a later stage and will read this same setting.
+    ones for send. At Tier 2 it <strong>auto-sends the safe slice</strong>: quotes passing every
+    guardrail (all lines priced, known customer, confirmed ship-to, price in tolerance,
+    allowlisted recipient, above the auto-send threshold, under the dollar ceiling, no holds)
+    go out automatically; everything else falls to a human. Tier 0 is the kill-switch, and
+    dropping from Tier 2 to 0 or 1 stops all auto-sends immediately.
   </p>
 
   <form method="post" action="/admin/trust-ramp/tier"
         style="display:flex;gap:0.6rem;align-items:end;flex-wrap:wrap;">
-    <label style="max-width:280px;">
+    <label style="max-width:340px;">
       Active tier
       <select name="active_tier">
         <option value="0" {% if trust_ramp.active_tier == 0 %}selected{% endif %}>Tier 0 — kill-switch (fully manual)</option>
         <option value="1" {% if trust_ramp.active_tier == 1 %}selected{% endif %}>Tier 1 — assisted (recommend-only)</option>
+        <option value="2" {% if trust_ramp.active_tier == 2 %}selected{% endif %}>Tier 2 — auto-send the safe slice</option>
       </select>
     </label>
     <button type="submit">Save Tier</button>
   </form>
+  {% if trust_ramp.active_tier == 2 %}
+  <p class="form-help" style="color:#b91c1c;margin-top:0.5rem;">
+    <strong>Tier 2 is live:</strong> eligible quotes send to customers without a human click.
+    Setting the tier back to 0 or 1 stops that instantly.
+  </p>
+  {% endif %}
 </div>
+
+<div class="panel">
+  <h3 style="margin-top:0;">Auto-send dials (Tier 2)</h3>
+  <p class="form-help">
+    Current live values — these gate every auto-send and are recorded in its audit entry.
+    A quote must score at or above the threshold, total at or under the ceiling, and price
+    within the tolerance of history to auto-send.
+  </p>
+  <form method="post" action="/admin/trust-ramp/dials"
+        style="display:flex;gap:0.6rem;align-items:end;flex-wrap:wrap;">
+    <label style="max-width:200px;">
+      Confidence threshold (0-1)
+      <input type="number" name="auto_send_threshold" step="0.01" min="0.01" max="1"
+             value="{{ '%.2f' | format(trust_ramp.auto_send_threshold) }}">
+    </label>
+    <label style="max-width:200px;">
+      Dollar ceiling ($)
+      <input type="number" name="auto_send_dollar_ceiling" step="0.01" min="0.01"
+             value="{{ '%.2f' | format(trust_ramp.auto_send_dollar_ceiling) }}">
+    </label>
+    <label style="max-width:200px;">
+      Price tolerance (fraction)
+      <input type="number" name="price_tolerance_pct" step="0.01" min="0.01" max="1"
+             value="{{ '%.2f' | format(trust_ramp.price_tolerance_pct) }}">
+    </label>
+    <button type="submit">Save Dials</button>
+  </form>
+</div>
+
+{% if auto_send_claims %}
+<div class="panel">
+  <h3 style="margin-top:0;">Recent auto-send activity</h3>
+  <p class="form-help">
+    One claim per quote, ever — a quote whose auto-send was blocked or failed never
+    auto-retries; it falls to the human path. A claim stuck at
+    <strong>claimed</strong> means the process stopped between the claim and the send:
+    the customer email did NOT go out and the quote needs a manual send.
+  </p>
+  <table>
+    <thead>
+      <tr><th>Quote</th><th>Status</th><th>Detail</th><th>When (UTC)</th></tr>
+    </thead>
+    <tbody>
+      {% for claim in auto_send_claims %}
+      <tr>
+        <td><a href="/quotes/{{ claim.quote_id }}">{{ claim.quote.quote_number if claim.quote else claim.quote_id }}</a></td>
+        <td>
+          {% if claim.status == 'sent' %}<span style="color:#166534;font-weight:600;">sent</span>
+          {% elif claim.status == 'claimed' %}<span style="color:#b91c1c;font-weight:700;">&#9888; claimed — send never completed</span>
+          {% elif claim.status == 'failed' %}<span style="color:#b91c1c;font-weight:600;">failed</span>
+          {% else %}<span style="color:#92400e;font-weight:600;">blocked</span>{% endif %}
+        </td>
+        <td style="max-width:420px;">{{ claim.error or "—" }}</td>
+        <td>{{ claim.updated_at.strftime("%Y-%m-%d %H:%M") }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
 
 <div class="panel">
   <h3 style="margin-top:0;">Send holds</h3>

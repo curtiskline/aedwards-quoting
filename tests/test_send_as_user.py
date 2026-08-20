@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from unittest.mock import MagicMock, patch
 
 from app import create_app
@@ -76,6 +77,9 @@ def _make_app(db_url):
     app = create_app()
     app.config["SQLALCHEMY_DATABASE_URI"] = db_url
     app.config["TESTING"] = True
+    # Isolate the archive dir per test: every test here sends quote 126-400
+    # v1, and the shared instance/ dir makes the hard-link publish collide.
+    app.config["QUOTE_ARTIFACT_DIR"] = tempfile.mkdtemp(prefix="quote-versions-")
     return app
 
 

@@ -123,7 +123,7 @@
         <option value="confidence" {% if sort == "confidence" %}selected{% endif %}>Recommended / confidence first</option>
       </select>
     </label>
-    <span class="tier-note">Trust ramp: Tier {{ active_tier }}{% if active_tier == 0 %} (kill-switch — all recommendations suspended){% else %} (assisted — every send stays human-clicked){% endif %}</span>
+    <span class="tier-note">Trust ramp: Tier {{ active_tier }}{% if active_tier == 0 %} (kill-switch — all recommendations suspended){% elif active_tier >= 2 %} (auto-send — threshold {{ (auto_send_dials.threshold * 100) | round | int }}%, ceiling ${{ '%.2f' | format(auto_send_dials.dollar_ceiling) }}, tolerance &plusmn;{{ (auto_send_dials.tolerance_pct * 100) | round | int }}%){% else %} (assisted — every send stays human-clicked){% endif %}</span>
   </div>
 
   <input type="search" name="q" value="{{ search }}" placeholder="Search by customer or quote number..."

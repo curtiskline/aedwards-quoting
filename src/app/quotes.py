@@ -13,11 +13,14 @@ from .confidence import (
     SIGNAL_LABELS,
     active_send_holds,
     active_trust_tier,
+    auto_send_dollar_ceiling,
+    auto_send_threshold,
+    price_tolerance_pct,
     quote_recommendation,
     sync_quote_confidence,
 )
 from .extensions import db
-from .models import AuditLog, Quote, QuoteStatus, User
+from .models import AuditLog, AutoSendClaim, Quote, QuoteStatus, User
 from .quote_numbers import generate_quote_number
 
 quotes_bp = Blueprint("quotes", __name__, url_prefix="/quotes")
@@ -70,8 +73,15 @@ def _enrich_quotes(quotes: list[Quote]) -> list[dict]:
     now = datetime.utcnow()
     holds = active_send_holds()
     tier = active_trust_tier()
+    claims_by_quote = {
+        c.quote_id: c
+        for c in db.session.query(AutoSendClaim)
+        .filter(AutoSendClaim.quote_id.in_([q.id for q in quotes]))
+        .all()
+    } if quotes else {}
     results = []
     for q in quotes:
+        claim = claims_by_quote.get(q.id)
         recommendation = quote_recommendation(q, holds=holds, tier=tier)
         confidence = q.confidence
         signals = [
@@ -122,6 +132,10 @@ def _enrich_quotes(quotes: list[Quote]) -> list[dict]:
                 round(recommendation["score"] * 100) if recommendation["score"] is not None else None
             ),
             "signals": signals,
+            # CP-2c: an auto-send claim whose send never completed (or
+            # failed) must be visibly surfaced, never silently stuck.
+            "auto_send_status": claim.status if claim else None,
+            "auto_send_needs_attention": claim.status in ("claimed", "failed") if claim else False,
         })
     return results
 
@@ -187,6 +201,12 @@ def queue():
         rec_filter=rec_filter,
         sort=sort,
         active_tier=active_trust_tier(),
+        # CP-2c: the dashboard surfaces the live dial values (design §4).
+        auto_send_dials={
+            "threshold": auto_send_threshold(),
+            "dollar_ceiling": auto_send_dollar_ceiling(),
+            "tolerance_pct": price_tolerance_pct(),
+        },
     )
 
 

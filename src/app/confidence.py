@@ -234,14 +234,35 @@ def _signal_ship_to_confirmed(quote: Quote) -> tuple[str, dict]:
     return FAIL, {"reason": "no stored customer address matches the quote ship-to"}
 
 
-def _price_tolerance_pct() -> float:
-    raw = os.getenv("CONFIDENCE_PRICE_TOLERANCE_PCT", "").strip()
+def _dial_value(column: str, env_var: str, default: float) -> float:
+    """Resolve an admin dial: stored config value, else env, else default.
+
+    The admin-set value (CP-2c) wins whenever the trust-ramp row carries one;
+    NULL columns fall back to the environment override, then the code default,
+    which keeps pre-dial deployments behaving exactly as before.
+    """
+    cfg = db.session.get(TrustRampConfig, 1)
+    stored = getattr(cfg, column, None) if cfg is not None else None
+    if stored is not None:
+        return float(stored)
+    raw = os.getenv(env_var, "").strip()
     if raw:
         try:
             return float(raw)
         except ValueError:
             pass
-    return DEFAULT_PRICE_TOLERANCE_PCT
+    return default
+
+
+def _price_tolerance_pct() -> float:
+    return _dial_value(
+        "price_tolerance_pct", "CONFIDENCE_PRICE_TOLERANCE_PCT", DEFAULT_PRICE_TOLERANCE_PCT
+    )
+
+
+def price_tolerance_pct() -> float:
+    """Public reader for the admin dashboard (CP-2c dial display)."""
+    return _price_tolerance_pct()
 
 
 def _revision_chain_quote_ids(quote: Quote) -> set[int]:
@@ -585,4 +606,117 @@ def quote_recommendation(
         "scored": confidence is not None,
         "reasons": reasons,
         "holds": matched_holds,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Tier-2 auto-send gate (CP-2c).
+#
+# auto_send_evaluation is THE eligibility rule for auto-send. It builds on
+# quote_recommendation (so display and enforcement share one recommend rule)
+# and then applies the stricter Tier-2 requirements from design §4. The send
+# machinery itself (send_service) re-enforces the delivery gate and
+# allowlist — eligibility here is necessary, never sufficient.
+# ---------------------------------------------------------------------------
+
+# Conservative defaults, admin-editable on trust_ramp_config (NULL = fall
+# back to env, then these values).
+DEFAULT_AUTO_SEND_THRESHOLD = 0.95
+DEFAULT_AUTO_SEND_DOLLAR_CEILING = 2500.0
+
+AUTO_SEND_TIER = 2
+
+# Signals that must PASS outright for auto-send — unknown is NOT eligible
+# (design §4: unknown-history pricing, unconfirmed ship-to, or a new customer
+# all fall to the human).
+AUTO_SEND_REQUIRED_SIGNALS = (
+    "all_lines_priced",
+    "recipient_allowlisted",
+    "customer_known",
+    "ship_to_confirmed",
+    "price_in_tolerance",
+)
+
+
+def auto_send_threshold() -> float:
+    return _dial_value("auto_send_threshold", "AUTO_SEND_THRESHOLD", DEFAULT_AUTO_SEND_THRESHOLD)
+
+
+def auto_send_dollar_ceiling() -> float:
+    return _dial_value(
+        "auto_send_dollar_ceiling", "AUTO_SEND_DOLLAR_CEILING", DEFAULT_AUTO_SEND_DOLLAR_CEILING
+    )
+
+
+def quote_grand_total(quote: Quote) -> Decimal:
+    """Product + shipping + tax. Shipping is a line item, so summing every
+    line_total and adding tax_amount matches the editor's grand total."""
+    total = Decimal("0")
+    for item in quote.line_items:
+        if item.product_type == "note":
+            continue
+        total += Decimal(str(item.line_total or 0))
+    total += Decimal(str(quote.tax_amount or 0))
+    return total.quantize(Decimal("0.01"))
+
+
+def auto_send_evaluation(quote: Quote) -> dict:
+    """Evaluate every Tier-2 auto-send guardrail for one quote.
+
+    Eligible iff ALL of:
+      - the trust ramp is at Tier 2 (read live: dropping to 0/1 is the
+        kill-switch and stops auto-sends immediately),
+      - the Tier-1 recommend rule passes in full (no failing signal,
+        guardrail signals pass, score >= recommend threshold, no holds,
+        sendable status),
+      - every AUTO_SEND_REQUIRED_SIGNAL is PASS — never unknown: no price
+        history, no confirmed ship-to, or a new customer is NOT eligible,
+      - the composite score >= the (stricter) auto-send threshold,
+      - the quote grand total is within the dollar ceiling.
+
+    Returns a dict with "eligible", "reasons", and the full basis snapshot
+    (score, thresholds, ceiling, total, signal statuses) for the audit log.
+    """
+    tier = active_trust_tier()
+    confidence = quote.confidence
+    recommendation = quote_recommendation(quote, confidence=confidence, tier=tier)
+
+    reasons: list[str] = []
+    if tier != AUTO_SEND_TIER:
+        reasons.append(f"trust ramp is at Tier {tier}: auto-send requires Tier {AUTO_SEND_TIER}")
+    reasons.extend(recommendation["reasons"])
+
+    statuses: dict[str, str] = {}
+    if confidence is not None:
+        statuses = {name: getattr(confidence, name) for name in SIGNAL_WEIGHTS}
+        for name in AUTO_SEND_REQUIRED_SIGNALS:
+            if statuses[name] != PASS:
+                reasons.append(
+                    f"auto-send requires {SIGNAL_LABELS[name]} to pass, is {statuses[name]}"
+                )
+
+    threshold = auto_send_threshold()
+    score = float(confidence.score) if confidence is not None else None
+    if score is not None and score < threshold:
+        reasons.append(f"score {score:.2f} is below the {threshold:.2f} auto-send threshold")
+
+    ceiling = auto_send_dollar_ceiling()
+    total = float(quote_grand_total(quote))
+    if total > ceiling:
+        reasons.append(f"quote total ${total:,.2f} exceeds the ${ceiling:,.2f} auto-send ceiling")
+    if total <= 0:
+        reasons.append("quote total is $0 — never auto-sendable")
+
+    return {
+        "eligible": not reasons,
+        "reasons": reasons,
+        "tier": tier,
+        "score": score,
+        "auto_send_threshold": threshold,
+        "recommend_threshold": recommendation["threshold"],
+        "dollar_ceiling": ceiling,
+        "quote_total": total,
+        "price_tolerance_pct": _price_tolerance_pct(),
+        "signals": statuses,
+        "holds": recommendation["holds"],
     }

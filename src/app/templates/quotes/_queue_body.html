@@ -13,6 +13,12 @@
           {% elif q.recommendation_reasons %}
           <span class="rec-pill rec-no" title="{{ q.recommendation_reasons | join('; ') }}">Not recommended</span>
           {% endif %}
+          {% if q.auto_send_needs_attention %}
+          <span class="rec-pill" style="background:#fef2f2;color:#b91c1c;border:1px solid #fca5a5;"
+                title="An auto-send attempt did not complete — the customer email did NOT go out. Open the quote for details.">&#9888; Auto-send needs attention</span>
+          {% elif q.auto_send_status == 'sent' %}
+          <span class="rec-pill" style="background:#f0fdf4;color:#166534;" title="Sent automatically by the engine at Tier 2.">Auto-sent</span>
+          {% endif %}
           {% if q.lock_active and q.reviewer_name %}
           <span class="reviewer-tag">{{ q.reviewer_name }}</span>
           {% endif %}

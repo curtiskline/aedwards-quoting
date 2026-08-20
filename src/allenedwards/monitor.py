@@ -269,17 +269,25 @@ class InboxMonitor:
             quotes.append((rfq, generate_quote(rfq, quote_number), quote_number))
 
         # --- DB write path ---
+        auto_sent_numbers: set[str] = set()
         if self.enable_db_writes:
             from .db_writer import InboundEmailAlreadyProcessed
 
             try:
-                self._write_to_db(msg, quotes, attachments)
+                auto_sent_numbers = self._write_to_db(msg, quotes, attachments)
             except InboundEmailAlreadyProcessed:
                 logger.warning("Skipping replayed message %s with an existing DB claim", msg.id)
                 self._finalize_message(msg.id)
                 return False
 
         for rfq, quote, _quote_number in quotes:
+            # CP-2c: a quote the engine just auto-sent must not also get a
+            # review draft — the customer email already went out.
+            if _quote_number in auto_sent_numbers:
+                logger.info(
+                    "Quote %s auto-sent at Tier 2; skipping review draft", _quote_number
+                )
+                continue
             # --- Outlook draft path ---
             if self.enable_outlook_drafts:
                 if not hasattr(self.email_client, "create_draft"):
@@ -323,8 +331,12 @@ class InboxMonitor:
         msg: EmailMessage,
         quotes: list[tuple[ParsedRFQ, Quote, str]],
         attachments: list[OutlookAttachment],
-    ) -> None:
-        """Atomically claim one message and write all of its quotes."""
+    ) -> set[str]:
+        """Atomically claim one message and write all of its quotes.
+
+        Returns the quote numbers that were auto-sent (CP-2c Tier 2) so the
+        caller can skip creating review drafts for them.
+        """
         from app.extensions import db
         from .db_writer import write_quote_to_db
 
@@ -332,16 +344,19 @@ class InboxMonitor:
             raise RuntimeError("DB writes enabled but no Flask app provided")
 
         with self._flask_app.app_context():
+            written = []
             try:
                 for index, (rfq, quote, quote_number) in enumerate(quotes):
-                    write_quote_to_db(
-                        msg,
-                        rfq,
-                        quote,
-                        quote_number,
-                        attachments=attachments,
-                        claim_source_email=index == 0 and bool(msg.id),
-                        commit=False,
+                    written.append(
+                        write_quote_to_db(
+                            msg,
+                            rfq,
+                            quote,
+                            quote_number,
+                            attachments=attachments,
+                            claim_source_email=index == 0 and bool(msg.id),
+                            commit=False,
+                        )
                     )
                 db.session.commit()
             except IntegrityError as error:
@@ -364,6 +379,19 @@ class InboxMonitor:
             except Exception:
                 db.session.rollback()
                 raise
+
+            # CP-2c: attempt Tier-2 auto-send AFTER the quote transaction has
+            # committed. maybe_auto_send never raises into the intake flow and
+            # is a no-op below Tier 2; its claim-before-send pattern keeps a
+            # crash here from ever double-sending.
+            from app.send_service import maybe_auto_send
+
+            auto_sent: set[str] = set()
+            for db_quote in written:
+                result = maybe_auto_send(db_quote)
+                if result and result.get("sent"):
+                    auto_sent.add(db_quote.quote_number)
+            return auto_sent
 
     def _has_source_email_claim(self, message_id: str) -> bool:
         """Whether a state-file entry has a matching committed DB claim."""

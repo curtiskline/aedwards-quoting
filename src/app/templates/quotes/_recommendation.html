@@ -19,9 +19,38 @@
   <p class="form-help">
     Trust ramp: Tier {{ recommendation.tier }}
     {%- if recommendation.tier == 0 %} (kill-switch — recommendations suspended)
+    {%- elif recommendation.tier >= 2 %} (auto-send). Quotes passing every Tier-2 guardrail send automatically; everything else falls to a human.
     {%- else %} (assisted). The engine only recommends; a human clicks every send.
     {%- endif %}
   </p>
+
+  {% if auto_send_claim %}
+    {% if auto_send_claim.status == 'claimed' %}
+    <div style="border:1px solid #fca5a5;background:#fef2f2;border-radius:8px;padding:0.6rem 0.8rem;font-size:0.85rem;" id="auto-send-claim-banner">
+      <strong>&#9888; Auto-send interrupted — NEEDS ATTENTION.</strong>
+      The engine claimed this quote for auto-send at {{ auto_send_claim.created_at.strftime("%Y-%m-%d %H:%M") }} UTC
+      but the send never completed (the process stopped between the claim and the email).
+      <strong>The customer email did NOT go out.</strong> Review the quote and send it manually below;
+      auto-send will never retry this quote.
+    </div>
+    {% elif auto_send_claim.status == 'failed' %}
+    <div style="border:1px solid #fca5a5;background:#fef2f2;border-radius:8px;padding:0.6rem 0.8rem;font-size:0.85rem;" id="auto-send-claim-banner">
+      <strong>&#9888; Auto-send failed.</strong>
+      {{ auto_send_claim.error or "The external send raised an error." }}
+      The customer email did not go out; send manually below. Auto-send will not retry.
+    </div>
+    {% elif auto_send_claim.status == 'blocked' %}
+    <div style="border:1px solid #fde68a;background:#fffbeb;border-radius:8px;padding:0.6rem 0.8rem;font-size:0.85rem;" id="auto-send-claim-banner">
+      <strong>Auto-send blocked by a send gate:</strong> {{ auto_send_claim.error }}
+      This quote now always falls to the human path.
+    </div>
+    {% elif auto_send_claim.status == 'sent' %}
+    <div style="border:1px solid #bbf7d0;background:#f0fdf4;border-radius:8px;padding:0.6rem 0.8rem;font-size:0.85rem;" id="auto-send-claim-banner">
+      <strong>&#10003; Auto-sent</strong> at {{ auto_send_claim.updated_at.strftime("%Y-%m-%d %H:%M") }} UTC.
+      The full decision basis is in the audit log.
+    </div>
+    {% endif %}
+  {% endif %}
 
   {% if not recommendation.recommended and recommendation.reasons %}
   <div style="border:1px solid #fde68a;background:#fffbeb;border-radius:8px;padding:0.6rem 0.8rem;">

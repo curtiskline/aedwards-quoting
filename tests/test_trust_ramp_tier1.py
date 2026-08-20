@@ -442,7 +442,10 @@ def test_admin_set_tier_zero_and_back(app, client):
 
 
 def test_admin_rejects_unknown_tier(app, client):
-    client.post("/admin/trust-ramp/tier", data={"active_tier": "2"}, follow_redirects=True)
+    # Tier 2 became valid with CP-2c; Tier 3 does not exist yet.
+    client.post("/admin/trust-ramp/tier", data={"active_tier": "3"}, follow_redirects=True)
+    assert _db.session.get(TrustRampConfig, 1).active_tier == 1
+    client.post("/admin/trust-ramp/tier", data={"active_tier": "banana"}, follow_redirects=True)
     assert _db.session.get(TrustRampConfig, 1).active_tier == 1
 
 

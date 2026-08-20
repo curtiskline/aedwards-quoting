@@ -235,18 +235,64 @@ class TrustRampConfig(db.Model):
     """Single-row global trust-ramp state (design §4).
 
     active_tier is the kill-switch dial: 0 = fully manual, 1 = assisted
-    (recommend-only, CP-2b's tier and the default). Tiers 2-3 arrive with
-    CP-2c, which will READ this value to gate auto-send; in CP-2b it only
-    controls whether recommendations are displayed.
+    (recommend-only), 2 = auto-send the safe slice (CP-2c). Setting the tier
+    back to 0/1 stops all auto-sends immediately — the auto-send gate reads
+    this value live on every attempt. The three dial columns are the CP-2c
+    admin-configurable knobs; NULL means "use the environment/default value"
+    (confidence.py owns the fallback chain).
     """
 
     __tablename__ = "trust_ramp_config"
 
     id: Mapped[int] = mapped_column(primary_key=True)
     active_tier: Mapped[int] = mapped_column(default=1, nullable=False)
+    # Minimum composite confidence score for Tier-2 auto-send (0-1).
+    auto_send_threshold: Mapped[float | None] = mapped_column(Numeric(4, 3), nullable=True)
+    # Maximum quote grand total (product + shipping + tax) that may auto-send.
+    auto_send_dollar_ceiling: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    # price_in_tolerance signal tolerance as a fraction (0.20 = ±20%).
+    price_tolerance_pct: Mapped[float | None] = mapped_column(Numeric(5, 4), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
     )
+
+
+class AutoSendClaim(TimestampMixin, db.Model):
+    """Durable idempotency claim for Tier-2 auto-send (hazard §12.1).
+
+    Auto-send is an irreversible external action, so the claim row is
+    committed atomically with the QuoteVersion BEFORE the external send: a
+    crash or replay after that commit finds the claim and never sends twice.
+    One claim per quote, ever — any auto-send attempt (blocked, failed, or
+    sent) consumes the quote's single auto-send chance and every later
+    outcome falls to the human path, which never reads this table.
+
+    status: "claimed"  — committed pre-send; a row stuck here means the
+                          process died between claim-commit and the send
+                          (email did NOT go out; human resolves).
+            "blocked"  — a send gate refused before any external attempt
+                          (delivery disabled, allowlist, credentials).
+            "failed"   — the external send itself raised.
+            "sent"     — delivered; the quote is SENT with a QuoteVersion.
+    """
+
+    __tablename__ = "auto_send_claim"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    quote_id: Mapped[int] = mapped_column(
+        ForeignKey("quote.id"), nullable=False, unique=True, index=True
+    )
+    status: Mapped[str] = mapped_column(nullable=False, default="claimed")
+    updated_at: Mapped[datetime] = mapped_column(
+        default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
+    error: Mapped[str | None] = mapped_column(Text)
+    quote_version_id: Mapped[int | None] = mapped_column(
+        ForeignKey("quote_version.id"), nullable=True
+    )
+
+    quote: Mapped[Quote] = relationship()
+    quote_version: Mapped["QuoteVersion | None"] = relationship()
 
 
 class ProcessedInboundEmail(TimestampMixin, db.Model):

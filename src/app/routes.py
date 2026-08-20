@@ -55,9 +55,12 @@ from allenedwards.pricing import Quote as PricingQuote
 from allenedwards.pricing import QuoteLineItem as PricingLineItem
 from allenedwards.ship_to import SHIP_TO_KEYS, is_domestic_ship_to, normalize_ship_to
 
+from . import send_service
 from .confidence import (
     SIGNAL_LABELS,
     active_trust_tier,
+    auto_send_dollar_ceiling,
+    auto_send_threshold,
     get_trust_ramp_config,
     line_item_has_tbd_marker,
     line_item_is_manual_no_charge,
@@ -69,6 +72,7 @@ from .confidence import (
 from .extensions import db
 from .models import (
     AuditLog,
+    AutoSendClaim,
     Contact,
     Customer,
     PricingTable,
@@ -1223,6 +1227,7 @@ def _quote_context(quote: Quote) -> dict:
         "revision_chain": _revision_chain(quote),
         "recommendation": quote_recommendation(quote),
         "confidence_signal_rows": _confidence_signal_rows(quote),
+        "auto_send_claim": send_service.get_auto_send_claim(quote),
     }
 
 
@@ -1490,6 +1495,15 @@ def _sync_quote_pricing_status(quote: Quote) -> bool:
     return sync_quote_confidence(quote)
 
 
+def _attempt_auto_send(quote: Quote) -> None:
+    """CP-2c Tier-2 hook, called AFTER a recompute's commit on POST edit
+    routes. Deliberately NOT called from GET views (viewing a quote must
+    never send it) nor at revise/duplicate creation (those start a human
+    editing workflow). No-op below Tier 2; never raises.
+    """
+    send_service.maybe_auto_send(quote)
+
+
 def _product_types_admin_data(just_saved: bool = False) -> dict:
     rows = _all_product_types()
     return {"product_types": rows, "types_just_saved": just_saved}
@@ -1751,6 +1765,7 @@ def quote_update_customer(quote_id: int):
     _apply_auto_shipping_line_item(quote)
     sync_quote_confidence(quote)
     db.session.commit()
+    _attempt_auto_send(quote)
     return _render_customer_info(quote)
 
 
@@ -1771,6 +1786,7 @@ def quote_confirm_ship_to(quote_id: int):
     _apply_auto_shipping_line_item(quote)
     sync_quote_confidence(quote)
     db.session.commit()
+    _attempt_auto_send(quote)
     return _render_customer_info(quote)
 
 
@@ -1795,6 +1811,7 @@ def quote_update_status(quote_id: int):
         quote.reviewed_by = None
         quote.review_started_at = None
     db.session.commit()
+    _attempt_auto_send(quote)
     return _render_status_bar(quote)
 
 
@@ -1888,6 +1905,7 @@ def quote_update_totals(quote_id: int):
 
     _sync_quote_pricing_status(quote)
     db.session.commit()
+    _attempt_auto_send(quote)
     return _render_line_items(quote)
 
 
@@ -1933,6 +1951,7 @@ def quote_add_line_item(quote_id: int):
     _apply_auto_shipping_line_item(quote)
     _sync_quote_pricing_status(quote)
     db.session.commit()
+    _attempt_auto_send(quote)
     return _render_line_items(quote)
 
 
@@ -2164,6 +2183,7 @@ def quote_update_line_item(quote_id: int, item_id: int):
     _sync_quote_pricing_status(quote)
 
     db.session.commit()
+    _attempt_auto_send(quote)
     return _render_line_items(quote)
 
 
@@ -2230,6 +2250,7 @@ def quote_delete_line_item(quote_id: int, item_id: int):
     _apply_auto_shipping_line_item(quote)
     _sync_quote_pricing_status(quote)
     db.session.commit()
+    _attempt_auto_send(quote)
     return _render_line_items(quote)
 
 
@@ -2279,12 +2300,26 @@ def pricing_admin():
 
 
 def _trust_ramp_admin_data() -> dict:
+    from .confidence import price_tolerance_pct
+
     holds = (
         db.session.query(SendHold).order_by(SendHold.created_at, SendHold.id).all()
     )
+    claims = (
+        db.session.query(AutoSendClaim)
+        .order_by(AutoSendClaim.created_at.desc(), AutoSendClaim.id.desc())
+        .limit(50)
+        .all()
+    )
     return {
-        "trust_ramp": {"active_tier": active_trust_tier()},
+        "trust_ramp": {
+            "active_tier": active_trust_tier(),
+            "auto_send_threshold": auto_send_threshold(),
+            "auto_send_dollar_ceiling": auto_send_dollar_ceiling(),
+            "price_tolerance_pct": price_tolerance_pct(),
+        },
         "send_holds": holds,
+        "auto_send_claims": claims,
         "hold_customer_choices": (
             db.session.query(Customer).order_by(Customer.company_name).all()
         ),
@@ -2297,14 +2332,43 @@ def _trust_ramp_admin_data() -> dict:
 def update_trust_ramp_tier():
     cfg = get_trust_ramp_config()
     raw = (request.form.get("active_tier") or "").strip()
-    # Only Tier 0 (kill-switch) and Tier 1 (assisted) exist in CP-2b; the
-    # auto-send tiers arrive with CP-2c, which reads this same setting.
-    if raw not in {"0", "1"}:
-        flash("Tier must be 0 (kill-switch, fully manual) or 1 (assisted).", "error")
+    # Tier 3 does not exist yet. Tier 2 (auto-send) is deliberately NOT
+    # enabled anywhere by default — flipping it in prod is a Devin/Chip
+    # decision with signed-off thresholds (DECISIONS-NEEDED #3).
+    if raw not in {"0", "1", "2"}:
+        flash(
+            "Tier must be 0 (kill-switch, fully manual), 1 (assisted) or 2 (auto-send).",
+            "error",
+        )
         return redirect(url_for("main.pricing_admin", tab="trust"))
     cfg.active_tier = int(raw)
     db.session.commit()
     flash(f"Trust ramp set to Tier {cfg.active_tier}.", "success")
+    return redirect(url_for("main.pricing_admin", tab="trust"))
+
+
+@main_bp.post("/admin/trust-ramp/dials")
+@login_required
+def update_trust_ramp_dials():
+    """Save the Tier-2 dials: auto-send threshold, dollar ceiling, tolerance."""
+    cfg = get_trust_ramp_config()
+    threshold = _parse_decimal(request.form.get("auto_send_threshold"), None)
+    ceiling = _parse_decimal(request.form.get("auto_send_dollar_ceiling"), None)
+    tolerance = _parse_decimal(request.form.get("price_tolerance_pct"), None)
+    if threshold is None or not (Decimal("0") < threshold <= Decimal("1")):
+        flash("Auto-send threshold must be between 0 and 1 (e.g. 0.95).", "error")
+        return redirect(url_for("main.pricing_admin", tab="trust"))
+    if ceiling is None or ceiling <= 0:
+        flash("Dollar ceiling must be a positive amount.", "error")
+        return redirect(url_for("main.pricing_admin", tab="trust"))
+    if tolerance is None or not (Decimal("0") < tolerance <= Decimal("1")):
+        flash("Price tolerance must be a fraction between 0 and 1 (e.g. 0.20 = ±20%).", "error")
+        return redirect(url_for("main.pricing_admin", tab="trust"))
+    cfg.auto_send_threshold = float(threshold)
+    cfg.auto_send_dollar_ceiling = float(ceiling)
+    cfg.price_tolerance_pct = float(tolerance)
+    db.session.commit()
+    flash("Trust-ramp dials saved.", "success")
     return redirect(url_for("main.pricing_admin", tab="trust"))
 
 
@@ -2730,54 +2794,10 @@ def _generate_pdf_bytes(quote: Quote) -> tuple[bytes, str]:
     return pdf_bytes, filename
 
 
-def _quote_line_items_snapshot(quote: Quote) -> list[dict[str, object]]:
-    """Return JSON-safe, point-in-time copies of every priced line item."""
-    return [
-        {
-            "id": item.id,
-            "product_type": item.product_type,
-            "description": item.description,
-            "quantity": str(item.quantity),
-            "unit_price": str(item.unit_price),
-            "line_total": str(item.line_total),
-            # Includes all original dimensions and pricing basis fields, not
-            # only the subset currently rendered by the quote editor.
-            "specs_json": copy.deepcopy(item.specs_json),
-            "part_number": item.part_number,
-            "sort_order": item.sort_order,
-        }
-        for item in quote.line_items
-    ]
-
-
-def _archive_sent_quote_pdf(quote: Quote, version_number: int, pdf_bytes: bytes) -> str:
-    """Persist a send-time PDF outside the deploy-replaced source tree.
-
-    The hard-link publish makes the finished archive file exclusive: a
-    duplicate version number cannot silently overwrite an existing record.
-    """
-    artifact_dir = Path(current_app.config["QUOTE_ARTIFACT_DIR"]).expanduser().resolve()
-    artifact_dir.mkdir(parents=True, exist_ok=True)
-    safe_quote_number = re.sub(r"[^A-Za-z0-9._-]+", "_", quote.quote_number).strip("._")
-    archive_path = artifact_dir / f"quote-{safe_quote_number}-v{version_number}.pdf"
-
-    with tempfile.NamedTemporaryFile(
-        mode="wb", suffix=".pdf", prefix=".quote-version-", dir=artifact_dir, delete=False
-    ) as tmp:
-        tmp.write(pdf_bytes)
-        tmp.flush()
-        os.fsync(tmp.fileno())
-        temporary_path = Path(tmp.name)
-
-    try:
-        # link() fails if archive_path already exists, preserving the first
-        # immutable record rather than replacing it.
-        os.link(temporary_path, archive_path)
-        archive_path.chmod(0o444)
-    finally:
-        temporary_path.unlink(missing_ok=True)
-
-    return str(archive_path)
+# Send-time record helpers live in send_service (shared with auto-send);
+# these aliases keep existing call sites and tests stable.
+_quote_line_items_snapshot = send_service.quote_line_items_snapshot
+_archive_sent_quote_pdf = send_service.archive_sent_quote_pdf
 
 
 @main_bp.get("/quotes/<int:quote_id>/preview-pdf")
@@ -2819,22 +2839,18 @@ def quote_send(quote_id: int):
     quote = _get_active_quote_or_404(quote_id)
     user = _current_user()
 
-    from .email_service import email_delivery_enabled
-    if not email_delivery_enabled():
+    def _blocked(message: str):
         return render_template(
-            "quotes/_send_result.html",
-            success=False,
-            error="Email delivery is disabled in this environment.",
-            quote=quote,
+            "quotes/_send_result.html", success=False, error=message, quote=quote
         )
 
-    if _quote_needs_pricing(quote):
-        return render_template(
-            "quotes/_send_result.html",
-            success=False,
-            error="This quote needs pricing before it can be sent.",
-            quote=quote,
-        )
+    # Shared gates (send_service): delivery flag, pricing, allowlist — the
+    # same enforcement the auto-send path runs.
+    try:
+        send_service.ensure_delivery_enabled()
+        send_service.ensure_quote_priced(quote)
+    except send_service.SendBlocked as exc:
+        return _blocked(exc.message)
 
     to_email = (request.form.get("to_email") or "").strip()
     subject = (request.form.get("subject") or "").strip()
@@ -2843,70 +2859,28 @@ def quote_send(quote_id: int):
     if not to_email:
         abort(400, description="Recipient email is required")
 
-    # Allowlist check: if SEND_EMAIL_ALLOWLIST is set, only permit listed recipients
-    allowlist_raw = os.getenv("SEND_EMAIL_ALLOWLIST", "").strip()
-    if allowlist_raw:
-        allowed = {e.strip().lower() for e in allowlist_raw.split(",") if e.strip()}
-        if to_email.lower() not in allowed:
-            return render_template(
-                "quotes/_send_result.html",
-                success=False,
-                error=f"Recipient '{to_email}' is not in the allowed send list. Allowed: {', '.join(sorted(allowed))}",
-                quote=quote,
-            )
+    try:
+        send_service.ensure_recipient_allowed(to_email)
+    except send_service.SendBlocked as exc:
+        return _blocked(exc.message)
 
     if not subject:
-        subject = f"Quote {quote.quote_number} — Allan Edwards, Inc."
+        subject = send_service.default_quote_subject(quote)
 
     # Generate PDF
     pdf_bytes, filename = _generate_pdf_bytes(quote)
 
-    # Send via OutlookClient
-    from allenedwards.outlook import OutlookAuthError, OutlookClient
-
-    sender_email = os.getenv("O365_EMAIL")
-    sender_password = os.getenv("O365_PASSWORD")
-    client_id = os.getenv("O365_CLIENT_ID")
-    client_secret = os.getenv("O365_CLIENT_SECRET")
-    tenant_id = os.getenv("O365_TENANT_ID")
-    scopes_raw = os.getenv("O365_SCOPES", "")
-
-    if not sender_email or (not sender_password and not client_secret):
-        return render_template(
-            "quotes/_send_result.html",
-            success=False,
-            error="O365 credentials are not configured. Set O365_EMAIL and O365_PASSWORD or O365_CLIENT_SECRET.",
-            quote=quote,
-        )
+    from allenedwards.outlook import OutlookAuthError
 
     # Behind O365_SEND_AS_USER: send from the logged-in user's own mailbox so
     # customer replies reach their inbox; falls back to the shared sender.
-    from .email_service import resolve_quote_sender
-    send_from = resolve_quote_sender(
-        user.email if user else None, sender_email, client_secret
-    )
+    try:
+        client, send_from = send_service.resolve_sender_client(user.email if user else None)
+    except send_service.SendBlocked as exc:
+        return _blocked(exc.message)
 
-    scopes = [s.strip() for s in scopes_raw.split(",") if s.strip()] or None
-    client = OutlookClient(
-        email_address=send_from,
-        password=sender_password,
-        client_id=client_id,
-        scopes=scopes,
-        client_secret=client_secret,
-        tenant_id=tenant_id,
-    )
-
-    body_text = (
-        f"Please find attached quote {quote.quote_number} from Allan Edwards, Inc.\n\n"
-        f"If you have any questions, please don't hesitate to contact us.\n\n"
-        f"Thank you,\nAllan Edwards, Inc.\n(918) 583-7184\nwww.allanedwards.com"
-    )
-
-    enable_drafts = os.environ.get("ENABLE_OUTLOOK_DRAFTS", "true").lower() not in (
-        "0",
-        "false",
-        "no",
-    )
+    body_text = send_service.build_quote_email_body(quote)
+    enable_drafts = send_service.outlook_drafts_enabled()
 
     # Reserve both immutable records immediately before external delivery.  On
     # a send failure the just-created archive is removed below, so only
