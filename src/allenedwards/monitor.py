@@ -146,6 +146,18 @@ class InboxMonitor:
         self._mailbox_address = (mailbox_address or "").strip().lower() or None
         self._ack_skip_domains = {d.strip().lower() for d in (ack_skip_domains or []) if d.strip()}
         self._flask_app = flask_app
+        if not self.enable_db_writes and self.enable_outlook_drafts:
+            # Drafts-as-sole-sink: without DB writes there is no
+            # ProcessedInboundEmail claim, only the local state file dedups, and
+            # a kill between state.add and draft creation silently DROPS that
+            # draft (the claim check passes unconditionally in no-DB mode). The
+            # CP-1 idempotency gate requires ENABLE_DB_WRITES=true.
+            logger.warning(
+                "ENABLE_DB_WRITES is off while Outlook drafts are the only "
+                "output sink: message dedup relies solely on the local state "
+                "file, so a crash mid-message can drop a draft without retry. "
+                "The idempotency gate requires ENABLE_DB_WRITES=true."
+            )
 
     def _shutdown_signal(self, signum: int, _frame: Any) -> None:
         logger.info("Received signal %s; shutting down", signum)
