@@ -306,8 +306,9 @@ def test_queue_shows_recommendation_and_confidence(app, client):
     _scored(weak)
 
     page = client.get("/quotes/").get_data(as_text=True)
-    assert "Recommended" in page
-    assert "Not recommended" in page
+    # The class names, not the words: "Not recommended" contains "Recommended".
+    assert "rec-pill rec-yes" in page
+    assert "rec-pill rec-no" in page
     assert "100% confidence" in page
     assert "signal-dot signal-pass" in page
     assert "signal-dot signal-fail" in page
