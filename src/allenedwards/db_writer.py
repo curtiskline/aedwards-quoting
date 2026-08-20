@@ -17,6 +17,7 @@ from sqlalchemy.exc import IntegrityError
 import re
 from difflib import SequenceMatcher
 
+from app.confidence import sync_quote_confidence
 from app.extensions import db
 from app.models import (
     AuditLog,
@@ -456,6 +457,10 @@ def write_quote_to_db(
         },
     )
     db.session.add(audit)
+
+    # CP-2a: score the quote at creation, inside the same transaction as its
+    # rows (and the inbound-email claim) so a crash persists neither.
+    sync_quote_confidence(db_quote)
 
     if commit:
         db.session.commit()

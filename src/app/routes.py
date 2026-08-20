@@ -53,6 +53,13 @@ from allenedwards.pricing import Quote as PricingQuote
 from allenedwards.pricing import QuoteLineItem as PricingLineItem
 from allenedwards.ship_to import SHIP_TO_KEYS, is_domestic_ship_to, normalize_ship_to
 
+from .confidence import (
+    line_item_has_tbd_marker,
+    line_item_is_manual_no_charge,
+    quote_has_tbd_items,
+    quote_has_unpriced_items,
+    sync_quote_confidence,
+)
 from .extensions import db
 from .models import (
     AuditLog,
@@ -1421,35 +1428,12 @@ def _render_line_items(quote: Quote):
     return render_template("quotes/_line_items.html", **_quote_context(quote))
 
 
-def _line_item_is_manual_no_charge(item: QuoteLineItem) -> bool:
-    """Return whether an editor user deliberately made this non-shipping line free."""
-    return item.product_type not in {"note", "shipping"} and bool(
-        dict(item.specs_json or {}).get("manual_no_charge")
-    )
-
-
-def _quote_has_unpriced_items(quote: Quote) -> bool:
-    for item in quote.line_items:
-        if item.product_type == "note" or _line_item_is_manual_no_charge(item):
-            continue
-        if Decimal(str(item.unit_price)) <= 0 or Decimal(str(item.line_total)) <= 0:
-            return True
-    return False
-
-
-def _quote_has_tbd_items(quote: Quote) -> bool:
-    """Return whether a material line still contains an explicit TBD marker."""
-    for item in quote.line_items:
-        if item.product_type == "note":
-            continue
-        if _line_item_has_tbd_marker(item):
-            return True
-    return False
-
-
-def _line_item_has_tbd_marker(item: QuoteLineItem) -> bool:
-    values = (item.part_number, item.description)
-    return any("tbd" in str(value or "").lower() for value in values)
+# Pricing-completeness helpers live in app.confidence (single source of truth
+# for both the status sync below and the confidence signals).
+_line_item_is_manual_no_charge = line_item_is_manual_no_charge
+_quote_has_unpriced_items = quote_has_unpriced_items
+_quote_has_tbd_items = quote_has_tbd_items
+_line_item_has_tbd_marker = line_item_has_tbd_marker
 
 
 def _quote_needs_pricing(quote: Quote) -> bool:
@@ -1461,11 +1445,17 @@ def _quote_needs_pricing(quote: Quote) -> bool:
     )
 
 
-def _sync_quote_pricing_status(quote: Quote) -> None:
+def _sync_quote_pricing_status(quote: Quote) -> bool:
+    """Sync pricing-driven status, then recompute the quote's confidence row.
+
+    Returns whether the stored confidence changed, so read-only callers
+    (the detail view) know they need to commit.
+    """
     if _quote_has_unpriced_items(quote) or _quote_has_tbd_items(quote):
         quote.status = QuoteStatus.NEEDS_PRICING
     elif quote.status == QuoteStatus.NEEDS_PRICING:
         quote.status = QuoteStatus.IN_REVIEW
+    return sync_quote_confidence(quote)
 
 
 def _product_types_admin_data(just_saved: bool = False) -> dict:
@@ -1478,7 +1468,8 @@ def quote_detail(quote_id: int):
     quote = _get_active_quote_or_404(quote_id)
     needs_commit = _hydrate_quote_ship_to_from_customer(quote)
     prior_status = quote.status
-    _sync_quote_pricing_status(quote)
+    if _sync_quote_pricing_status(quote):
+        needs_commit = True
     if quote.status != prior_status:
         needs_commit = True
     user = _current_user()
@@ -1599,6 +1590,7 @@ def quote_revise(quote_id: int):
 
     for item in _sorted_line_items(source):
         db.session.add(_copy_line_item(item, new_quote.id))
+    sync_quote_confidence(new_quote)
 
     source.status = QuoteStatus.REPLACED
     source.reviewed_by = None
@@ -1725,6 +1717,7 @@ def quote_update_customer(quote_id: int):
     quote = _get_active_quote_or_404(quote_id)
     _update_quote_customer_from_request(quote)
     _apply_auto_shipping_line_item(quote)
+    sync_quote_confidence(quote)
     db.session.commit()
     return _render_customer_info(quote)
 
@@ -1744,6 +1737,7 @@ def quote_confirm_ship_to(quote_id: int):
 
     address.human_confirmed = True
     _apply_auto_shipping_line_item(quote)
+    sync_quote_confidence(quote)
     db.session.commit()
     return _render_customer_info(quote)
 

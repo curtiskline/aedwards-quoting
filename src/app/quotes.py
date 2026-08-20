@@ -9,6 +9,7 @@ from flask_login import login_required
 from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 
+from .confidence import sync_quote_confidence
 from .extensions import db
 from .models import AuditLog, Quote, QuoteStatus, User
 from .quote_numbers import generate_quote_number
@@ -173,6 +174,7 @@ def create():
             db.session.add(quote)
             db.session.flush()
             db.session.add(AuditLog(quote_id=quote.id, action="created_manually"))
+            sync_quote_confidence(quote)
             db.session.commit()
             return redirect(url_for("main.quote_detail", quote_id=quote.id))
         except IntegrityError:

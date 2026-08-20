@@ -167,6 +167,38 @@ class Quote(db.Model):
     )
     versions: Mapped[list["QuoteVersion"]] = relationship(back_populates="quote", cascade="all, delete-orphan")
     audit_logs: Mapped[list["AuditLog"]] = relationship(back_populates="quote", cascade="all, delete-orphan")
+    confidence: Mapped["QuoteConfidence | None"] = relationship(
+        back_populates="quote", cascade="all, delete-orphan", uselist=False
+    )
+
+
+class QuoteConfidence(db.Model):
+    """Per-quote confidence score + component signals (CP-2a: scoring only).
+
+    One row per quote, recomputed on creation and on relevant edits. Each
+    signal column is tri-state ("pass"/"fail"/"unknown"); unknown is never
+    treated as pass. components_json carries the per-signal detail (weight,
+    points, reasons) so the CP-2b dashboard can show WHY, not just a number.
+    Nothing reads this for send decisions yet — that is CP-2c.
+    """
+
+    __tablename__ = "quote_confidence"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    quote_id: Mapped[int] = mapped_column(
+        ForeignKey("quote.id"), nullable=False, unique=True, index=True
+    )
+    score: Mapped[float] = mapped_column(Numeric(4, 3), nullable=False)
+    decode_clean: Mapped[str] = mapped_column(nullable=False)
+    all_lines_priced: Mapped[str] = mapped_column(nullable=False)
+    customer_known: Mapped[str] = mapped_column(nullable=False)
+    ship_to_confirmed: Mapped[str] = mapped_column(nullable=False)
+    price_in_tolerance: Mapped[str] = mapped_column(nullable=False)
+    recipient_allowlisted: Mapped[str] = mapped_column(nullable=False)
+    components_json: Mapped[dict] = mapped_column(db.JSON, nullable=False)
+    computed_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
+
+    quote: Mapped[Quote] = relationship(back_populates="confidence")
 
 
 class ProcessedInboundEmail(TimestampMixin, db.Model):
