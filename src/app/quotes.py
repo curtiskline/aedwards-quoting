@@ -9,7 +9,13 @@ from flask_login import login_required
 from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 
-from .confidence import sync_quote_confidence
+from .confidence import (
+    SIGNAL_LABELS,
+    active_send_holds,
+    active_trust_tier,
+    quote_recommendation,
+    sync_quote_confidence,
+)
 from .extensions import db
 from .models import AuditLog, Quote, QuoteStatus, User
 from .quote_numbers import generate_quote_number
@@ -62,8 +68,16 @@ def _quote_query(status_filter: str | None, search: str | None):
 def _enrich_quotes(quotes: list[Quote]) -> list[dict]:
     """Build template-friendly dicts from Quote objects."""
     now = datetime.utcnow()
+    holds = active_send_holds()
+    tier = active_trust_tier()
     results = []
     for q in quotes:
+        recommendation = quote_recommendation(q, holds=holds, tier=tier)
+        confidence = q.confidence
+        signals = [
+            {"name": name, "label": label, "status": getattr(confidence, name)}
+            for name, label in SIGNAL_LABELS.items()
+        ] if confidence is not None else []
         item_count = len(q.line_items)
         total = sum(float(li.line_total) for li in q.line_items)
         needs_pricing = any(float(li.unit_price) == 0 for li in q.line_items)
@@ -102,6 +116,12 @@ def _enrich_quotes(quotes: list[Quote]) -> list[dict]:
             "lock_active": lock_active,
             "time_ago": time_ago,
             "created_at": q.created_at,
+            "recommended": recommendation["recommended"],
+            "recommendation_reasons": recommendation["reasons"],
+            "confidence_pct": (
+                round(recommendation["score"] * 100) if recommendation["score"] is not None else None
+            ),
+            "signals": signals,
         })
     return results
 
@@ -110,9 +130,29 @@ def _enrich_quotes(quotes: list[Quote]) -> list[dict]:
 def queue():
     status_filter = request.args.get("status", "all")
     search = request.args.get("q", "").strip()
+    rec_filter = request.args.get("rec", "all")
+    if rec_filter not in ("all", "recommended", "not_recommended"):
+        rec_filter = "all"
+    sort = request.args.get("sort", "newest")
+    if sort not in ("newest", "confidence"):
+        sort = "newest"
 
     quotes = _quote_query(status_filter, search or None).all()
     items = _enrich_quotes(quotes)
+    # Recommendation is render-time state (holds/tier apply instantly), so the
+    # filter/sort operate on the enriched rows, not in SQL.
+    if rec_filter == "recommended":
+        items = [item for item in items if item["recommended"]]
+    elif rec_filter == "not_recommended":
+        items = [item for item in items if not item["recommended"]]
+    if sort == "confidence":
+        items.sort(
+            key=lambda item: (
+                item["recommended"],
+                item["confidence_pct"] if item["confidence_pct"] is not None else -1,
+            ),
+            reverse=True,
+        )
     new_count = _new_quote_count()
 
     # Status counts for tabs
@@ -134,23 +174,19 @@ def queue():
         if s != QuoteStatus.REPLACED
     ]
 
-    if request.headers.get("HX-Request"):
-        return render_template(
-            "quotes/_queue_body.html",
-            quotes=items,
-            tabs=tabs,
-            active_status=status_filter,
-            search=search,
-            new_count=new_count,
-        )
-
+    template = (
+        "quotes/_queue_body.html" if request.headers.get("HX-Request") else "quotes/queue.html"
+    )
     return render_template(
-        "quotes/queue.html",
+        template,
         quotes=items,
         tabs=tabs,
         active_status=status_filter,
         search=search,
         new_count=new_count,
+        rec_filter=rec_filter,
+        sort=sort,
+        active_tier=active_trust_tier(),
     )
 
 

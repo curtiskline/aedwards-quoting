@@ -201,6 +201,54 @@ class QuoteConfidence(db.Model):
     quote: Mapped[Quote] = relationship(back_populates="confidence")
 
 
+class SendHold(TimestampMixin, db.Model):
+    """An admin-set hold that forces a quote NOT-recommended regardless of score.
+
+    Exactly one of customer_id / product_type is set (enforced by a check
+    constraint): a customer hold covers every quote linked to that customer, a
+    product-type hold covers every quote with a material line of that type.
+    CP-2b only displays the effect (recommend-only); CP-2c's auto-send must
+    honor the same rows — this is the per-customer / per-product-type dial from
+    design §4 Tier 2, built early so the data model is already trusted.
+    """
+
+    __tablename__ = "send_hold"
+    __table_args__ = (
+        db.CheckConstraint(
+            "(customer_id IS NULL) != (product_type IS NULL)",
+            name="ck_send_hold_exactly_one_target",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    customer_id: Mapped[int | None] = mapped_column(
+        ForeignKey("customer.id"), nullable=True, unique=True, index=True
+    )
+    product_type: Mapped[str | None] = mapped_column(nullable=True, unique=True, index=True)
+    reason: Mapped[str | None] = mapped_column(Text)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"))
+
+    customer: Mapped[Customer | None] = relationship()
+
+
+class TrustRampConfig(db.Model):
+    """Single-row global trust-ramp state (design §4).
+
+    active_tier is the kill-switch dial: 0 = fully manual, 1 = assisted
+    (recommend-only, CP-2b's tier and the default). Tiers 2-3 arrive with
+    CP-2c, which will READ this value to gate auto-send; in CP-2b it only
+    controls whether recommendations are displayed.
+    """
+
+    __tablename__ = "trust_ramp_config"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    active_tier: Mapped[int] = mapped_column(default=1, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
+
+
 class ProcessedInboundEmail(TimestampMixin, db.Model):
     """Durable, message-level idempotency claim for the inbox monitor.
 

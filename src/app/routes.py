@@ -19,12 +19,14 @@ from flask import (
     Response,
     abort,
     current_app,
+    flash,
     jsonify,
     make_response,
     redirect,
     render_template,
     request,
     send_file,
+    url_for,
 )
 from flask_login import current_user, login_required
 from sqlalchemy import func, inspect, or_
@@ -54,10 +56,14 @@ from allenedwards.pricing import QuoteLineItem as PricingLineItem
 from allenedwards.ship_to import SHIP_TO_KEYS, is_domestic_ship_to, normalize_ship_to
 
 from .confidence import (
+    SIGNAL_LABELS,
+    active_trust_tier,
+    get_trust_ramp_config,
     line_item_has_tbd_marker,
     line_item_is_manual_no_charge,
     quote_has_tbd_items,
     quote_has_unpriced_items,
+    quote_recommendation,
     sync_quote_confidence,
 )
 from .extensions import db
@@ -73,6 +79,7 @@ from .models import (
     QuoteLineItem,
     QuoteStatus,
     QuoteVersion,
+    SendHold,
     ShippingConfig,
     ShipToAddress,
     User,
@@ -1214,7 +1221,32 @@ def _quote_context(quote: Quote) -> dict:
         "tax_amount": totals["tax"],
         "quote_needs_pricing": _quote_needs_pricing(quote),
         "revision_chain": _revision_chain(quote),
+        "recommendation": quote_recommendation(quote),
+        "confidence_signal_rows": _confidence_signal_rows(quote),
     }
+
+
+def _confidence_signal_rows(quote: Quote) -> list[dict]:
+    """Display rows for the editor's recommendation panel: every component
+    signal with its stored basis (weight, points, per-signal detail)."""
+    confidence = quote.confidence
+    if confidence is None:
+        return []
+    components = confidence.components_json or {}
+    rows = []
+    for name, label in SIGNAL_LABELS.items():
+        component = components.get(name, {})
+        rows.append(
+            {
+                "name": name,
+                "label": label,
+                "status": component.get("status", getattr(confidence, name)),
+                "weight": component.get("weight"),
+                "points": component.get("points"),
+                "detail": component.get("detail") or {},
+            }
+        )
+    return rows
 
 
 def _render_editor(quote: Quote):
@@ -2230,7 +2262,7 @@ def quote_move_line_item(quote_id: int, item_id: int):
 def pricing_admin():
     sections = _group_pricing_rows()
     active_tab = (request.args.get("tab") or "shipping").strip().lower()
-    if active_tab not in {"shipping", "pricing", "catalog", "types"}:
+    if active_tab not in {"shipping", "pricing", "catalog", "types", "trust"}:
         active_tab = "shipping"
     catalog_filter = _catalog_filter()
     return render_template(
@@ -2242,7 +2274,89 @@ def pricing_admin():
         catalog_product_types=_catalog_type_choices(),
         active_tab=active_tab,
         **_product_types_admin_data(),
+        **_trust_ramp_admin_data(),
     )
+
+
+def _trust_ramp_admin_data() -> dict:
+    holds = (
+        db.session.query(SendHold).order_by(SendHold.created_at, SendHold.id).all()
+    )
+    return {
+        "trust_ramp": {"active_tier": active_trust_tier()},
+        "send_holds": holds,
+        "hold_customer_choices": (
+            db.session.query(Customer).order_by(Customer.company_name).all()
+        ),
+        "hold_product_type_choices": _product_type_choices(),
+    }
+
+
+@main_bp.post("/admin/trust-ramp/tier")
+@login_required
+def update_trust_ramp_tier():
+    cfg = get_trust_ramp_config()
+    raw = (request.form.get("active_tier") or "").strip()
+    # Only Tier 0 (kill-switch) and Tier 1 (assisted) exist in CP-2b; the
+    # auto-send tiers arrive with CP-2c, which reads this same setting.
+    if raw not in {"0", "1"}:
+        flash("Tier must be 0 (kill-switch, fully manual) or 1 (assisted).", "error")
+        return redirect(url_for("main.pricing_admin", tab="trust"))
+    cfg.active_tier = int(raw)
+    db.session.commit()
+    flash(f"Trust ramp set to Tier {cfg.active_tier}.", "success")
+    return redirect(url_for("main.pricing_admin", tab="trust"))
+
+
+@main_bp.post("/admin/trust-ramp/holds/add")
+@login_required
+def add_send_hold():
+    hold_type = (request.form.get("hold_type") or "").strip()
+    reason = (request.form.get("reason") or "").strip() or None
+    user = _current_user()
+    if hold_type == "customer":
+        customer_id = _parse_int(request.form.get("customer_id"))
+        customer = db.session.get(Customer, customer_id) if customer_id else None
+        if customer is None:
+            flash("Pick a customer to hold.", "error")
+            return redirect(url_for("main.pricing_admin", tab="trust"))
+        existing = db.session.query(SendHold).filter_by(customer_id=customer.id).first()
+        if existing:
+            flash(f"{customer.company_name} is already on hold.", "error")
+            return redirect(url_for("main.pricing_admin", tab="trust"))
+        hold = SendHold(customer_id=customer.id, reason=reason, created_by=user.id if user else None)
+        label = customer.company_name
+    elif hold_type == "product_type":
+        product_type = (request.form.get("product_type") or "").strip()
+        if not product_type:
+            flash("Pick a product type to hold.", "error")
+            return redirect(url_for("main.pricing_admin", tab="trust"))
+        existing = db.session.query(SendHold).filter_by(product_type=product_type).first()
+        if existing:
+            flash(f"Product type '{product_type}' is already on hold.", "error")
+            return redirect(url_for("main.pricing_admin", tab="trust"))
+        hold = SendHold(product_type=product_type, reason=reason, created_by=user.id if user else None)
+        label = product_type
+    else:
+        flash("Hold type must be customer or product type.", "error")
+        return redirect(url_for("main.pricing_admin", tab="trust"))
+    db.session.add(hold)
+    db.session.commit()
+    flash(f"Hold added on {label}. Matching quotes are now never recommended.", "success")
+    return redirect(url_for("main.pricing_admin", tab="trust"))
+
+
+@main_bp.post("/admin/trust-ramp/holds/<int:hold_id>/delete")
+@login_required
+def delete_send_hold(hold_id: int):
+    hold = db.session.get(SendHold, hold_id)
+    if hold is None:
+        flash("Hold not found.", "error")
+    else:
+        db.session.delete(hold)
+        db.session.commit()
+        flash("Hold removed.", "success")
+    return redirect(url_for("main.pricing_admin", tab="trust"))
 
 
 @main_bp.post("/admin/pricing/<int:row_id>")
@@ -2695,6 +2809,7 @@ def quote_send_form(quote_id: int):
         default_to=quote.contact_email or "",
         default_subject=f"Quote {quote.quote_number} — Allan Edwards, Inc.",
         default_cc="",
+        recommendation=quote_recommendation(quote),
     )
 
 

@@ -30,7 +30,9 @@ from .models import (
     QuoteConfidence,
     QuoteLineItem,
     QuoteStatus,
+    SendHold,
     ShipToAddress,
+    TrustRampConfig,
 )
 
 PASS = "pass"
@@ -428,3 +430,159 @@ def sync_quote_confidence(quote: Quote) -> bool:
         row.components_json = components
         row.computed_at = datetime.utcnow()
     return changed
+
+
+# ---------------------------------------------------------------------------
+# Tier-1 assisted-send recommendation (CP-2b: recommend-only).
+#
+# quote_recommendation below is THE recommend rule — the dashboard, the editor
+# panel, the send form, and CP-2c's future auto-send gate must all call it, so
+# display and enforcement can never drift apart. Do not re-derive any part of
+# it (threshold, guardrails, holds, tier) elsewhere.
+# ---------------------------------------------------------------------------
+
+# Human-facing labels for the component signals, shared by all surfaces.
+SIGNAL_LABELS: dict[str, str] = {
+    "decode_clean": "Clean decode",
+    "all_lines_priced": "All lines priced",
+    "customer_known": "Customer known",
+    "ship_to_confirmed": "Ship-to confirmed",
+    "price_in_tolerance": "Price in tolerance",
+    "recipient_allowlisted": "Recipient allowed",
+}
+
+# Minimum composite score to recommend. Env-overridable until CP-2c gives it
+# an admin dial (same pattern as the price tolerance above). The default
+# tolerates one small unknown (e.g. a product-only quote with no ship-to)
+# but never a failing signal — see quote_recommendation.
+DEFAULT_RECOMMEND_THRESHOLD = 0.90
+
+# The tier at which the engine starts recommending. Tier 0 is the
+# kill-switch: fully manual, recommendations suspended.
+RECOMMEND_MIN_TIER = 1
+
+# Statuses for which "recommended for send" is meaningful.
+_SENDABLE_STATUSES = frozenset(
+    {QuoteStatus.NEW, QuoteStatus.IN_REVIEW, QuoteStatus.NEEDS_PRICING, QuoteStatus.READY}
+)
+
+
+def recommend_threshold() -> float:
+    raw = os.getenv("CONFIDENCE_RECOMMEND_THRESHOLD", "").strip()
+    if raw:
+        try:
+            return float(raw)
+        except ValueError:
+            pass
+    return DEFAULT_RECOMMEND_THRESHOLD
+
+
+def active_trust_tier() -> int:
+    """Read-only tier lookup: the stored row, or the Tier-1 default.
+
+    Read paths (queue, editor, send form) must use this — it never writes, so
+    GET requests cannot open a lingering SQLite write transaction.
+    """
+    cfg = db.session.get(TrustRampConfig, 1)
+    return cfg.active_tier if cfg is not None else 1
+
+
+def get_trust_ramp_config() -> TrustRampConfig:
+    """The single trust-ramp row (id=1), created at default Tier 1 if absent.
+
+    Write-path only (the admin tier form): flushes an INSERT when the row is
+    missing, and the caller must commit.
+    """
+    cfg = db.session.get(TrustRampConfig, 1)
+    if cfg is None:
+        cfg = TrustRampConfig(id=1, active_tier=1)
+        db.session.add(cfg)
+        db.session.flush()
+    return cfg
+
+
+def active_send_holds() -> list[SendHold]:
+    return db.session.query(SendHold).order_by(SendHold.created_at, SendHold.id).all()
+
+
+def _matched_holds(quote: Quote, holds: list[SendHold]) -> list[dict]:
+    """Holds that apply to this quote, as display-ready dicts."""
+    line_types = {item.product_type for item in _material_line_items(quote)}
+    matched: list[dict] = []
+    for hold in holds:
+        if hold.customer_id is not None and hold.customer_id == quote.customer_id:
+            label = hold.customer.company_name if hold.customer else f"customer {hold.customer_id}"
+            matched.append({"kind": "customer", "label": label, "reason": hold.reason, "id": hold.id})
+        elif hold.product_type is not None and hold.product_type in line_types:
+            matched.append(
+                {"kind": "product_type", "label": hold.product_type, "reason": hold.reason, "id": hold.id}
+            )
+    return matched
+
+
+def quote_recommendation(
+    quote: Quote,
+    *,
+    confidence: QuoteConfidence | None = None,
+    holds: list[SendHold] | None = None,
+    tier: int | None = None,
+) -> dict:
+    """Evaluate the Tier-1 recommend rule for one quote.
+
+    Recommended iff ALL of:
+      - the trust ramp is at Tier >= 1 (Tier 0 is the kill-switch),
+      - the quote is in a sendable status and has a stored confidence row,
+      - no component signal FAILS (unknowns are tolerated only through the
+        threshold: they earn zero points),
+      - the guardrail signals all_lines_priced and recipient_allowlisted PASS
+        outright — unpriced work or a blocked recipient is never recommended,
+      - the composite score >= the recommend threshold,
+      - no admin hold matches the quote's customer or product types.
+
+    holds/tier accept prefetched values so list views evaluate N quotes with
+    one query; when omitted they are loaded here.
+    """
+    if confidence is None:
+        confidence = quote.confidence
+    if holds is None:
+        holds = active_send_holds()
+    if tier is None:
+        tier = active_trust_tier()
+
+    reasons: list[str] = []
+    matched_holds = _matched_holds(quote, holds)
+    score = float(confidence.score) if confidence is not None else None
+
+    if tier < RECOMMEND_MIN_TIER:
+        reasons.append("trust ramp is at Tier 0 (kill-switch): recommendations suspended")
+    if quote.status not in _SENDABLE_STATUSES:
+        reasons.append(f"quote is {quote.status.value.replace('_', ' ')}")
+    if confidence is None:
+        reasons.append("quote has not been scored yet")
+    else:
+        statuses = {name: getattr(confidence, name) for name in SIGNAL_WEIGHTS}
+        for name in ("all_lines_priced", "recipient_allowlisted"):
+            if statuses[name] != PASS:
+                reasons.append(f"guardrail: {SIGNAL_LABELS[name]} must pass, is {statuses[name]}")
+        for name, status in statuses.items():
+            if status == FAIL and name not in ("all_lines_priced", "recipient_allowlisted"):
+                reasons.append(f"{SIGNAL_LABELS[name]} failed")
+        threshold = recommend_threshold()
+        if not any(status == FAIL for status in statuses.values()) and score < threshold:
+            unknowns = [SIGNAL_LABELS[n] for n, s in statuses.items() if s == UNKNOWN]
+            detail = f" (unknown: {', '.join(unknowns)})" if unknowns else ""
+            reasons.append(f"score {score:.2f} is below the {threshold:.2f} threshold{detail}")
+    for hold in matched_holds:
+        kind = "customer" if hold["kind"] == "customer" else "product type"
+        suffix = f" — {hold['reason']}" if hold["reason"] else ""
+        reasons.append(f"admin hold on {kind} {hold['label']}{suffix}")
+
+    return {
+        "recommended": not reasons,
+        "score": score,
+        "threshold": recommend_threshold(),
+        "tier": tier,
+        "scored": confidence is not None,
+        "reasons": reasons,
+        "holds": matched_holds,
+    }

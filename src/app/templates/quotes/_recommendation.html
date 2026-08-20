@@ -1,0 +1,115 @@
+{# Tier-1 assisted send: recommend-only panel. Shows the engine's verdict and
+   the basis for every component signal — the human sees WHY, not a black box.
+   Nothing here sends anything; every send stays human-clicked. #}
+<section class="quote-editor-section" id="recommendation-panel" aria-label="Send recommendation">
+  <h2 style="display:flex;align-items:center;gap:0.6rem;flex-wrap:wrap;">
+    Recommended for send?
+    {% if recommendation.recommended %}
+      <span class="pill" style="background:#dcfce7;color:#166534;">&#10003; Recommended</span>
+    {% else %}
+      <span class="pill" style="background:#f3f4f6;color:#6b7280;">Not recommended</span>
+    {% endif %}
+    {% if recommendation.score is not none %}
+      <span style="font-size:0.9rem;font-weight:600;color:#374151;">
+        Confidence {{ (recommendation.score * 100) | round | int }}%
+        <span style="font-weight:400;color:#6b7280;">(threshold {{ (recommendation.threshold * 100) | round | int }}%)</span>
+      </span>
+    {% endif %}
+  </h2>
+  <p class="form-help">
+    Trust ramp: Tier {{ recommendation.tier }}
+    {%- if recommendation.tier == 0 %} (kill-switch — recommendations suspended)
+    {%- else %} (assisted). The engine only recommends; a human clicks every send.
+    {%- endif %}
+  </p>
+
+  {% if not recommendation.recommended and recommendation.reasons %}
+  <div style="border:1px solid #fde68a;background:#fffbeb;border-radius:8px;padding:0.6rem 0.8rem;">
+    <strong style="font-size:0.85rem;">Why not:</strong>
+    <ul style="margin:0.3rem 0 0;padding-left:1.2rem;font-size:0.85rem;color:#374151;">
+      {% for reason in recommendation.reasons %}
+      <li>{{ reason }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if confidence_signal_rows %}
+  <table style="font-size:0.85rem;">
+    <thead>
+      <tr><th>Signal</th><th>Status</th><th>Points</th><th>Basis</th></tr>
+    </thead>
+    <tbody>
+      {% for row in confidence_signal_rows %}
+      <tr id="signal-row-{{ row.name }}">
+        <td style="white-space:nowrap;font-weight:600;">{{ row.label }}</td>
+        <td>
+          <span class="signal-status signal-status-{{ row.status }}">
+            {% if row.status == 'pass' %}&#10003; pass{% elif row.status == 'fail' %}&#10007; fail{% else %}? unknown{% endif %}
+          </span>
+        </td>
+        <td style="white-space:nowrap;">{{ '%.2f' | format(row.points or 0) }} / {{ '%.2f' | format(row.weight or 0) }}</td>
+        <td>
+          {% set detail = row.detail %}
+          {% if row.name == 'price_in_tolerance' and detail.lines %}
+            <div class="form-help" style="margin-bottom:0.25rem;">
+              Compared against median unit price of historical SENT quotes for the
+              same product type and specs (tolerance &plusmn;{{ (detail.tolerance_pct * 100) | round | int }}%).
+            </div>
+            <ul style="margin:0;padding-left:1.1rem;">
+              {% for line in detail.lines %}
+              <li>
+                <strong>{{ line.line }}</strong>:
+                {% if line.status == 'unknown' %}
+                  {{ line.reason }}
+                {% else %}
+                  ${{ '%.2f' | format(line.unit_price) }} vs median ${{ '%.2f' | format(line.median_historical) }}
+                  ({{ line.deviation_pct }}% off, {{ line.comparables }} comparable sent quote{{ 's' if line.comparables != 1 else '' }})
+                  — {{ line.status }}
+                {% endif %}
+              </li>
+              {% endfor %}
+            </ul>
+          {% elif detail.reasons %}
+            <ul style="margin:0;padding-left:1.1rem;">
+              {% for reason in detail.reasons %}<li>{{ reason }}</li>{% endfor %}
+            </ul>
+          {% elif detail.reason %}
+            {{ detail.reason }}
+          {% elif row.name == 'customer_known' and row.status == 'pass' %}
+            {{ detail.basis or 'customer existed before this quote' }}
+          {% elif row.name == 'ship_to_confirmed' and row.status == 'pass' %}
+            matches human-confirmed stored address #{{ detail.address_id }}
+          {% elif row.name == 'recipient_allowlisted' and row.status == 'pass' %}
+            {% if detail.allowlist_configured %}recipient is on the send allowlist{% else %}no allowlist configured — all recipients permitted{% endif %}
+          {% elif row.status == 'pass' %}
+            no problems found
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="form-help">This quote has no stored confidence score yet. It is scored on creation and re-scored on edits.</p>
+  {% endif %}
+
+  {% if recommendation.holds %}
+  <div style="border:1px solid #fca5a5;background:#fef2f2;border-radius:8px;padding:0.6rem 0.8rem;font-size:0.85rem;">
+    <strong>Active holds on this quote:</strong>
+    <ul style="margin:0.3rem 0 0;padding-left:1.2rem;">
+      {% for hold in recommendation.holds %}
+      <li>{{ 'Customer' if hold.kind == 'customer' else 'Product type' }} <strong>{{ hold.label }}</strong>{% if hold.reason %} — {{ hold.reason }}{% endif %}</li>
+      {% endfor %}
+    </ul>
+    <p class="form-help" style="margin-top:0.3rem;">Holds are managed under Admin &rarr; Trust Ramp.</p>
+  </div>
+  {% endif %}
+
+  <style>
+    .signal-status { font-weight: 700; white-space: nowrap; }
+    .signal-status-pass { color: #166534; }
+    .signal-status-fail { color: #b91c1c; }
+    .signal-status-unknown { color: #6b7280; }
+  </style>
+</section>

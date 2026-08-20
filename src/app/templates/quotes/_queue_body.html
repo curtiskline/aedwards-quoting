@@ -8,6 +8,11 @@
           <span class="quote-number">{{ q.quote_number }}</span>
           <span class="customer-name">{{ q.customer_name }}</span>
           <span class="status-badge status-{{ q.status }}">{{ q.status_label }}</span>
+          {% if q.recommended %}
+          <span class="rec-pill rec-yes" title="Meets the Tier-1 recommend rule. A human still clicks every send.">&#10003; Recommended</span>
+          {% elif q.recommendation_reasons %}
+          <span class="rec-pill rec-no" title="{{ q.recommendation_reasons | join('; ') }}">Not recommended</span>
+          {% endif %}
           {% if q.lock_active and q.reviewer_name %}
           <span class="reviewer-tag">{{ q.reviewer_name }}</span>
           {% endif %}
@@ -15,6 +20,16 @@
         <div class="meta">
           <span>{{ q.item_count }} item{{ 's' if q.item_count != 1 else '' }}</span>
           <span>{{ q.time_ago }}</span>
+          {% if q.confidence_pct is not none %}
+          <span class="conf-score" title="Confidence score from the component signals">{{ q.confidence_pct }}% confidence</span>
+          <span class="signal-dots">
+            {% for s in q.signals %}
+            <span class="signal-dot signal-{{ s.status }}" title="{{ s.label }}: {{ s.status }}"></span>
+            {% endfor %}
+          </span>
+          {% else %}
+          <span class="conf-score" title="No confidence row stored for this quote yet">not scored</span>
+          {% endif %}
         </div>
       </div>
       <div class="amount{% if q.needs_pricing %} needs-pricing{% endif %}">

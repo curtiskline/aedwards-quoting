@@ -8,6 +8,7 @@
     <button type="button" class="tab-btn {% if active_tab == 'pricing' %}active{% endif %}" data-tab-target="admin-tab-pricing">Pricing</button>
     <button type="button" class="tab-btn {% if active_tab == 'catalog' %}active{% endif %}" data-tab-target="admin-tab-catalog">Product Catalog</button>
     <button type="button" class="tab-btn {% if active_tab == 'types' %}active{% endif %}" data-tab-target="admin-tab-types">Product Types</button>
+    <button type="button" class="tab-btn {% if active_tab == 'trust' %}active{% endif %}" data-tab-target="admin-tab-trust">Trust Ramp</button>
   </div>
 
   <section id="admin-tab-shipping" class="tab-panel {% if active_tab == 'shipping' %}active{% endif %}">
@@ -24,6 +25,10 @@
 
   <section id="admin-tab-types" class="tab-panel {% if active_tab == 'types' %}active{% endif %}">
     {% include "partials/product_types_table.html" %}
+  </section>
+
+  <section id="admin-tab-trust" class="tab-panel {% if active_tab == 'trust' %}active{% endif %}">
+    {% include "partials/trust_ramp.html" %}
   </section>
 
   <style>

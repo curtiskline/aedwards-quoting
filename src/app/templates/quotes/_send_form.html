@@ -1,6 +1,23 @@
 <div id="send-modal" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:100;">
   <div style="background:#fff;border-radius:8px;padding:1.5rem;max-width:480px;width:100%;box-shadow:0 4px 24px rgba(0,0,0,0.15);">
     <h2 style="margin-top:0;">Send Quote {{ quote.quote_number }}</h2>
+    {# Display-only Tier-1 context: the engine's verdict never blocks or fires
+       a send — this button remains the 100% human-initiated gate. #}
+    {% if recommendation %}
+    <p style="margin:0 0 0.75rem;font-size:0.85rem;color:#374151;">
+      {% if recommendation.recommended %}
+        <span style="color:#166534;font-weight:700;">&#10003; Recommended for send</span>
+      {% else %}
+        <span style="color:#6b7280;font-weight:700;">Not recommended</span>
+      {% endif %}
+      {% if recommendation.score is not none %}
+        &mdash; confidence {{ (recommendation.score * 100) | round | int }}%
+      {% endif %}
+      {% if not recommendation.recommended and recommendation.reasons %}
+        <span style="display:block;color:#6b7280;margin-top:0.2rem;">{{ recommendation.reasons | join('; ') }}</span>
+      {% endif %}
+    </p>
+    {% endif %}
     <form method="post" action="/quotes/{{ quote.id }}/send"
           hx-post="/quotes/{{ quote.id }}/send"
           hx-target="#send-modal"

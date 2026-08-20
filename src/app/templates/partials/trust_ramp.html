@@ -1,0 +1,102 @@
+<div class="panel">
+  <h2 style="margin-top:0;">Trust Ramp</h2>
+  <p class="form-help">
+    The engine scores every quote and, at Tier 1, <strong>recommends</strong> high-confidence
+    ones for send. Every send is still clicked by a person. Tier 0 is the kill-switch:
+    recommendations are suspended and everything is fully manual. Auto-send tiers (2-3)
+    arrive in a later stage and will read this same setting.
+  </p>
+
+  <form method="post" action="/admin/trust-ramp/tier"
+        style="display:flex;gap:0.6rem;align-items:end;flex-wrap:wrap;">
+    <label style="max-width:280px;">
+      Active tier
+      <select name="active_tier">
+        <option value="0" {% if trust_ramp.active_tier == 0 %}selected{% endif %}>Tier 0 — kill-switch (fully manual)</option>
+        <option value="1" {% if trust_ramp.active_tier == 1 %}selected{% endif %}>Tier 1 — assisted (recommend-only)</option>
+      </select>
+    </label>
+    <button type="submit">Save Tier</button>
+  </form>
+</div>
+
+<div class="panel">
+  <h3 style="margin-top:0;">Send holds</h3>
+  <p class="form-help">
+    A hold forces every matching quote to <strong>Not recommended</strong> regardless of its
+    confidence score. Use it to pause a customer or a product type while something is
+    being sorted out. Later auto-send stages must honor these same holds.
+  </p>
+
+  {% if send_holds %}
+  <table>
+    <thead>
+      <tr><th>Target</th><th>Reason</th><th>Since</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for hold in send_holds %}
+      <tr>
+        <td>
+          {% if hold.customer_id %}
+            Customer: <strong>{{ hold.customer.company_name if hold.customer else hold.customer_id }}</strong>
+          {% else %}
+            Product type: <strong>{{ hold.product_type }}</strong>
+          {% endif %}
+        </td>
+        <td>{{ hold.reason or "—" }}</td>
+        <td>{{ hold.created_at.strftime("%Y-%m-%d") }}</td>
+        <td>
+          <form method="post" action="/admin/trust-ramp/holds/{{ hold.id }}/delete"
+                onsubmit="return confirm('Remove this hold? Matching quotes become recommendable again.');"
+                style="margin:0;">
+            <button type="submit" class="danger">Remove</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="form-help">No holds are active.</p>
+  {% endif %}
+
+  <div style="display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));margin-top:1rem;">
+    <form method="post" action="/admin/trust-ramp/holds/add" class="stack" style="align-content:start;">
+      <input type="hidden" name="hold_type" value="customer" />
+      <h4 style="margin:0;">Hold a customer</h4>
+      <label>
+        Customer
+        <select name="customer_id" required>
+          <option value="" disabled selected>Pick a customer…</option>
+          {% for customer in hold_customer_choices %}
+          <option value="{{ customer.id }}">{{ customer.company_name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        Reason (optional)
+        <input name="reason" placeholder="e.g. pricing dispute in progress" />
+      </label>
+      <button type="submit">Add Customer Hold</button>
+    </form>
+
+    <form method="post" action="/admin/trust-ramp/holds/add" class="stack" style="align-content:start;">
+      <input type="hidden" name="hold_type" value="product_type" />
+      <h4 style="margin:0;">Hold a product type</h4>
+      <label>
+        Product type
+        <select name="product_type" required>
+          <option value="" disabled selected>Pick a product type…</option>
+          {% for choice in hold_product_type_choices %}
+          <option value="{{ choice.name }}">{{ choice.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>
+        Reason (optional)
+        <input name="reason" placeholder="e.g. pricing table under review" />
+      </label>
+      <button type="submit">Add Product-Type Hold</button>
+    </form>
+  </div>
+</div>

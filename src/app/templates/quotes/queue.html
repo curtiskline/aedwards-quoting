@@ -47,6 +47,29 @@
   .amount { font-weight: 600; text-align: right; white-space: nowrap; }
   .amount.needs-pricing { color: #dc2626; font-style: italic; }
   .empty-state { text-align: center; padding: 3rem 1rem; color: #9ca3af; }
+  .rec-pill {
+    display: inline-block; padding: 0.15rem 0.5rem; border-radius: 999px;
+    font-size: 0.75rem; font-weight: 700;
+  }
+  .rec-pill.rec-yes { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+  .rec-pill.rec-no { background: #f3f4f6; color: #6b7280; border: 1px solid #e5e7eb; }
+  .conf-score { font-weight: 600; color: #374151; }
+  .signal-dots { display: inline-flex; gap: 0.2rem; align-items: center; }
+  .signal-dot {
+    display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%;
+  }
+  .signal-dot.signal-pass { background: #22c55e; }
+  .signal-dot.signal-fail { background: #ef4444; }
+  .signal-dot.signal-unknown { background: #d1d5db; }
+  .rec-toolbar {
+    display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;
+    margin-bottom: 1rem; font-size: 0.875rem;
+  }
+  .rec-toolbar select {
+    padding: 0.35rem 0.5rem; border: 1px solid #d1d5db; border-radius: 6px;
+    font-size: 0.875rem; background: #fff;
+  }
+  .tier-note { font-size: 0.8rem; color: #6b7280; }
 </style>
 
 <div class="queue-header">
@@ -57,7 +80,7 @@
 </div>
 
 <div id="queue-container"
-     hx-get="/quotes/?status={{ active_status }}&q={{ search }}"
+     hx-get="/quotes/?status={{ active_status }}&q={{ search }}&rec={{ rec_filter }}&sort={{ sort }}"
      hx-trigger="every 30s"
      hx-target="#queue-body"
      hx-select="#queue-body"
@@ -67,7 +90,7 @@
     {% for tab in tabs %}
     <a class="tab{% if tab.key == active_status %} active{% endif %}"
        href="#"
-       hx-get="/quotes/?status={{ tab.key }}&q={{ search }}"
+       hx-get="/quotes/?status={{ tab.key }}&q={{ search }}&rec={{ rec_filter }}&sort={{ sort }}"
        hx-target="#queue-body"
        hx-select="#queue-body"
        hx-swap="outerHTML"
@@ -77,9 +100,35 @@
     {% endfor %}
   </div>
 
+  <div class="rec-toolbar" id="rec-toolbar">
+    <div class="tabs" style="margin-bottom:0;">
+      {% for key, label in [("all", "All"), ("recommended", "Recommended"), ("not_recommended", "Not recommended")] %}
+      <a class="tab{% if key == rec_filter %} active{% endif %}"
+         href="#"
+         hx-get="/quotes/?status={{ active_status }}&q={{ search }}&rec={{ key }}&sort={{ sort }}"
+         hx-target="#queue-body"
+         hx-select="#queue-body"
+         hx-swap="outerHTML">{{ label }}</a>
+      {% endfor %}
+    </div>
+    <label style="display:flex;align-items:center;gap:0.35rem;font-weight:500;">
+      Sort
+      <select name="sort"
+              hx-get="/quotes/?status={{ active_status }}&q={{ search }}&rec={{ rec_filter }}"
+              hx-target="#queue-body"
+              hx-select="#queue-body"
+              hx-swap="outerHTML"
+              hx-include="this">
+        <option value="newest" {% if sort == "newest" %}selected{% endif %}>Newest first</option>
+        <option value="confidence" {% if sort == "confidence" %}selected{% endif %}>Recommended / confidence first</option>
+      </select>
+    </label>
+    <span class="tier-note">Trust ramp: Tier {{ active_tier }}{% if active_tier == 0 %} (kill-switch — all recommendations suspended){% else %} (assisted — every send stays human-clicked){% endif %}</span>
+  </div>
+
   <input type="search" name="q" value="{{ search }}" placeholder="Search by customer or quote number..."
          class="search-box"
-         hx-get="/quotes/?status={{ active_status }}"
+         hx-get="/quotes/?status={{ active_status }}&rec={{ rec_filter }}&sort={{ sort }}"
          hx-target="#queue-body"
          hx-select="#queue-body"
          hx-swap="outerHTML"
