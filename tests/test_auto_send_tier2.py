@@ -571,6 +571,10 @@ def test_crash_between_claim_and_send_never_double_sends(mock_outlook, app):
 
     with pytest.raises(KeyboardInterrupt):
         maybe_auto_send(quote)
+    # A real process death discards any open (uncommitted) transaction;
+    # only what was COMMITTED before the send survives. Without this, a
+    # flush-not-commit implementation would pass undetected.
+    _db.session.rollback()
 
     # The claim and version committed before the send; the email never went.
     claim = _claim(quote)
@@ -641,6 +645,7 @@ def test_human_send_still_works_after_orphaned_claim(mock_outlook, app, client):
     _set_tier(2)
     with pytest.raises(KeyboardInterrupt):
         maybe_auto_send(quote)
+    _db.session.rollback()  # simulate process death: open txn is lost
     assert _claim(quote).status == "claimed"
 
     mock_outlook.return_value = _mock_client()
@@ -679,6 +684,7 @@ def test_orphaned_claim_surfaced_in_editor_and_queue(mock_outlook, app, client):
     _set_tier(2)
     with pytest.raises(KeyboardInterrupt):
         maybe_auto_send(quote)
+    _db.session.rollback()  # simulate process death: open txn is lost
     _set_tier(1)  # surfacing must not depend on staying at Tier 2
 
     editor = client.get(f"/quotes/{quote_id}").data.decode()
