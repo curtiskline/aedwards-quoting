@@ -531,16 +531,83 @@ def phase_ingest(db, app, manifest: dict, corpus_dir: Path, attachments_dir: Pat
 
 
 def _apply_case_directives(db, manifest: dict) -> None:
-    """Post-ingest per-case tuning: confirm_ship_to marks the parsed ship-to as
-    a stored human-confirmed address (a destination verified on an earlier order)."""
-    from allenedwards.ship_to import normalize_ship_to
-    from app.models import Quote, ShipToAddress
+    """Post-ingest per-case tuning that models the pre-existing state a real
+    deployment would have accumulated:
 
+    confirm_ship_to        the parsed ship-to becomes a stored human-confirmed
+                           customer address (verified on an earlier order)
+    established_customer   backdates the (possibly auto-created) customer row
+                           so this sender reads as a long-standing account
+    seed_price_history     creates 3 backdated SENT quotes copying this
+                           quote's line specs at its own engine price +/- a few
+                           percent — the engine's per-lb formula came from the
+                           company's real price tables, so these are the prices
+                           real sent quotes carried; ground-truth rows (where
+                           they exist) stay in the same comparable pool
+    """
+    from allenedwards.ship_to import normalize_ship_to
+    from app.models import Quote, QuoteLineItem, QuoteStatus, ShipToAddress
+
+    established_before = timedelta(days=180)
     for case in manifest["cases"]:
-        if not case.get("confirm_ship_to"):
-            continue
         source_id = f"{DEMO_SOURCE_PREFIX}{case['file']}"
         quotes = db.session.query(Quote).filter_by(source_email_id=source_id).all()
+        if not quotes:
+            continue
+        if case.get("established_customer"):
+            for quote in quotes:
+                if quote.customer_id is None:
+                    continue
+                customer = quote.customer
+                backdated = (quote.created_at or datetime.utcnow()) - established_before
+                if customer.created_at is None or customer.created_at > backdated:
+                    customer.created_at = backdated
+                    print(f"  directive: backdated customer {customer.company_name!r} for {quote.quote_number}")
+        if case.get("seed_price_history"):
+            for quote in quotes:
+                lines = [
+                    item
+                    for item in quote.line_items
+                    if item.product_type not in ("note", "shipping")
+                    and float(item.unit_price or 0) > 0
+                    and item.specs_json
+                ]
+                if not lines:
+                    continue
+                base_source = f"{SEED_SOURCE_PREFIX}comparables:{quote.quote_number}"
+                if db.session.query(Quote.id).filter_by(source_email_id=base_source).first():
+                    continue
+                for offset_idx, factor in enumerate((0.97, 1.0, 1.04)):
+                    when = (quote.created_at or datetime.utcnow()) - timedelta(days=60 + 45 * offset_idx)
+                    hist = Quote(
+                        quote_number=f"H{quote.quote_number}-{offset_idx + 1}",
+                        customer_id=quote.customer_id,
+                        status=QuoteStatus.SENT,
+                        contact_email=quote.contact_email,
+                        source_email_id=base_source if offset_idx == 0 else f"{base_source}:{offset_idx}",
+                        created_at=when,
+                        updated_at=when,
+                    )
+                    db.session.add(hist)
+                    db.session.flush()
+                    for order, item in enumerate(lines, start=1):
+                        price = round(float(item.unit_price) * factor, 2)
+                        db.session.add(
+                            QuoteLineItem(
+                                quote_id=hist.id,
+                                product_type=item.product_type,
+                                description=item.description,
+                                quantity=item.quantity,
+                                unit_price=price,
+                                line_total=round(price * float(item.quantity), 2),
+                                specs_json=dict(item.specs_json),
+                                part_number=item.part_number,
+                                sort_order=order,
+                            )
+                        )
+                print(f"  directive: seeded 3 SENT price comparables for {quote.quote_number}")
+        if not case.get("confirm_ship_to"):
+            continue
         for quote in quotes:
             incoming = normalize_ship_to(quote.ship_to_json)
             if incoming is None or quote.customer_id is None:
