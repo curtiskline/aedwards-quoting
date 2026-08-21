@@ -31,9 +31,17 @@
     {% if item.is_seeded %}
       <strong>{{ item.min_qty }} / {{ item.max_qty }}</strong>
     {% else %}
-      <span class="badge badge-unseeded" title="Thresholds arrive with CP-5b; no reorder logic can fire until then.">unseeded</span>
+      <span class="badge badge-unseeded" title="Thresholds not set — seed them on the stock seeding screen; no reorder logic can fire until then.">unseeded</span>
     {% endif %}
   </div>
+  {% if open_reorder %}
+  <div>
+    <a class="badge badge-negative" href="{{ url_for('stock.reorders_list') }}"
+       title="Opened {{ open_reorder.created_at.strftime('%Y-%m-%d %H:%M') }} UTC — the shop has a restock sheet.">
+      reorder open: make {{ open_reorder.qty }}
+    </a>
+  </div>
+  {% endif %}
 </div>
 
 <div class="entry-forms">

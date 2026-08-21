@@ -1,0 +1,87 @@
+{# The printable restock sheet — CP-4's MANUAL_PRINT channel for reorders
+   (Chip onsite: paper/phone first). Renders ONLY the qty + context frozen on
+   the reorder row at trigger time, plus the item's identity — reprinting
+   always yields the same instruction even after later stock movement or
+   threshold edits. NO outbound delivery of any kind. #}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Restock sheet — {{ item.catalog.part_number or item.catalog.description }}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: Georgia, 'Times New Roman', serif;
+      color: #111; margin: 0; padding: 2rem;
+      max-width: 8.5in; margin-left: auto; margin-right: auto;
+    }
+    .toolbar { margin-bottom: 1.25rem; }
+    .toolbar button {
+      font-family: system-ui, sans-serif; font-size: 1rem; font-weight: 600;
+      padding: 0.6rem 1.4rem; border-radius: 8px; border: none;
+      background: #1d4ed8; color: #fff; cursor: pointer;
+    }
+    header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #111; padding-bottom: 0.75rem; }
+    h1 { font-size: 1.5rem; margin: 0; }
+    .company { text-align: right; font-size: 0.9rem; }
+    .make-line { font-size: 2rem; font-weight: 800; margin: 1.5rem 0 0.5rem; }
+    .item-desc { font-size: 1.15rem; margin: 0 0 1.5rem; }
+    table { width: 100%; border-collapse: collapse; margin-top: 0.75rem; font-size: 1rem; max-width: 30rem; }
+    th, td { border: 1px solid #111; padding: 0.5rem 0.8rem; text-align: left; }
+    th { background: #eee; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; margin-top: 3rem; max-width: 36rem; }
+    .sig-line { border-top: 1.5px solid #111; padding-top: 0.3rem; font-size: 0.85rem; }
+    .sig-space { height: 3rem; }
+    footer { margin-top: 2rem; font-size: 0.75rem; color: #555; }
+    @media print {
+      body { padding: 0; }
+      .toolbar { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar"><button onclick="window.print()">Print this sheet</button></div>
+
+  <header>
+    <div>
+      <h1>RESTOCK SHEET</h1>
+      <p style="margin:0.25rem 0 0;font-size:1.1rem;font-weight:700;">Reorder #{{ reorder.id }}</p>
+    </div>
+    <div class="company">
+      <strong>Allan Edwards, Inc.</strong><br />
+      Status: {{ reorder.status.value.title() }}<br />
+      Opened {{ reorder.created_at.strftime('%Y-%m-%d %H:%M') }} UTC
+    </div>
+  </header>
+
+  <p class="make-line">Make {{ reorder.qty }} &mdash; {{ item.catalog.part_number or item.catalog.description }}</p>
+  <p class="item-desc">
+    {{ item.catalog.description }}
+    {% if item.catalog.product_type %} ({{ item.catalog.product_type }}){% endif %}
+  </p>
+
+  <table>
+    <thead>
+      <tr><th>At trigger</th><th class="num">Qty</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>On hand when this fired</td><td class="num">{{ reorder.on_hand_at_trigger }}</td></tr>
+      <tr><td>Minimum to keep</td><td class="num">{{ reorder.min_qty_at_trigger }}</td></tr>
+      <tr><td>Maximum to keep</td><td class="num">{{ reorder.max_qty_at_trigger }}</td></tr>
+      <tr><td><strong>Make</strong></td><td class="num"><strong>{{ reorder.qty }}</strong></td></tr>
+    </tbody>
+  </table>
+
+  <div class="signatures">
+    <div><div class="sig-space"></div><div class="sig-line">Made by / date</div></div>
+    <div><div class="sig-space"></div><div class="sig-line">Received into stock by / date</div></div>
+  </div>
+
+  <footer>
+    Internal reference: reorder #{{ reorder.id }} &middot; stock item #{{ item.id }} &middot;
+    catalog #{{ item.catalog.id }}. When the pieces are on the shelf, mark this reorder
+    received on the Reorders screen with the quantity actually made.
+  </footer>
+</body>
+</html>

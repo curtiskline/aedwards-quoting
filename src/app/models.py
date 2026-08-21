@@ -65,6 +65,18 @@ class ShopPingChannel(str, Enum):
     SCREEN = "screen"
 
 
+class ReorderStatus(str, Enum):
+    """Lifecycle of an auto-reorder (CP-5b, design Stage F). OPEN from the
+    moment the trigger fires; RECEIVED when the shop's restock is booked as a
+    RECEIPT movement. The received qty is what the shop ACTUALLY made — it
+    may differ from the ordered qty. No partial tracking: a short receipt
+    closes the reorder and the still-below-min state re-triggers a fresh one
+    naturally (PM agreement, task 419)."""
+
+    OPEN = "open"
+    RECEIVED = "received"
+
+
 class AcceptanceSource(str, Enum):
     """How an acceptance was detected. Only EXPLICIT_CLICK is wired today;
     the other members are reserved seams (Chip call 2026-08-19: reply-reading
@@ -586,26 +598,38 @@ class PickListAuditLog(TimestampMixin, db.Model):
 
 
 class ShopPing(TimestampMixin, db.Model):
-    """A record that the shop was notified about a pick list, per channel.
+    """A record that the shop was notified about a work item, per channel.
 
-    CP-4 creates exactly one MANUAL_PRINT row with each pick list: the "ping"
-    is the printed sheet plus the shop work queue. No outbound delivery of any
-    kind happens here — future EMAIL/SMS/SCREEN channels write their own rows
-    through their own delivery gates.
+    CP-4 creates exactly one MANUAL_PRINT row with each pick list; CP-5b
+    creates one with each auto-reorder. The "ping" is the printed sheet plus
+    the shop work queue. Exactly ONE of pick_list_id / reorder_id is set
+    (CHECK constraint) — a ping is about one work item. No outbound delivery
+    of any kind happens here — future EMAIL/SMS/SCREEN channels write their
+    own rows through their own delivery gates.
     """
 
     __tablename__ = "shop_ping"
+    __table_args__ = (
+        db.CheckConstraint(
+            "(pick_list_id IS NULL) <> (reorder_id IS NULL)",
+            name="ck_shop_ping_exactly_one_subject",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    pick_list_id: Mapped[int] = mapped_column(
-        ForeignKey("pick_list.id"), nullable=False, index=True
+    pick_list_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pick_list.id"), nullable=True, index=True
+    )
+    reorder_id: Mapped[int | None] = mapped_column(
+        ForeignKey("reorder.id"), nullable=True, index=True
     )
     channel: Mapped[ShopPingChannel] = mapped_column(
         SAEnum(ShopPingChannel, name="shop_ping_channel"), nullable=False
     )
     details: Mapped[dict | None] = mapped_column(db.JSON)
 
-    pick_list: Mapped[PickList] = relationship(back_populates="pings")
+    pick_list: Mapped[PickList | None] = relationship(back_populates="pings")
+    reorder: Mapped["Reorder | None"] = relationship(back_populates="pings")
 
 
 class PricingTable(db.Model):
@@ -772,6 +796,79 @@ class StockDecrementClaim(TimestampMixin, db.Model):
     pick_list_id: Mapped[int] = mapped_column(
         ForeignKey("pick_list.id"), nullable=False, unique=True, index=True
     )
+
+
+class Reorder(TimestampMixin, db.Model):
+    """An auto-reorder: the shop's instruction to make more of a stock item
+    (CP-5b, design Stage F).
+
+    Created when a ledger write drops a FULLY SEEDED item's on_hand to/below
+    min_qty (StockItem.needs_reorder — NULL thresholds can never fire).
+    Idempotency is the claim pattern the design mandates: a partial UNIQUE
+    index on stock_item_id WHERE status='OPEN' means at most one open reorder
+    per item, ever — a second trigger while one is open hits the constraint
+    and is a no-op. Phantom decrement -> phantom reorder is THE Stage-F
+    hazard; this is the second gate behind CP-5a's decrement claim.
+
+    qty and the *_at_trigger columns are FROZEN at creation so the printable
+    sheet cannot change under later threshold edits or stock movement.
+    qty rule (documented for the shop): reorder_qty if set, else
+    max(max_qty - on_hand, 1) — the fallback tops the item back up to max.
+
+    Closing = mark-received: books a RECEIPT movement for the qty the shop
+    ACTUALLY made (may differ from qty ordered; no partial tracking) and
+    stamps received_*. If the receipt leaves the item still at/below min, the
+    normal trigger fires a FRESH reorder — that is the re-arm semantics.
+    """
+
+    __tablename__ = "reorder"
+    __table_args__ = (
+        db.Index(
+            "uq_reorder_open_per_item",
+            "stock_item_id",
+            unique=True,
+            postgresql_where=db.text("status = 'OPEN'"),
+            sqlite_where=db.text("status = 'OPEN'"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    stock_item_id: Mapped[int] = mapped_column(
+        ForeignKey("stock_item.id"), nullable=False, index=True
+    )
+    status: Mapped[ReorderStatus] = mapped_column(
+        SAEnum(ReorderStatus, name="reorder_status"),
+        default=ReorderStatus.OPEN,
+        nullable=False,
+        index=True,
+    )
+    qty: Mapped[int] = mapped_column(nullable=False)
+    on_hand_at_trigger: Mapped[int] = mapped_column(nullable=False)
+    min_qty_at_trigger: Mapped[int] = mapped_column(nullable=False)
+    max_qty_at_trigger: Mapped[int] = mapped_column(nullable=False)
+    trigger_movement_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stock_movement.id"), nullable=True
+    )
+    reorder_movement_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stock_movement.id"), nullable=True
+    )
+    received_at: Mapped[datetime | None]
+    received_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"))
+    receipt_movement_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stock_movement.id"), nullable=True
+    )
+
+    stock_item: Mapped[StockItem] = relationship()
+    trigger_movement: Mapped["StockMovement | None"] = relationship(
+        foreign_keys=[trigger_movement_id]
+    )
+    reorder_movement: Mapped["StockMovement | None"] = relationship(
+        foreign_keys=[reorder_movement_id]
+    )
+    receipt_movement: Mapped["StockMovement | None"] = relationship(
+        foreign_keys=[receipt_movement_id]
+    )
+    pings: Mapped[list["ShopPing"]] = relationship(back_populates="reorder")
 
 
 class ShippingConfig(db.Model):

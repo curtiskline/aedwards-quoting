@@ -1,0 +1,87 @@
+{% extends "layout.html" %}
+{% block title %}Reorders{% endblock %}
+{% block body %}
+<style>
+  /* Shop-floor use, same coarse layout as the pick-list queue. */
+  .reorder-card {
+    display: grid; grid-template-columns: 1fr auto; align-items: center;
+    gap: 0.75rem; padding: 1rem 1.25rem;
+    border: 1px solid #e5e7eb; border-radius: 10px;
+    margin-bottom: 0.75rem; background: #fff;
+  }
+  .item-name { font-weight: 700; font-size: 1.1rem; }
+  .make-qty { font-weight: 800; font-size: 1.2rem; color: var(--accent); }
+  .meta { font-size: 0.95rem; color: #6b7280; display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 0.25rem; }
+  .actions { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+  .sheet-link {
+    background: #f3f4f6; border: 1px solid #d1d5db; color: #111827;
+    padding: 0.8rem 1.1rem; border-radius: 10px; font-weight: 600;
+    text-decoration: none; font-size: 1rem;
+  }
+  .receive-form { display: flex; gap: 0.5rem; align-items: center; margin: 0; }
+  .receive-form input { width: 6rem; padding: 0.7rem 0.6rem; border: 1px solid #d1d5db; border-radius: 10px; font-size: 1.05rem; }
+  .receive-btn {
+    background: var(--accent); color: #fff; border: none;
+    padding: 0.8rem 1.2rem; border-radius: 10px;
+    font-weight: 700; font-size: 1.05rem; cursor: pointer;
+  }
+  .empty-state { text-align: center; padding: 3rem 1rem; color: #9ca3af; font-size: 1.05rem; }
+  .received-table { width: 100%; border-collapse: collapse; background: #fff; }
+  .received-table th, .received-table td { padding: 0.5rem 0.8rem; border-bottom: 1px solid #e5e7eb; text-align: left; }
+  .received-table th { font-size: 0.85rem; text-transform: uppercase; color: #6b7280; }
+  .received-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .page-links { margin-bottom: 1rem; display: flex; gap: 1rem; }
+</style>
+<h1 style="margin:0 0 0.5rem;">Reorders</h1>
+<div class="page-links">
+  <a href="/pick-lists/">Shop queue</a>
+  <a href="{{ url_for('stock.stock_list') }}">Stock list</a>
+</div>
+
+{% if open_rows %}
+  {% for r in open_rows %}
+  <div class="reorder-card" id="reorder-{{ r.id }}">
+    <div>
+      <div>
+        <span class="make-qty">Make {{ r.qty }}</span>
+        <span class="item-name">{{ r.stock_item.catalog.part_number or r.stock_item.catalog.description }}</span>
+      </div>
+      <div class="meta">
+        <span>{{ r.stock_item.catalog.description }}</span>
+        <span>on hand now {{ r.stock_item.on_hand }}</span>
+        <span>min {{ r.min_qty_at_trigger }} / max {{ r.max_qty_at_trigger }}</span>
+        <span>opened {{ r.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</span>
+      </div>
+    </div>
+    <div class="actions">
+      <a class="sheet-link" href="{{ url_for('stock.reorder_sheet', reorder_id=r.id) }}" target="_blank" rel="noopener">Restock sheet</a>
+      <form class="receive-form" method="post" action="{{ url_for('stock.reorder_receive', reorder_id=r.id) }}">
+        <input type="number" name="received_qty" min="0" placeholder="qty made" required />
+        <button type="submit" class="receive-btn">Mark received</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+{% else %}
+  <div class="empty-state"><p>No open reorders. When stock drops to or below an item's min, one appears here.</p></div>
+{% endif %}
+
+{% if received_rows %}
+<h2>Recently received</h2>
+<table class="received-table">
+  <thead>
+    <tr><th>Item</th><th class="num">Ordered</th><th class="num">Received</th><th>Received at</th></tr>
+  </thead>
+  <tbody>
+    {% for r in received_rows %}
+    <tr>
+      <td>{{ r.stock_item.catalog.part_number or r.stock_item.catalog.description }}</td>
+      <td class="num">{{ r.qty }}</td>
+      <td class="num">{{ r.receipt_movement.qty_delta if r.receipt_movement else 0 }}</td>
+      <td>{{ r.received_at.strftime('%Y-%m-%d %H:%M') }} UTC</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+{% endblock %}

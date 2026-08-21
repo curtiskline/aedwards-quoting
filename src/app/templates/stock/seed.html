@@ -1,0 +1,58 @@
+{% extends "layout.html" %}
+{% block title %}Stock seeding{% endblock %}
+{% block body %}
+<style>
+  .seed-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 0.5rem; }
+  .seed-help { color: #6b7280; margin: 0 0 1rem; max-width: 60rem; }
+  .seed-table { width: 100%; border-collapse: collapse; background: #fff; }
+  .seed-table th, .seed-table td { padding: 0.5rem 0.7rem; border-bottom: 1px solid #e5e7eb; text-align: left; vertical-align: top; }
+  .seed-table th { font-size: 0.85rem; text-transform: uppercase; color: #6b7280; }
+  .seed-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .seed-table td.entry form { display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap; margin: 0; }
+  .seed-table td.entry input { width: 5.5rem; padding: 0.4rem 0.5rem; border: 1px solid #d1d5db; border-radius: 6px; }
+  .seed-table td.entry button { padding: 0.4rem 0.9rem; }
+  .muted { color: #9ca3af; }
+  .badge { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px; font-size: 0.8rem; font-weight: 700; }
+  .badge-unseeded { background: #fef3c7; color: #92400e; }
+  .badge-reorder { background: #fee2e2; color: #b91c1c; }
+  .row-error { color: #b91c1c; font-size: 0.9rem; margin-top: 0.3rem; }
+  .row-saved { color: #166534; font-size: 0.9rem; margin-top: 0.3rem; }
+</style>
+<div class="seed-header">
+  <h1>Stock seeding</h1>
+  <div>
+    <a href="{{ url_for('stock.seed_import') }}">CSV import</a>
+    &nbsp;|&nbsp;
+    <a href="{{ url_for('stock.stock_list') }}">Stock list</a>
+  </div>
+</div>
+<p class="seed-help">
+  Walk the yard (or copy from the spreadsheet) and save each row: counted
+  on-hand plus min/max thresholds and the reorder quantity. Min and max come
+  together; reorder quantity is optional (blank = top back up to max). Every
+  save lands in the movement ledger. Saving a row at/below its min opens a
+  reorder for the shop immediately.
+</p>
+{% if rows %}
+<table class="seed-table">
+  <thead>
+    <tr>
+      <th>Part number</th>
+      <th>Description</th>
+      <th>Type</th>
+      <th class="num">Current</th>
+      <th>On hand / Min / Max / Reorder qty</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for row in rows %}
+      {% with error=None, saved=False, fired_reorder=None %}
+        {% include "stock/_seed_row.html" %}
+      {% endwith %}
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="muted">No active catalog products to seed.</p>
+{% endif %}
+{% endblock %}

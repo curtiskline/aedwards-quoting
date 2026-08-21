@@ -1,0 +1,65 @@
+{% extends "layout.html" %}
+{% block title %}Stock seeding — CSV import{% endblock %}
+{% block body %}
+<style>
+  .import-help { color: #6b7280; max-width: 60rem; }
+  .import-form textarea { width: 100%; max-width: 60rem; min-height: 12rem; font-family: monospace; padding: 0.6rem; border: 1px solid #d1d5db; border-radius: 8px; }
+  .import-form .actions { margin-top: 0.75rem; display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
+  .preview-table { width: 100%; border-collapse: collapse; background: #fff; margin-top: 1rem; }
+  .preview-table th, .preview-table td { padding: 0.45rem 0.7rem; border-bottom: 1px solid #e5e7eb; text-align: left; }
+  .preview-table th { font-size: 0.85rem; text-transform: uppercase; color: #6b7280; }
+  .preview-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .row-ok { color: #166534; font-weight: 600; }
+  .row-bad { color: #b91c1c; font-weight: 600; }
+</style>
+<p><a href="{{ url_for('stock.seed_screen') }}">&larr; Stock seeding</a></p>
+<h1>CSV import</h1>
+<p class="import-help">
+  Columns: <code>part_number, on_hand, min, max, reorder_qty</code> (header row
+  optional; min/max/reorder may be blank). Rows match catalog products by part
+  number only. Preview first — apply is all-or-nothing: any row error blocks
+  the whole import.
+</p>
+<form class="import-form" method="post" enctype="multipart/form-data"
+      action="{{ url_for('stock.seed_import') }}">
+  <textarea name="csv_text" placeholder="SLV-12,40,10,60,50">{{ csv_text }}</textarea>
+  <div class="actions">
+    <label>…or upload a file: <input type="file" name="csv_file" accept=".csv,text/csv"></label>
+  </div>
+  <div class="actions">
+    <button type="submit" name="mode" value="preview">Preview (dry run)</button>
+    {% if results and not (results | selectattr('error') | list) %}
+      <button type="submit" name="mode" value="apply">Apply {{ results | length }} row{{ 's' if results | length != 1 }}</button>
+    {% endif %}
+  </div>
+</form>
+
+{% if results is not none %}
+  {% if results %}
+  <table class="preview-table">
+    <thead>
+      <tr><th>Line</th><th>Part number</th><th>Product</th><th class="num">On hand</th><th class="num">Min</th><th class="num">Max</th><th class="num">Reorder</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+      {% for r in results %}
+      <tr>
+        <td>{{ r.line }}</td>
+        <td>{{ r.part_number or '—' }}</td>
+        <td>{{ r.catalog.description if r.catalog else '—' }}</td>
+        <td class="num">{{ r['values'].get('on_hand') if r['values'] else '' }}</td>
+        <td class="num">{{ r['values'].get('min_qty') if r['values'].get('min_qty') is not none else '' }}</td>
+        <td class="num">{{ r['values'].get('max_qty') if r['values'].get('max_qty') is not none else '' }}</td>
+        <td class="num">{{ r['values'].get('reorder_qty') if r['values'].get('reorder_qty') is not none else '' }}</td>
+        <td>
+          {% if r.error %}<span class="row-bad">{{ r.error }}</span>
+          {% else %}<span class="row-ok">OK</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="import-help">No data rows found in that CSV.</p>
+  {% endif %}
+{% endif %}
+{% endblock %}

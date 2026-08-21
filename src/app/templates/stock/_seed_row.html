@@ -1,0 +1,34 @@
+{# One save-per-row line of the seeding table. Swapped whole by htmx on save. #}
+<tr id="seed-row-{{ row.catalog.id }}">
+  <td>{{ row.catalog.part_number or '—' }}</td>
+  <td>{{ row.catalog.description }}</td>
+  <td>{{ row.catalog.product_type or '—' }}</td>
+  <td class="num current">
+    {% if row.item %}{{ row.item.on_hand }}{% else %}<span class="muted">no record</span>{% endif %}
+    {% if row.item and not row.item.is_seeded %}<span class="badge badge-unseeded">unseeded</span>{% endif %}
+    {% if row.open_reorder %}<span class="badge badge-reorder" title="An auto-reorder is open for this item.">reorder open</span>{% endif %}
+  </td>
+  <td class="entry">
+    <form method="post" action="{{ url_for('stock.seed_row_save', catalog_id=row.catalog.id) }}"
+          hx-post="{{ url_for('stock.seed_row_save', catalog_id=row.catalog.id) }}"
+          hx-target="#seed-row-{{ row.catalog.id }}"
+          hx-swap="outerHTML">
+      <input type="number" name="on_hand" placeholder="count" required
+             value="{{ row.item.on_hand if row.item is not none else '' }}" />
+      <input type="number" name="min_qty" placeholder="min" min="0"
+             value="{{ row.item.min_qty if row.item and row.item.min_qty is not none else '' }}" />
+      <input type="number" name="max_qty" placeholder="max" min="0"
+             value="{{ row.item.max_qty if row.item and row.item.max_qty is not none else '' }}" />
+      <input type="number" name="reorder_qty" placeholder="reorder" min="1"
+             value="{{ row.item.reorder_qty if row.item and row.item.reorder_qty is not none else '' }}" />
+      <button type="submit">Save</button>
+    </form>
+    {% if error %}<div class="row-error" role="alert">{{ error }}</div>{% endif %}
+    {% if saved %}
+      <div class="row-saved" role="status">
+        Saved.
+        {% if fired_reorder %}At/below min — reorder #{{ fired_reorder.id }} opened for the shop.{% endif %}
+      </div>
+    {% endif %}
+  </td>
+</tr>

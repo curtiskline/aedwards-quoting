@@ -415,6 +415,12 @@ def queue():
         + [{"key": "all", "label": "All", "count": sum(status_counts.values())}]
     )
 
+    # CP-5b: open auto-reorders surface in the shop queue as their own tab
+    # (a link to the reorders screen — reorders are not pick lists).
+    from .inventory import open_reorders_query
+
+    open_reorder_count = open_reorders_query().count()
+
     template = (
         "fulfillment/_queue_body.html"
         if request.headers.get("HX-Request")
@@ -425,6 +431,7 @@ def queue():
         pick_lists=_enrich(q.all()),
         tabs=tabs,
         active_status=status_filter,
+        open_reorder_count=open_reorder_count,
     )
 
 

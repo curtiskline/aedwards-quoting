@@ -11,17 +11,30 @@
   .badge-unseeded { background: #fef3c7; color: #92400e; }
   .badge-negative { background: #fee2e2; color: #b91c1c; }
   .badge-triage { background: #fee2e2; color: #b91c1c; text-decoration: none; padding: 0.35rem 0.8rem; }
+  .badge-reorder { background: #fee2e2; color: #b91c1c; }
+  .badge-reorders-open { background: #fee2e2; color: #b91c1c; text-decoration: none; padding: 0.35rem 0.8rem; }
   .empty-note { color: #6b7280; padding: 1.5rem 0; }
+  .header-links { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
 </style>
 <div class="stock-header">
   <h1>Stock</h1>
-  {% if unmatched_count %}
-    <a class="badge badge-triage" href="{{ url_for('stock.unmatched_list') }}">
-      {{ unmatched_count }} unmatched shipment{{ 's' if unmatched_count != 1 }} need triage
-    </a>
-  {% else %}
-    <a href="{{ url_for('stock.unmatched_list') }}">Unmatched shipments</a>
-  {% endif %}
+  <div class="header-links">
+    <a href="{{ url_for('stock.seed_screen') }}">Seed counts &amp; thresholds</a>
+    {% if open_reorders %}
+      <a class="badge badge-reorders-open" href="{{ url_for('stock.reorders_list') }}">
+        {{ open_reorders | length }} open reorder{{ 's' if open_reorders | length != 1 }}
+      </a>
+    {% else %}
+      <a href="{{ url_for('stock.reorders_list') }}">Reorders</a>
+    {% endif %}
+    {% if unmatched_count %}
+      <a class="badge badge-triage" href="{{ url_for('stock.unmatched_list') }}">
+        {{ unmatched_count }} unmatched shipment{{ 's' if unmatched_count != 1 }} need triage
+      </a>
+    {% else %}
+      <a href="{{ url_for('stock.unmatched_list') }}">Unmatched shipments</a>
+    {% endif %}
+  </div>
 </div>
 {% if items %}
 <table class="stock-table">
@@ -44,6 +57,7 @@
       <td class="num">
         {{ item.on_hand }}
         {% if item.on_hand < 0 %}<span class="badge badge-negative" title="On hand is below zero: shipments were decremented before an initial count was imported (arrives with CP-5b).">negative</span>{% endif %}
+        {% if open_reorders.get(item.id) %}<a class="badge badge-reorder" href="{{ url_for('stock.reorders_list') }}" title="An auto-reorder is open for this item — the shop has a restock sheet.">reorder open</a>{% endif %}
       </td>
       <td class="num">
         {% if item.is_seeded %}
