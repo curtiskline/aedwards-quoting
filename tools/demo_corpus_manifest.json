@@ -1,0 +1,240 @@
+{
+  "_comment": [
+    "Task 408: curated demo corpus for the staging dataset. Each case is a REAL .eml from",
+    "data/test-corpus/emails (13,372-message PST dump of Jamee's mailbox). Only filenames are",
+    "committed here — the email content itself is rsynced to the isolated staging box, never",
+    "added to the repo. 'attachments' entries are sidecar files from",
+    "data/curtis-emails/attachments-jamee-sent (the PST export stripped attachments out of the",
+    ".eml files); the seeder MIME-bridges them back in exactly like monitor._parse_message_to_rfqs.",
+    "'confirm_ship_to': after ingest, mark the parsed ship-to as a stored human-confirmed customer",
+    "address (models a destination a human verified on an earlier order) so the ship_to_confirmed",
+    "signal can pass. Cases without it demo the 'unconfirmed ship-to' hold state."
+  ],
+  "cases": [
+    {
+      "file": "20250206_150218_jhamilton_RFQ.eml",
+      "category": "sleeve_plain",
+      "why": "Terse bare 'RFQ' subject with sleeve specs in body; proven pipeline case from tools/send_test_rfqs.py."
+    },
+    {
+      "file": "20251124_182556_backup_20_ Sleeve quote.eml",
+      "category": "sleeve_plain",
+      "why": "Short single-item 20\" sleeve request from PSSI (Tulsa) with full signature block for bill-to extraction."
+    },
+    {
+      "file": "20260126_205019_jhamilton_8” sleeve quote.eml",
+      "category": "sleeve_plain",
+      "why": "8\" x 3/8\" GR50 sleeve plus matching oversleeve, 'a bundle of each' — exercises bundle rule and oversleeve OD math. Plains Pipeline.",
+      "confirm_ship_to": false
+    },
+    {
+      "file": "20251215_190615_jhamilton_RFQ_ 8_ Sleeve Material.eml",
+      "category": "sleeve_plain",
+      "why": "Fully specified 3-tier stack (sleeve, oversleeve, over-oversleeve, GR65, OD-fit dims) + backing strip line; bp. Clean-decode candidate: every spec explicit, no defaults needed.",
+      "confirm_ship_to": false
+    },
+    {
+      "file": "20251210_162345_jhamilton___RUSH RFQ – Boardwalk Pipeline – Half Soles__.eml",
+      "category": "sleeve_plain",
+      "why": "16\" x .500\" GR50 half soles, 120 LF as 12 pieces, explicit destination (Jackson, MS) — footage normalization + ship-to demo. Boardwalk/Gulf South.",
+      "confirm_ship_to": true
+    },
+    {
+      "file": "20251209_230125_jhamilton_Kinder Morgan Quote Request for Type B Sleeves _ LS-72 2026 .eml",
+      "category": "sleeve_plain",
+      "why": "8-5/8\" ID x 0.25\" GR65 Type B half-sole 100 ft + flat backing strip, full ship-to (Rio Vista, CA) with site contact. Michels Pacific Energy.",
+      "confirm_ship_to": true
+    },
+    {
+      "file": "20260108_144620_jhamilton_Sleeve Quote.eml",
+      "category": "sleeve_plain",
+      "why": "Casual combined request: 300 ft of 12\" B sleeve + ten 12\" girth weld sleeves to Detroit, MI; mixed product types in one email. Buckeye."
+    },
+    {
+      "file": "20260119_223759_jhamilton_Pipeline Sleeve Quote Request.eml",
+      "category": "sleeve_plain",
+      "why": "Plain-language sleeve request; fills out the everyday-RFQ volume the queue should show."
+    },
+    {
+      "file": "20251126_140212_jhamilton_Enbridge - Eco Village Project - Type B Sleeve Quote.eml",
+      "category": "sleeve_plain",
+      "why": "Enbridge project-framed Type B sleeve request from a first-time contact — new-customer hold candidate."
+    },
+    {
+      "file": "20260108_150011_jhamilton_8_ and 10_ Sleeve Material RFQ.eml",
+      "category": "sleeve_plain",
+      "why": "Two diameters in one RFQ (8\" and 10\") — multi-line decode from prose."
+    },
+    {
+      "file": "20250312_205138_jhamilton_FW_ Quote on NPS16 Allen Edwards Sleeves.eml",
+      "category": "sleeve_forwarded",
+      "why": "Jamee-forwarded NPS16 sleeve RFQ (the real prod intake pattern: staff forward customer mail to the responder). Proven case."
+    },
+    {
+      "file": "20260203_221845_backup_Fw_ Enbridge Gas Inc - NPS 30 AE Sleeves Quote Request - NPS.eml",
+      "category": "sleeve_forwarded",
+      "why": "Forwarded large-diameter (NPS 30) Enbridge Gas request; proven case."
+    },
+    {
+      "file": "20250206_171030_jhamilton_RE_ [EXTERNAL] RE_ Allan Edwards 36_ 3_4_ Gr 65 Sleeves.eml",
+      "category": "sleeve_forwarded",
+      "why": "Deep RE/FW thread with [EXTERNAL] banner noise around 36\" 3/4\" GR65 specs — decode-through-quoting test. Proven case."
+    },
+    {
+      "file": "20250602_190313_backup_AE Sleeve Quote Request - EGI NPS 20 Winston Churchill Pipel.eml",
+      "category": "sleeve_metric",
+      "why": "Enbridge Gas NPS 20 request with metric (mm) dimensions in the body — exercises the task-330 metric conversion path."
+    },
+    {
+      "file": "20250908_210000_backup_FW_ Request for Quote Containment Sleeve NPS 20 Queensway.eml",
+      "category": "sleeve_metric",
+      "why": "Forwarded Enbridge Canada containment-sleeve RFQ, metric dims, 5 dig locations — Canadian ship-to must NOT price freight (US-only rule)."
+    },
+    {
+      "file": "20250708_142538_backup_Fw_ Quotation request.eml",
+      "category": "sleeve_metric",
+      "why": "Forwarded international RFQ (Dilago, Colombia) with schedule/pressure specs and metric leanings; also a defaults-applied decode case."
+    },
+    {
+      "file": "20250428_144120_jhamilton_Girth Weld Sleeve RFQ.eml",
+      "category": "girth_weld",
+      "why": "Thread-root girth weld sleeve RFQ — per-set diameter-tier pricing."
+    },
+    {
+      "file": "20251209_135626_jhamilton_Need girth weld sleeves quote.eml",
+      "category": "girth_weld",
+      "why": "Girth weld RFQ specified only by part number G-18-38-50-12 (spec sheet was an attachment) — part-number-driven decode. Virginia Natural Gas."
+    },
+    {
+      "file": "20251114_191115_jhamilton_16_ Girth Weld Sleeves & Extra Backing Strip - Quote Needed.eml",
+      "category": "girth_weld",
+      "why": "16\" x 0.375\" GR50 girth weld sets plus extra backing strip tubes, full ship-to (Buckeye Macungie Station, Emmaus PA) — clean multi-type + confirmed-address demo.",
+      "confirm_ship_to": true
+    },
+    {
+      "file": "20250211_150802_jhamilton_CNP IM - fabricated weld sleeve.eml",
+      "category": "girth_weld",
+      "why": "CenterPoint fabricated weld sleeve request; proven case."
+    },
+    {
+      "file": "20250918_143413_jhamilton_Eco bag RFQ.eml",
+      "category": "bags",
+      "why": "Internal relay of a phoned-in request for 1,200 buoyancy bags — sparse specs, tests bag-tier pricing and contact extraction from prose."
+    },
+    {
+      "file": "20250411_181926_jhamilton_Fw_ LEG TC 30_ Interconnect bag weights.eml",
+      "category": "bags",
+      "why": "Forwarded interconnect bag-weights request; proven case."
+    },
+    {
+      "file": "20251029_134810_jhamilton_RFQ - 16_ Pipe Weights - Sidnaw, MI.eml",
+      "category": "pipe_weights",
+      "why": "16\" pipe weights PRE-FILLED at 1600# — fill without a weight basis is deliberately unpriced, so this demos the needs-pricing hold with a real email. Michels."
+    },
+    {
+      "file": "20251118_204714_jhamilton_CP BP #4 RFQ - Pipe Weights.eml",
+      "category": "pipe_weights",
+      "why": "122 pipe weights for 20\" pipe at 5,000 lbs + freight to Centerville, OH — quantity scale + freight ask."
+    },
+    {
+      "file": "20250212_132738_jhamilton_Repair wrap.eml",
+      "category": "composite",
+      "why": "Repair wrap request — composite keyword routing; proven case."
+    },
+    {
+      "file": "20250210_154021_jhamilton_FW_ Omega wrap training and installation support for Enbridg.eml",
+      "category": "composite",
+      "why": "OmegaWrap training/installation support — service lines the engine cannot price (TBD demo); proven case."
+    },
+    {
+      "file": "20251114_085108_jhamilton_Request for mtrs on weld wraps for Etp.eml",
+      "category": "composite",
+      "why": "MTR/documentation request around weld wraps — classifier gray zone; proven case."
+    },
+    {
+      "file": "20250429_153811_backup_QUO-125-261 RFQ for Omega Wrap for Dig 11214 8AL1 Km 52.596 .eml",
+      "category": "composite",
+      "why": "Omega Wrap for a numbered dig with metric km reference — composite variant pricing."
+    },
+    {
+      "file": "20250327_202116_jhamilton_TCCI RFQ-Backing Strips.eml",
+      "category": "backing_strip",
+      "why": "Clean 6x backing strip (1-1/4\" x 16GA, 10' pre-crimped) request — exercises the pack-of-10 rule and its 'confirm with Chip' conversion note. Todd Creason Construction."
+    },
+    {
+      "file": "20250807_125322_jhamilton_RFQ_ REQ HALF SOLE & BACKINGSTRIP.eml",
+      "category": "backing_strip",
+      "why": "'Same as previous PO' half sole + backing strip request with specs only in a missing attachment — realistic underspecified RFQ, needs-pricing candidate. Ferguson."
+    },
+    {
+      "file": "20250818_214724_jhamilton_FW_ NNG - 2025 Sleeve Bid Event.eml",
+      "category": "spreadsheet_rfq",
+      "why": "Northern Natural Gas annual sleeve bid with multi-line XLSX material list — the multi-line spreadsheet decode case.",
+      "attachments": ["20250818_FW_ NNG - 2025 Sleeve Bid Event_Sleeve Bid.xlsx"]
+    },
+    {
+      "file": "20250701_213607_jhamilton_RE_ Request for Quotation - REQ-1890-1013703 Enbridge QUO-12.eml",
+      "category": "spreadsheet_rfq",
+      "why": "Enbridge procurement RFQ with XLSX data sheet spanning two states (WI & MN) — spreadsheet decode + multi-destination/multi-quote candidate.",
+      "attachments": ["20250701_RE_ Request for Quotation - REQ-1890-1013703 Enbri_RFQ - REQ-1890-1013703 (WI & MN).xlsx"]
+    },
+    {
+      "file": "20251009_130209_backup_RE_ Request for Quote.eml",
+      "category": "spreadsheet_rfq",
+      "why": "Generic-subject RFQ whose real content is the attached XLSX line list (MR-2025 L6) — body alone is undecodable.",
+      "attachments": ["20251009_FW_ Request for Quote_MR-2025 L6 MLA-M-007-RA.xlsx"]
+    },
+    {
+      "file": "20250902_191630_backup_Ninja Forms Submission - Contact Us Form.eml",
+      "category": "spreadsheet_rfq",
+      "why": "Website contact-form submission delivered as CSV attachment — the CSV extraction path and a non-email-native intake shape.",
+      "attachments": ["20250902_FW_ Ninja Forms Submission - Contact Us Form_ninja-forms-submission.csv"]
+    },
+    {
+      "file": "20251121_181355_jhamilton_Quote request - 12.75_x12_ sleeves.eml",
+      "category": "multi_quote",
+      "why": "Explicitly asks for TWO separate quotes (with/without backing-strip groove), 20 sets each, ship-to Charlotte NC — the multi-quote split (base-01/base-02). Carolinas West Fabrication.",
+      "confirm_ship_to": true
+    },
+    {
+      "file": "20251201_224014_jhamilton_NuStar - Sleeve Quote.eml",
+      "category": "needs_pricing",
+      "why": "Internal relay: 200' of 6\" + 50' oversleeve, 200' of 10\" + 50' oversleeve, no wall/grade — defaults-applied decode + footage normalization; NuStar as customer name only in prose."
+    },
+    {
+      "file": "20260203_221107_jhamilton_Enbridge Gas Inc - NPS 30 AE Sleeves Quote Request - NPS 30 .eml",
+      "category": "needs_pricing",
+      "why": "'Duplicate the 2024 PO 74444 order' — no decodable specs at all; must land as needs-pricing, never silently priced."
+    },
+    {
+      "file": "20260131_071352_backup_RE_ ⚠ External - Re_ B-sleeve repairs quote for NPS.eml",
+      "category": "needs_pricing",
+      "why": "B-sleeve repair thread with unusual warning-banner subject characters; proven case."
+    },
+    {
+      "file": "20260206_110044_backup_PRCI ACADEMY_ Practical Pipeline Repair Training in Calgary.eml",
+      "category": "non_rfq",
+      "why": "Industry training marketing blast — classifier must reject; feeds the /admin/rejected-emails audit trail."
+    },
+    {
+      "file": "20260130_155317_backup_Webinar_ Engineer to Order with DriveWorks.eml",
+      "category": "non_rfq",
+      "why": "Vendor webinar invitation — obvious non-RFQ."
+    },
+    {
+      "file": "20251125_195942_jhamilton_Delivered! Your order 355559715.eml",
+      "category": "non_rfq",
+      "why": "Consumer delivery notification — automated transactional mail the classifier must reject."
+    },
+    {
+      "file": "20251121_001119_backup_Re_ PO 4507750085. RE_ Outstanding invoice_ Allan Edwards In.eml",
+      "category": "non_rfq",
+      "why": "Outstanding-invoice payment thread — mentions POs and dollar amounts but is not a quote request; the hard negative for the classifier."
+    },
+    {
+      "file": "20260204_174514_backup_Thank You for Attending_ 2026 Winter E&P Standards Meeting &.eml",
+      "category": "non_rfq",
+      "why": "Post-event thank-you mail — calendar/industry noise."
+    }
+  ]
+}
