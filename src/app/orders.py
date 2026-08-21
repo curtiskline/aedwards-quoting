@@ -25,6 +25,7 @@ from .models import (
     Order,
     OrderAuditLog,
     OrderStatus,
+    PickList,
     Quote,
     QuoteStatus,
     QuoteVersion,
@@ -389,7 +390,11 @@ def _detail_context(order: Order) -> dict:
         (s for s in ORDER_TRANSITIONS.get(order.status, set())),
         key=lambda s: list(OrderStatus).index(s),
     )
+    pick_list = (
+        db.session.query(PickList).filter(PickList.order_id == order.id).one_or_none()
+    )
     return {
+        "pick_list": pick_list,
         "order": order,
         "quote": order.quote,
         "version": order.quote_version,
@@ -400,8 +405,11 @@ def _detail_context(order: Order) -> dict:
         "shipping": shipping,
         "total": subtotal + shipping,
         "user_names": users,
-        # CP-4 drives FULFILLED; the manual button only ever offers ORDERED.
-        "manual_next": OrderStatus.ORDERED if order.status == OrderStatus.ACCEPTED else None,
+        # CP-4: generating the pick list IS the ACCEPTED->ORDERED trigger
+        # (it replaced CP-3's bare Mark Ordered); SHIPPED drives FULFILLED.
+        "can_generate_pick_list": pick_list is None
+        and snapshot is not None
+        and order.status in (OrderStatus.ACCEPTED, OrderStatus.ORDERED),
         "next_statuses": next_statuses,
         "audit_rows": sorted(order.audit_logs, key=lambda a: (a.created_at, a.id)),
     }

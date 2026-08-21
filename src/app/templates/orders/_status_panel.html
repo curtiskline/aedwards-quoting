@@ -4,6 +4,11 @@
     {{ error }}
   </div>
   {% endif %}
+  {% if pick_list_created %}
+  <div role="status" style="margin-bottom:0.75rem;padding:0.6rem 0.9rem;border:1px solid #86efac;background:#f0fdf4;color:#166534;font-weight:600;">
+    Pick list generated — the order is now Ordered and queued for the shop.
+  </div>
+  {% endif %}
   <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
     <span><strong>Status:</strong> <span class="status-badge status-{{ order.status.value }}">{{ order.status.value.title() }}</span></span>
     <span style="font-size:0.85rem;color:#6b7280;">
@@ -11,17 +16,33 @@
       {% if order.ordered_at %} &middot; ordered {{ order.ordered_at.strftime('%Y-%m-%d %H:%M') }} UTC{% if order.ordered_by and user_names.get(order.ordered_by) %} by {{ user_names.get(order.ordered_by) }}{% endif %}{% endif %}
       {% if order.fulfilled_at %} &middot; fulfilled {{ order.fulfilled_at.strftime('%Y-%m-%d %H:%M') }} UTC{% if order.fulfilled_by and user_names.get(order.fulfilled_by) %} by {{ user_names.get(order.fulfilled_by) }}{% endif %}{% endif %}
     </span>
-    {% if manual_next %}
-    <form method="post" action="/orders/{{ order.id }}/status"
-          hx-post="/orders/{{ order.id }}/status"
+    {% if can_generate_pick_list %}
+    {# Generating the pick list IS the Mark Ordered action now: it advances
+       ACCEPTED->ORDERED and queues the shop, atomically. One pick list per
+       order, ever — a botched order is handled at the order level. #}
+    <form method="post" action="/orders/{{ order.id }}/pick-list"
+          hx-post="/orders/{{ order.id }}/pick-list"
           hx-target="#order-status-panel"
           hx-swap="outerHTML"
-          onsubmit="return confirm('Mark this order as Ordered?');">
-      <input type="hidden" name="status" value="{{ manual_next.value }}" />
-      <button type="submit" style="background:var(--accent);color:#fff;border:none;padding:0.4rem 0.9rem;border-radius:6px;font-weight:600;cursor:pointer;">Mark Ordered</button>
+          onsubmit="return confirm('Generate the pick list and queue this order for the shop?');">
+      <button type="submit" style="background:var(--accent);color:#fff;border:none;padding:0.4rem 0.9rem;border-radius:6px;font-weight:600;cursor:pointer;">Generate pick list</button>
     </form>
-    {% elif order.status.value == 'ordered' %}
-    <span style="font-size:0.85rem;color:#6b7280;">Fulfillment is recorded by the pick/ship flow (coming in a later checkpoint).</span>
     {% endif %}
   </div>
+  {% if pick_list %}
+  <div style="margin-top:0.75rem;display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+    <span><strong>Pick list:</strong> <span class="status-badge picklist-{{ pick_list.status.value }}">{{ pick_list.status.value.title() }}</span></span>
+    <span style="font-size:0.85rem;color:#6b7280;">
+      queued {{ pick_list.created_at.strftime('%Y-%m-%d %H:%M') }} UTC
+      {% if pick_list.picked_at %} &middot; picked {{ pick_list.picked_at.strftime('%Y-%m-%d %H:%M') }} UTC{% endif %}
+      {% if pick_list.loaded_at %} &middot; loaded {{ pick_list.loaded_at.strftime('%Y-%m-%d %H:%M') }} UTC{% endif %}
+      {% if pick_list.shipped_at %} &middot; shipped {{ pick_list.shipped_at.strftime('%Y-%m-%d %H:%M') }} UTC{% endif %}
+    </span>
+    <a href="/pick-lists/{{ pick_list.id }}/sheet" target="_blank" rel="noopener"
+       style="background:#f3f4f6;border:1px solid #d1d5db;color:#111827;padding:0.4rem 0.9rem;border-radius:6px;font-weight:600;text-decoration:none;">Print pick sheet</a>
+    <a href="/pick-lists/" style="font-size:0.85rem;">shop queue</a>
+  </div>
+  {% elif order.status.value == 'fulfilled' %}
+  <div style="margin-top:0.5rem;font-size:0.85rem;color:#6b7280;">Fulfilled without a pick list record.</div>
+  {% endif %}
 </div>

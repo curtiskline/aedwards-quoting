@@ -1,0 +1,146 @@
+{# The printable pick sheet — the paper copy the truck drivers need (Chip
+   onsite: paper/phone first). Renders ONLY PickList.lines_snapshot, frozen at
+   creation from the send-time QuoteVersion snapshot: nothing here reads the
+   live quote or catalog, so reprinting always yields the same sheet. There is
+   no regenerate path for a pick list — a botched order is handled at the
+   ORDER level (revise + re-accept), never by editing this sheet's record.
+   Shop-facing paper: the big reference is the QUOTE number; the internal ids
+   are traceability fine print (customer-facing order numbering is a deferred
+   Chip decision). #}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Pick sheet — {{ quote.quote_number }}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: Georgia, 'Times New Roman', serif;
+      color: #111; margin: 0; padding: 2rem;
+      max-width: 8.5in; margin-left: auto; margin-right: auto;
+    }
+    .toolbar { margin-bottom: 1.25rem; }
+    .toolbar button {
+      font-family: system-ui, sans-serif; font-size: 1rem; font-weight: 600;
+      padding: 0.6rem 1.4rem; border-radius: 8px; border: none;
+      background: #1d4ed8; color: #fff; cursor: pointer;
+    }
+    header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #111; padding-bottom: 0.75rem; }
+    h1 { font-size: 1.5rem; margin: 0; }
+    .company { text-align: right; font-size: 0.9rem; }
+    .ref-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem;
+      margin: 1rem 0; font-size: 0.95rem;
+    }
+    .ref-grid h2 { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 0.3rem; color: #444; }
+    .ref-grid p { margin: 0.1rem 0; }
+    table { width: 100%; border-collapse: collapse; margin-top: 0.75rem; font-size: 0.95rem; }
+    th, td { border: 1px solid #111; padding: 0.5rem 0.6rem; text-align: left; vertical-align: top; }
+    th { background: #eee; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    td.num, th.num { text-align: right; white-space: nowrap; }
+    td.check { text-align: center; width: 3.2rem; }
+    .checkbox { display: inline-block; width: 1.3rem; height: 1.3rem; border: 2px solid #111; }
+    .pack { font-weight: 700; }
+    .pack-detail { font-size: 0.85rem; color: #333; }
+    .totals { margin-top: 0.5rem; font-size: 0.95rem; font-weight: 700; text-align: right; }
+    .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; margin-top: 3rem; }
+    .sig-line { border-top: 1.5px solid #111; padding-top: 0.3rem; font-size: 0.85rem; }
+    .sig-space { height: 3rem; }
+    footer { margin-top: 2rem; font-size: 0.75rem; color: #555; }
+    @media print {
+      body { padding: 0; }
+      .toolbar { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar"><button onclick="window.print()">Print this sheet</button></div>
+
+  <header>
+    <div>
+      <h1>PICK SHEET</h1>
+      <p style="margin:0.25rem 0 0;font-size:1.1rem;font-weight:700;">Quote {{ quote.quote_number }}</p>
+    </div>
+    <div class="company">
+      <strong>Allan Edwards, Inc.</strong><br />
+      Pick list status: {{ pick_list.status.value.title() }}<br />
+      Generated {{ pick_list.created_at.strftime('%Y-%m-%d %H:%M') }} UTC
+    </div>
+  </header>
+
+  <div class="ref-grid">
+    <div>
+      <h2>Customer</h2>
+      <p><strong>{{ quote.customer_name_raw or quote.sender_name or 'Unknown' }}</strong></p>
+      {% if quote.contact_name %}<p>{{ quote.contact_name }}</p>{% endif %}
+      {% if quote.contact_phone %}<p>{{ quote.contact_phone }}</p>{% endif %}
+      {% if order.po_number %}<p>Customer PO: <strong>{{ order.po_number }}</strong></p>{% endif %}
+    </div>
+    <div>
+      <h2>Ship to</h2>
+      {% if ship_to %}
+        {% if ship_to.company %}<p><strong>{{ ship_to.company }}</strong></p>{% endif %}
+        {% if ship_to.attention %}<p>Attn: {{ ship_to.attention }}</p>{% endif %}
+        {% if ship_to.address_line1 %}<p>{{ ship_to.address_line1 }}</p>{% endif %}
+        {% if ship_to.address_line2 %}<p>{{ ship_to.address_line2 }}</p>{% endif %}
+        <p>{{ ship_to.city }}{% if ship_to.city and ship_to.state %}, {% endif %}{{ ship_to.state }} {{ ship_to.postal_code }}</p>
+        {% if ship_to.country and ship_to.country not in ('US', 'USA') %}<p>{{ ship_to.country }}</p>{% endif %}
+      {% else %}
+        <p>&mdash; no ship-to on record &mdash;</p>
+      {% endif %}
+    </div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th class="check">Picked</th>
+        <th>Part #</th>
+        <th>Description</th>
+        <th class="num">Pull</th>
+        <th class="num">Pieces</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for line in lines %}
+      <tr>
+        <td class="check"><span class="checkbox"></span></td>
+        <td>{{ line.get('part_number') or '' }}</td>
+        <td>
+          {{ line.get('description') or '' }}
+          {% if line.get('requested_qty') and line.get('requested_qty') != line.get('pieces') %}
+          <div class="pack-detail">(customer asked for {{ line.get('requested_qty') }} — rounded to whole packs)</div>
+          {% endif %}
+        </td>
+        <td class="num">
+          {% if line.get('pack_unit') %}
+          <span class="pack">{{ line.get('pack_count') }} {{ line.get('pack_unit') }}{{ 's' if line.get('pack_count') != 1 else '' }}</span>
+          <div class="pack-detail">{{ line.get('pieces_per_pack') }} pcs / {{ line.get('pack_unit') }}</div>
+          {% else %}
+          <span class="pack">{{ line.get('pieces') }} pcs</span>
+          {% endif %}
+        </td>
+        <td class="num">{{ line.get('pieces') }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div class="totals">Total: {{ total_pieces }} pieces</div>
+
+  <div class="signatures">
+    <div>
+      <div class="sig-space"></div>
+      <div class="sig-line">Picked by / date</div>
+    </div>
+    <div>
+      <div class="sig-space"></div>
+      <div class="sig-line">Driver signature / date</div>
+    </div>
+  </div>
+
+  <footer>
+    Internal refs: pick list #{{ pick_list.id }} &middot; order record #{{ order.id }} &middot; quote version v{{ order.quote_version.version_number }}.
+    Lines are frozen from the sent quote — if this order changed, revise the quote and re-accept; do not hand-edit this sheet's quantities.
+  </footer>
+</body>
+</html>

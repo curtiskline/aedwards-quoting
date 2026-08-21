@@ -1,0 +1,11 @@
+<div id="picklists-body">
+  {% if pick_lists %}
+    {% for row in pick_lists %}
+      {% include "fulfillment/_queue_row.html" %}
+    {% endfor %}
+  {% else %}
+    <div class="empty-state">
+      <p>Nothing to pick. Generating a pick list from an order queues it here.</p>
+    </div>
+  {% endif %}
+</div>

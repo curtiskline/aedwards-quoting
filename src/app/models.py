@@ -38,6 +38,33 @@ class OrderStatus(str, Enum):
     FULFILLED = "fulfilled"
 
 
+class PickListStatus(str, Enum):
+    """Pick/load/ship progress for one order's fulfillment (design Stage E).
+
+    Lives HERE, not on Order (T409 agreement): the Order machine stays
+    ACCEPTED -> ORDERED -> FULFILLED, and this record carries the shop-floor
+    detail in between. QUEUED at creation; SHIPPED is what flips the Order
+    to FULFILLED.
+    """
+
+    QUEUED = "queued"
+    PICKED = "picked"
+    LOADED = "loaded"
+    SHIPPED = "shipped"
+
+
+class ShopPingChannel(str, Enum):
+    """How the shop was told a pick list exists. Only MANUAL_PRINT is wired
+    in CP-4 — the ping IS the printed sheet plus the work-queue indicator.
+    EMAIL/SMS/SCREEN are reserved seams (I136 pluggability); wiring them means
+    an outbound delivery gate first, not just adding a member here."""
+
+    MANUAL_PRINT = "manual_print"
+    EMAIL = "email"
+    SMS = "sms"
+    SCREEN = "screen"
+
+
 class AcceptanceSource(str, Enum):
     """How an acceptance was detected. Only EXPLICIT_CLICK is wired today;
     the other members are reserved seams (Chip call 2026-08-19: reply-reading
@@ -477,6 +504,93 @@ class OrderAuditLog(TimestampMixin, db.Model):
     details: Mapped[dict | None] = mapped_column(db.JSON)
 
     order: Mapped[Order] = relationship(back_populates="audit_logs")
+
+
+class PickList(db.Model):
+    """The shop's pick/load/ship record for one order (CP-4, design Stage E).
+
+    order_id is UNIQUE: one pick list per order, ever — creation is the
+    claim-in-transaction idempotency guard (hazard §12.1), and there is NO
+    regenerate path. If an order was botched, the escape hatch is at the
+    ORDER level (revise the quote, accept the revision — a new order gets a
+    new pick list); a pick list is never edited or replaced.
+
+    lines_snapshot is materialized AT CREATION from
+    QuoteVersion.line_items_snapshot — never from the live Quote or catalog
+    (§12.8: drift between quoted lines and picked goods is the primary
+    fulfillment hazard). Pack-unit math (bundle/pallet counts) is frozen in
+    here too, so the printed sheet cannot change under later pricing-table
+    edits.
+    """
+
+    __tablename__ = "pick_list"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int] = mapped_column(
+        ForeignKey("customer_order.id"), nullable=False, unique=True, index=True
+    )
+    status: Mapped[PickListStatus] = mapped_column(
+        SAEnum(PickListStatus, name="pick_list_status"),
+        default=PickListStatus.QUEUED,
+        nullable=False,
+    )
+    lines_snapshot: Mapped[list[dict]] = mapped_column(db.JSON, nullable=False)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"))
+    picked_at: Mapped[datetime | None]
+    picked_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"))
+    loaded_at: Mapped[datetime | None]
+    loaded_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"))
+    shipped_at: Mapped[datetime | None]
+    shipped_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"))
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
+
+    order: Mapped[Order] = relationship()
+    audit_logs: Mapped[list["PickListAuditLog"]] = relationship(
+        back_populates="pick_list", cascade="all, delete-orphan"
+    )
+    pings: Mapped[list["ShopPing"]] = relationship(
+        back_populates="pick_list", cascade="all, delete-orphan"
+    )
+
+
+class PickListAuditLog(TimestampMixin, db.Model):
+    __tablename__ = "pick_list_audit_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pick_list_id: Mapped[int] = mapped_column(
+        ForeignKey("pick_list.id"), nullable=False, index=True
+    )
+    action: Mapped[str] = mapped_column(nullable=False)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("user.id"))
+    details: Mapped[dict | None] = mapped_column(db.JSON)
+
+    pick_list: Mapped[PickList] = relationship(back_populates="audit_logs")
+
+
+class ShopPing(TimestampMixin, db.Model):
+    """A record that the shop was notified about a pick list, per channel.
+
+    CP-4 creates exactly one MANUAL_PRINT row with each pick list: the "ping"
+    is the printed sheet plus the shop work queue. No outbound delivery of any
+    kind happens here — future EMAIL/SMS/SCREEN channels write their own rows
+    through their own delivery gates.
+    """
+
+    __tablename__ = "shop_ping"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pick_list_id: Mapped[int] = mapped_column(
+        ForeignKey("pick_list.id"), nullable=False, index=True
+    )
+    channel: Mapped[ShopPingChannel] = mapped_column(
+        SAEnum(ShopPingChannel, name="shop_ping_channel"), nullable=False
+    )
+    details: Mapped[dict | None] = mapped_column(db.JSON)
+
+    pick_list: Mapped[PickList] = relationship(back_populates="pings")
 
 
 class PricingTable(db.Model):

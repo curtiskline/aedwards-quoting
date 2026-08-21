@@ -1,0 +1,31 @@
+<div class="pick-card" id="pick-list-{{ row.id }}">
+  <div>
+    <div class="top-row">
+      <span class="quote-number">{{ row.quote_number }}</span>
+      <span class="customer-name">{{ row.customer_name }}</span>
+      <span class="status-badge picklist-{{ row.status.value }}">{{ row.status.value.title() }}</span>
+      {% if row.po_number %}<span class="meta">PO {{ row.po_number }}</span>{% endif %}
+    </div>
+    <div class="meta">
+      <span>{{ row.line_count }} line{{ 's' if row.line_count != 1 else '' }}</span>
+      <span>{{ row.total_pieces }} pcs</span>
+      <span>queued {{ row.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</span>
+    </div>
+  </div>
+  <div class="actions">
+    <a class="sheet-link" href="/pick-lists/{{ row.id }}/sheet" target="_blank" rel="noopener">Pick sheet</a>
+    {% if row.next_status %}
+    <form method="post" action="/pick-lists/{{ row.id }}/status"
+          hx-post="/pick-lists/{{ row.id }}/status"
+          hx-target="#pick-list-{{ row.id }}"
+          hx-swap="outerHTML"
+          style="margin:0;">
+      <input type="hidden" name="status" value="{{ row.next_status.value }}" />
+      <button type="submit" class="advance-btn">Mark {{ row.next_status.value.title() }}</button>
+    </form>
+    {% endif %}
+  </div>
+  {% if notice %}
+  <div class="row-notice" role="status">{{ notice }}</div>
+  {% endif %}
+</div>

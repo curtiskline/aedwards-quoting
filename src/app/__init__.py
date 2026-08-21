@@ -13,6 +13,7 @@ from .auth_routes import auth_bp
 from .config import Config
 from .customers import customers_bp
 from .extensions import db, login_manager
+from .fulfillment import fulfillment_bp
 from .models import User
 from .orders import orders_bp
 from .quotes import quotes_bp
@@ -33,6 +34,7 @@ def create_app() -> Flask:
     app.register_blueprint(customers_bp)
     app.register_blueprint(quotes_bp)
     app.register_blueprint(orders_bp)
+    app.register_blueprint(fulfillment_bp)
 
     login_manager.login_view = "auth.login"
     login_manager.login_message = "Please sign in to continue."
