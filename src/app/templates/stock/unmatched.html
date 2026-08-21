@@ -1,0 +1,43 @@
+{% extends "layout.html" %}
+{% block title %}Unmatched shipments{% endblock %}
+{% block body %}
+<style>
+  .unmatched-card { border: 1px solid #fca5a5; border-radius: 10px; background: #fff; padding: 1rem 1.25rem; margin-bottom: 0.9rem; }
+  .unmatched-card .line-desc { font-weight: 700; }
+  .unmatched-card .meta { color: #6b7280; font-size: 0.92rem; margin: 0.3rem 0 0.7rem; display: flex; gap: 1.25rem; flex-wrap: wrap; }
+  .resolve-form { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; }
+  .resolve-form select { padding: 0.45rem 0.6rem; border: 1px solid #d1d5db; border-radius: 6px; max-width: 28rem; }
+  .empty-note { color: #6b7280; padding: 1.5rem 0; }
+</style>
+<p><a href="{{ url_for('stock.stock_list') }}">&larr; Stock</a></p>
+<h1>Unmatched shipments</h1>
+<p>Shipped pick lines that matched no catalog product. Each one still needs its
+decrement applied — pick the product it should count against. Nothing is ever
+guessed or silently skipped.</p>
+{% if rows %}
+  {% for m in rows %}
+    {% set line = (m.details or {}).get('line') or {} %}
+    <div class="unmatched-card">
+      <div class="line-desc">{{ line.get('description') or '(no description)' }}</div>
+      <div class="meta">
+        <span>{{ (m.details or {}).get('pieces') or 0 }} pieces</span>
+        <span>Type: {{ line.get('product_type') or '—' }}</span>
+        <span>Part number: {{ line.get('part_number') or '—' }}</span>
+        <span>Pick list #{{ m.pick_list_id }}</span>
+        <span>Shipped {{ m.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
+      </div>
+      <form class="resolve-form" method="post" action="{{ url_for('stock.resolve', movement_id=m.id) }}">
+        <select name="catalog_id" required>
+          <option value="" disabled selected>Assign to product…</option>
+          {% for row in catalog_choices %}
+            <option value="{{ row.id }}">{{ row.part_number or 'no part #' }} — {{ row.description }}</option>
+          {% endfor %}
+        </select>
+        <button type="submit">Resolve &amp; decrement</button>
+      </form>
+    </div>
+  {% endfor %}
+{% else %}
+  <p class="empty-note">Nothing to triage — every shipped line matched a product.</p>
+{% endif %}
+{% endblock %}

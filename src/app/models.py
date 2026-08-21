@@ -76,6 +76,21 @@ class AcceptanceSource(str, Enum):
     PO_RECEIVED = "po_received"
 
 
+class StockMovementType(str, Enum):
+    """Why a stock item's on_hand changed — one ledger row per change (CP-5,
+    design Stage F). UNMATCHED_SHIPMENT rows carry a shipped pick line that
+    matched no stock identity; they change nothing and sit in triage until a
+    human resolves them. REORDER is reserved for CP-5b's auto-reorder (gated
+    on Chip's D68 answer) — no code path writes it yet; the member exists so
+    CP-5b needs no PG enum migration."""
+
+    SHIPMENT_DECREMENT = "shipment_decrement"
+    RECEIPT = "receipt"
+    ADJUSTMENT = "adjustment"
+    UNMATCHED_SHIPMENT = "unmatched_shipment"
+    REORDER = "reorder"
+
+
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
 
@@ -627,6 +642,136 @@ class ProductCatalog(db.Model):
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class StockItem(TimestampMixin, db.Model):
+    """Per-product stock record (CP-5a, design Stage F).
+
+    Identity is ProductCatalog.id — the surrogate, rename-safe key (the
+    product-identity research: part numbers and descriptions are mutable
+    text; the catalog row is the stable thing). catalog_id is UNIQUE: one
+    stock record per catalog product, ever.
+
+    on_hand starts at 0 and is ALWAYS derivable from the movement ledger
+    (sum of qty_delta) — verify_stock_integrity() enforces this. It may go
+    negative before CP-5b's initial import seeds real counts; that is honest
+    ledger state, badged in the UI, never hidden.
+
+    min_qty/max_qty/reorder_qty NULL means UNSEEDED: the values arrive with
+    Chip's answer to D68 (CP-5b). No reorder logic may fire while any of
+    them is NULL — needs_reorder is the single seam CP-5b plugs into and it
+    hard-returns False on NULLs.
+    """
+
+    __tablename__ = "stock_item"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    catalog_id: Mapped[int] = mapped_column(
+        ForeignKey("product_catalog.id"), nullable=False, unique=True, index=True
+    )
+    on_hand: Mapped[int] = mapped_column(default=0, nullable=False)
+    min_qty: Mapped[int | None]
+    max_qty: Mapped[int | None]
+    reorder_qty: Mapped[int | None]
+    updated_at: Mapped[datetime] = mapped_column(
+        default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
+
+    catalog: Mapped[ProductCatalog] = relationship()
+    movements: Mapped[list["StockMovement"]] = relationship(
+        back_populates="stock_item",
+        foreign_keys="StockMovement.stock_item_id",
+        order_by="StockMovement.id",
+    )
+
+    @property
+    def is_seeded(self) -> bool:
+        """True only when Chip's min/max answer has been applied (CP-5b)."""
+        return self.min_qty is not None and self.max_qty is not None
+
+    @property
+    def needs_reorder(self) -> bool:
+        """THE CP-5b reorder seam. Unseeded thresholds can never fire."""
+        if not self.is_seeded:
+            return False
+        return self.on_hand <= self.min_qty
+
+
+class StockMovement(db.Model):
+    """Append-only ledger: every on_hand change is a row (CP-5a).
+
+    Rows are never edited or deleted. qty_delta is signed; resulting_on_hand
+    is the item's on_hand immediately after applying it, so the ledger is
+    self-auditing (verify_stock_integrity checks both the running chain and
+    the final sum).
+
+    UNMATCHED_SHIPMENT rows are the triage queue: stock_item_id is NULL,
+    qty_delta is 0, and details carries the frozen pick line verbatim.
+    Resolution assigns a stock item and writes the real SHIPMENT_DECREMENT
+    row (resolution_movement_id points at it); the unmatched row itself is
+    never mutated into a decrement.
+
+    SHIPMENT_DECREMENT details record WHICH matcher pass produced the match
+    ("matched_by": part_number | type_description) — pass-2 matches are the
+    weaker guess and render with a low-confidence marker so a human can
+    audit them.
+    """
+
+    __tablename__ = "stock_movement"
+    __table_args__ = (
+        db.CheckConstraint(
+            "(movement_type = 'UNMATCHED_SHIPMENT') = (stock_item_id IS NULL)",
+            name="ck_stock_movement_unmatched_has_no_item",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    stock_item_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stock_item.id"), nullable=True, index=True
+    )
+    movement_type: Mapped[StockMovementType] = mapped_column(
+        SAEnum(StockMovementType, name="stock_movement_type"),
+        nullable=False,
+        index=True,
+    )
+    qty_delta: Mapped[int] = mapped_column(nullable=False)
+    resulting_on_hand: Mapped[int | None]
+    pick_list_id: Mapped[int | None] = mapped_column(
+        ForeignKey("pick_list.id"), nullable=True, index=True
+    )
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("user.id"))
+    reason: Mapped[str | None]
+    details: Mapped[dict | None] = mapped_column(db.JSON)
+    resolved_at: Mapped[datetime | None]
+    resolved_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"))
+    resolution_movement_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stock_movement.id"), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        default=datetime.utcnow, nullable=False
+    )
+
+    stock_item: Mapped[StockItem | None] = relationship(
+        back_populates="movements", foreign_keys=[stock_item_id]
+    )
+    pick_list: Mapped[PickList | None] = relationship()
+
+
+class StockDecrementClaim(TimestampMixin, db.Model):
+    """Claim-in-transaction guard for the shipped-event decrement (§12.1).
+
+    pick_list_id UNIQUE: the first consumer of a pick list's shipped event
+    inserts the claim inside the same transaction as its movements; a
+    replayed/double-fired shipped event hits the constraint and applies
+    NOTHING. Phantom decrement -> phantom reorder is THE Stage-F hazard.
+    """
+
+    __tablename__ = "stock_decrement_claim"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pick_list_id: Mapped[int] = mapped_column(
+        ForeignKey("pick_list.id"), nullable=False, unique=True, index=True
+    )
 
 
 class ShippingConfig(db.Model):

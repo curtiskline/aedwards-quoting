@@ -317,6 +317,7 @@
           <a href="{{ url_for('quotes.queue') }}">Quotes <span id="nav-badge" hx-get="{{ url_for('quotes.badge') }}" hx-trigger="load, every 30s" hx-swap="innerHTML"></span></a>
           <a href="{{ url_for('orders.queue') }}">Orders</a>
           <a href="{{ url_for('fulfillment.queue') }}">Shop</a>
+          <a href="{{ url_for('stock.stock_list') }}">Stock</a>
           <a href="{{ url_for('customers.customer_list') }}">Customers</a>
           <a href="{{ url_for('main.pricing_admin') }}">Admin</a>
           <a href="{{ url_for('admin.users_page') }}">Users</a>

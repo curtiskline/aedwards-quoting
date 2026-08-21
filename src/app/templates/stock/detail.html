@@ -1,0 +1,94 @@
+{% extends "layout.html" %}
+{% block title %}Stock — {{ item.catalog.part_number or item.catalog.description }}{% endblock %}
+{% block body %}
+<style>
+  .stock-summary { display: flex; gap: 2rem; flex-wrap: wrap; align-items: baseline; margin-bottom: 1rem; }
+  .on-hand-big { font-size: 2rem; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .badge { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px; font-size: 0.8rem; font-weight: 700; }
+  .badge-unseeded { background: #fef3c7; color: #92400e; }
+  .badge-negative { background: #fee2e2; color: #b91c1c; }
+  .badge-lowconf { background: #fef3c7; color: #92400e; }
+  .entry-forms { display: flex; gap: 1.5rem; flex-wrap: wrap; margin: 1.25rem 0; }
+  .entry-form { border: 1px solid #e5e7eb; border-radius: 10px; padding: 1rem 1.25rem; background: #fff; }
+  .entry-form h3 { margin: 0 0 0.6rem 0; }
+  .entry-form label { display: block; font-size: 0.9rem; color: #374151; margin-top: 0.5rem; }
+  .entry-form input { padding: 0.45rem 0.6rem; border: 1px solid #d1d5db; border-radius: 6px; width: 16rem; }
+  .entry-form button { margin-top: 0.75rem; }
+  .movement-table { width: 100%; border-collapse: collapse; background: #fff; }
+  .movement-table th, .movement-table td { padding: 0.55rem 0.8rem; border-bottom: 1px solid #e5e7eb; text-align: left; }
+  .movement-table th { font-size: 0.85rem; text-transform: uppercase; color: #6b7280; }
+  .movement-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+</style>
+<p><a href="{{ url_for('stock.stock_list') }}">&larr; Stock</a></p>
+<h1>{{ item.catalog.description }}</h1>
+<div class="stock-summary">
+  <div><span class="on-hand-big">{{ item.on_hand }}</span> on hand
+    {% if item.on_hand < 0 %}<span class="badge badge-negative">negative</span>{% endif %}
+  </div>
+  <div>Part number: <strong>{{ item.catalog.part_number or '—' }}</strong></div>
+  <div>Type: <strong>{{ item.catalog.product_type or '—' }}</strong></div>
+  <div>Min/Max:
+    {% if item.is_seeded %}
+      <strong>{{ item.min_qty }} / {{ item.max_qty }}</strong>
+    {% else %}
+      <span class="badge badge-unseeded" title="Thresholds arrive with CP-5b; no reorder logic can fire until then.">unseeded</span>
+    {% endif %}
+  </div>
+</div>
+
+<div class="entry-forms">
+  <form class="entry-form" method="post" action="{{ url_for('stock.add_receipt', item_id=item.id) }}">
+    <h3>Record receipt</h3>
+    <label>Pieces received
+      <input type="number" name="qty" min="1" required>
+    </label>
+    <label>Reason (PO number, shop run, …)
+      <input type="text" name="reason" required>
+    </label>
+    <button type="submit">Add receipt</button>
+  </form>
+  <form class="entry-form" method="post" action="{{ url_for('stock.add_adjustment', item_id=item.id) }}">
+    <h3>Record adjustment</h3>
+    <label>Delta (e.g. -3 for damage, 5 for a recount)
+      <input type="number" name="qty_delta" required>
+    </label>
+    <label>Reason (required)
+      <input type="text" name="reason" required>
+    </label>
+    <button type="submit">Add adjustment</button>
+  </form>
+</div>
+
+<h2>Movement history</h2>
+{% if movements %}
+<table class="movement-table">
+  <thead>
+    <tr><th>When</th><th>Type</th><th class="num">Delta</th><th class="num">Resulting</th><th>Source</th><th>Reason / match</th></tr>
+  </thead>
+  <tbody>
+    {% for m in movements %}
+    <tr>
+      <td>{{ m.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+      <td>{{ m.movement_type.name }}</td>
+      <td class="num">{{ '%+d' % m.qty_delta }}</td>
+      <td class="num">{{ m.resulting_on_hand }}</td>
+      <td>{% if m.pick_list_id %}Pick list #{{ m.pick_list_id }}{% else %}Manual{% endif %}</td>
+      <td>
+        {% if m.reason %}{{ m.reason }}{% endif %}
+        {% set matched_by = (m.details or {}).get('matched_by') %}
+        {% if matched_by == 'type_description' %}
+          <span class="badge badge-lowconf" title="Matched by product type + description text, not part number — verify the match is right.">low-confidence match</span>
+        {% elif matched_by == 'manual_resolution' %}
+          resolved from triage
+        {% elif matched_by %}
+          matched by {{ matched_by }}
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p>No movements yet.</p>
+{% endif %}
+{% endblock %}

@@ -294,7 +294,13 @@ def emit_pick_list_shipped(pick_list: PickList, actor: User | None) -> None:
     strictly-ordered state machine cannot re-enter SHIPPED). The audit row's
     details carry the frozen pick lines so a decrement consumer has the full
     piece counts without re-reading anything mutable.
+
+    CP-5a's consume_shipped_event is that consumer: it decrements stock in
+    this same transaction, guarded by its own UNIQUE-per-pick-list claim so
+    even a double-fired event cannot double-decrement.
     """
+    from .inventory import consume_shipped_event
+
     db.session.add(
         PickListAuditLog(
             pick_list_id=pick_list.id,
@@ -306,6 +312,7 @@ def emit_pick_list_shipped(pick_list: PickList, actor: User | None) -> None:
             },
         )
     )
+    consume_shipped_event(pick_list, actor)
 
 
 # ---------------------------------------------------------------------------

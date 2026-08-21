@@ -1,0 +1,65 @@
+{% extends "layout.html" %}
+{% block title %}Stock{% endblock %}
+{% block body %}
+<style>
+  .stock-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 1rem; }
+  .stock-table { width: 100%; border-collapse: collapse; background: #fff; }
+  .stock-table th, .stock-table td { padding: 0.6rem 0.8rem; border-bottom: 1px solid #e5e7eb; text-align: left; }
+  .stock-table th { font-size: 0.85rem; text-transform: uppercase; color: #6b7280; }
+  .stock-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .badge { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 999px; font-size: 0.8rem; font-weight: 700; }
+  .badge-unseeded { background: #fef3c7; color: #92400e; }
+  .badge-negative { background: #fee2e2; color: #b91c1c; }
+  .badge-triage { background: #fee2e2; color: #b91c1c; text-decoration: none; padding: 0.35rem 0.8rem; }
+  .empty-note { color: #6b7280; padding: 1.5rem 0; }
+</style>
+<div class="stock-header">
+  <h1>Stock</h1>
+  {% if unmatched_count %}
+    <a class="badge badge-triage" href="{{ url_for('stock.unmatched_list') }}">
+      {{ unmatched_count }} unmatched shipment{{ 's' if unmatched_count != 1 }} need triage
+    </a>
+  {% else %}
+    <a href="{{ url_for('stock.unmatched_list') }}">Unmatched shipments</a>
+  {% endif %}
+</div>
+{% if items %}
+<table class="stock-table">
+  <thead>
+    <tr>
+      <th>Part number</th>
+      <th>Description</th>
+      <th>Type</th>
+      <th class="num">On hand</th>
+      <th class="num">Min / Max</th>
+      <th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for item in items %}
+    <tr>
+      <td>{{ item.catalog.part_number or '—' }}</td>
+      <td><a href="{{ url_for('stock.item_detail', item_id=item.id) }}">{{ item.catalog.description }}</a></td>
+      <td>{{ item.catalog.product_type or '—' }}</td>
+      <td class="num">
+        {{ item.on_hand }}
+        {% if item.on_hand < 0 %}<span class="badge badge-negative" title="On hand is below zero: shipments were decremented before an initial count was imported (arrives with CP-5b).">negative</span>{% endif %}
+      </td>
+      <td class="num">
+        {% if item.is_seeded %}
+          {{ item.min_qty }} / {{ item.max_qty }}
+        {% else %}
+          <span class="badge badge-unseeded" title="Min/max thresholds not set yet — reorder logic cannot fire until they are seeded (CP-5b).">unseeded</span>
+        {% endif %}
+      </td>
+      <td><a href="{{ url_for('stock.item_detail', item_id=item.id) }}">History</a></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty-note">No stock items yet. A stock record appears automatically the first
+time a shipped pick line matches a catalog product, or when an unmatched shipment is
+resolved to one.</p>
+{% endif %}
+{% endblock %}
