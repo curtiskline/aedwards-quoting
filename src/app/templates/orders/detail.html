@@ -1,0 +1,96 @@
+{% extends "layout.html" %}
+{% block title %}Order — {{ quote.quote_number }} v{{ version.version_number }}{% endblock %}
+{% block body %}
+<style>
+  .order-section {
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 8px;
+    padding: 1rem 1.25rem; margin-bottom: 1rem;
+  }
+  .order-section h2 { margin: 0 0 0.75rem; font-size: 1.05rem; }
+  .status-badge {
+    display: inline-block; padding: 0.15rem 0.5rem; border-radius: 999px;
+    font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+  }
+  .status-accepted { background: #dcfce7; color: #166534; }
+  .status-ordered { background: #dbeafe; color: #1d4ed8; }
+  .status-fulfilled { background: #f3f4f6; color: #374151; }
+  table.order-lines { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  table.order-lines th, table.order-lines td {
+    text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid #f3f4f6;
+  }
+  table.order-lines td.num, table.order-lines th.num { text-align: right; white-space: nowrap; }
+  dl.provenance { display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 1rem; margin: 0; font-size: 0.9rem; }
+  dl.provenance dt { font-weight: 600; color: #374151; }
+  dl.provenance dd { margin: 0; }
+  .audit-row { font-size: 0.85rem; color: #6b7280; padding: 0.2rem 0; }
+</style>
+
+{# Internal identifier only: a customer-facing order-number scheme is a
+   deferred Chip decision — never put "Order #id" on anything customer-shaped. #}
+<h1 style="margin:0 0 0.25rem;">Order for Quote {{ quote.quote_number }} <span style="color:#6b7280;font-weight:500;">(version {{ version.version_number }})</span></h1>
+<p style="margin:0 0 1rem;color:#6b7280;font-size:0.85rem;">Internal order record #{{ order.id }} — <a href="/quotes/{{ quote.id }}">view quote</a> &middot; <a href="/orders/">all orders</a></p>
+
+{% include "orders/_status_panel.html" %}
+
+<div class="order-section">
+  <h2>Acceptance provenance</h2>
+  <dl class="provenance">
+    <dt>Detected via</dt><dd>{{ event.source.value.replace('_', ' ') }}</dd>
+    <dt>Recorded by</dt>
+    <dd>{% if event.actor %}{{ event.actor.name }}{% elif event.actor_label %}{{ event.actor_label }}{% else %}&mdash;{% endif %}</dd>
+    <dt>Recorded at</dt><dd>{{ event.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</dd>
+    {% if event.po_number %}<dt>PO number</dt><dd>{{ event.po_number }}</dd>{% endif %}
+    {% if event.note %}<dt>Note</dt><dd>{{ event.note }}</dd>{% endif %}
+    <dt>Quote sent to</dt><dd>{{ version.sent_to or '&mdash;' | safe }}</dd>
+    <dt>Quote sent at</dt><dd>{% if version.sent_at %}{{ version.sent_at.strftime('%Y-%m-%d %H:%M') }} UTC{% else %}&mdash;{% endif %}</dd>
+  </dl>
+</div>
+
+<div class="order-section">
+  <h2>Ordered lines (frozen at send time)</h2>
+  {% if snapshot_missing %}
+    <p style="color:#b91c1c;font-weight:600;">This version predates snapshot archiving — the exact sent lines were not recorded. Refer to the archived PDF or the quote.</p>
+  {% elif not lines %}
+    <p style="color:#6b7280;">The send-time snapshot contains no lines.</p>
+  {% else %}
+    <table class="order-lines">
+      <thead>
+        <tr><th>Part #</th><th>Description</th><th>Type</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Total</th></tr>
+      </thead>
+      <tbody>
+        {% for line in lines %}
+        <tr>
+          <td>{{ line.get('part_number') or '' }}</td>
+          <td>{{ line.get('description') or '' }}</td>
+          <td>{{ line.get('product_type') or '' }}</td>
+          <td class="num">{{ line.get('quantity') }}</td>
+          <td class="num">${{ '%.2f' | format(line.get('unit_price') or 0) }}</td>
+          <td class="num">${{ '%.2f' | format(line.get('line_total') or 0) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+      <tfoot>
+        <tr><td colspan="5" class="num" style="font-weight:600;">Product subtotal</td><td class="num" style="font-weight:600;">${{ '%.2f' | format(subtotal) }}</td></tr>
+        {% if shipping %}
+        <tr><td colspan="5" class="num">Freight</td><td class="num">${{ '%.2f' | format(shipping) }}</td></tr>
+        {% endif %}
+        <tr><td colspan="5" class="num" style="font-weight:700;">Total</td><td class="num" style="font-weight:700;">${{ '%.2f' | format(total) }}</td></tr>
+      </tfoot>
+    </table>
+  {% endif %}
+</div>
+
+<div class="order-section">
+  <h2>History</h2>
+  {% for row in audit_rows %}
+  <div class="audit-row">
+    {{ row.created_at.strftime('%Y-%m-%d %H:%M') }} UTC —
+    <strong>{{ row.action.replace('_', ' ') }}</strong>
+    {% if row.user_id and user_names.get(row.user_id) %} by {{ user_names.get(row.user_id) }}{% endif %}
+    {% if row.details and row.details.get('source') %} (via {{ row.details.get('source').replace('_', ' ') }}){% endif %}
+  </div>
+  {% else %}
+  <div class="audit-row">No history recorded.</div>
+  {% endfor %}
+</div>
+{% endblock %}

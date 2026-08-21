@@ -25,6 +25,30 @@ class QuoteStatus(str, Enum):
     REPLACED = "replaced"
 
 
+class OrderStatus(str, Enum):
+    """Order lifecycle, picking up where QuoteStatus stops (design Stage D).
+
+    ACCEPTED -> ORDERED -> FULFILLED. Pick/load/ship progress belongs to the
+    future CP-4 PickList record (queued/picked/loaded/shipped), NOT here —
+    FULFILLED is set from that flow when it exists; until then it is unused.
+    """
+
+    ACCEPTED = "accepted"
+    ORDERED = "ordered"
+    FULFILLED = "fulfilled"
+
+
+class AcceptanceSource(str, Enum):
+    """How an acceptance was detected. Only EXPLICIT_CLICK is wired today;
+    the other members are reserved seams (Chip call 2026-08-19: reply-reading
+    later, behind its own confidence gate). Future signals create the same
+    AcceptanceEvent through orders.create_order_from_acceptance()."""
+
+    EXPLICIT_CLICK = "explicit_click"
+    REPLY_PARSE = "reply_parse"
+    PO_RECEIVED = "po_received"
+
+
 class TimestampMixin:
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
 
@@ -356,6 +380,103 @@ class QuoteVersion(db.Model):
     sent_to: Mapped[str | None]
 
     quote: Mapped[Quote] = relationship(back_populates="versions")
+
+
+class AcceptanceEvent(TimestampMixin, db.Model):
+    """First-class record of HOW a customer acceptance was detected.
+
+    This is the pluggable acceptance seam (CP-3): every signal — the explicit
+    human click built today, reply parsing or PO-email detection later —
+    records one of these and creates the Order through the same
+    orders.create_order_from_acceptance() path. quote_version_id is UNIQUE:
+    acceptance binds to the exact immutable QuoteVersion the customer saw,
+    and the constraint is the idempotency claim (hazard §12.1) — a
+    double-click or replayed signal hits IntegrityError instead of
+    double-creating.
+    """
+
+    __tablename__ = "acceptance_event"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    quote_version_id: Mapped[int] = mapped_column(
+        ForeignKey("quote_version.id"), nullable=False, unique=True, index=True
+    )
+    source: Mapped[AcceptanceSource] = mapped_column(
+        SAEnum(AcceptanceSource, name="acceptance_source"), nullable=False
+    )
+    # The human who recorded the acceptance (explicit_click); NULL for future
+    # automated signals, which describe themselves in actor_label instead.
+    actor_user_id: Mapped[int | None] = mapped_column(ForeignKey("user.id"))
+    actor_label: Mapped[str | None]
+    note: Mapped[str | None] = mapped_column(Text)
+    po_number: Mapped[str | None]
+
+    quote_version: Mapped[QuoteVersion] = relationship()
+    actor: Mapped[User | None] = relationship(foreign_keys=[actor_user_id])
+
+
+class Order(db.Model):
+    """A customer order created from an accepted, immutable QuoteVersion.
+
+    The order READS QuoteVersion.line_items_snapshot — it never re-derives
+    lines from the mutable Quote and never mutates the version (§12.8).
+    quote_version_id and acceptance_event_id are both UNIQUE so no replay
+    path can ever double-create an order for the same sent record.
+
+    `id` is an INTERNAL identifier only. A customer-facing order-number
+    scheme is a deferred Chip decision — never surface "Order #<id>" in
+    anything customer-shaped (PDFs, emails); reference the quote number.
+    """
+
+    # "order" is an SQL reserved word; customer_order keeps raw SQL sane.
+    __tablename__ = "customer_order"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    quote_version_id: Mapped[int] = mapped_column(
+        ForeignKey("quote_version.id"), nullable=False, unique=True, index=True
+    )
+    # Denormalized for queue joins; the authoritative payload is the version.
+    quote_id: Mapped[int] = mapped_column(ForeignKey("quote.id"), nullable=False, index=True)
+    acceptance_event_id: Mapped[int] = mapped_column(
+        ForeignKey("acceptance_event.id"), nullable=False, unique=True, index=True
+    )
+    status: Mapped[OrderStatus] = mapped_column(
+        SAEnum(OrderStatus, name="order_status"),
+        default=OrderStatus.ACCEPTED,
+        nullable=False,
+    )
+    po_number: Mapped[str | None]
+    accepted_at: Mapped[datetime] = mapped_column(nullable=False)
+    accepted_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"))
+    ordered_at: Mapped[datetime | None]
+    ordered_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"))
+    fulfilled_at: Mapped[datetime | None]
+    fulfilled_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"))
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
+
+    quote_version: Mapped[QuoteVersion] = relationship()
+    quote: Mapped[Quote] = relationship()
+    acceptance_event: Mapped[AcceptanceEvent] = relationship()
+    audit_logs: Mapped[list["OrderAuditLog"]] = relationship(
+        back_populates="order", cascade="all, delete-orphan"
+    )
+
+
+class OrderAuditLog(TimestampMixin, db.Model):
+    __tablename__ = "order_audit_log"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    order_id: Mapped[int] = mapped_column(
+        ForeignKey("customer_order.id"), nullable=False, index=True
+    )
+    action: Mapped[str] = mapped_column(nullable=False)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("user.id"))
+    details: Mapped[dict | None] = mapped_column(db.JSON)
+
+    order: Mapped[Order] = relationship(back_populates="audit_logs")
 
 
 class PricingTable(db.Model):

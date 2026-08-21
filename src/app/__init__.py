@@ -14,6 +14,7 @@ from .config import Config
 from .customers import customers_bp
 from .extensions import db, login_manager
 from .models import User
+from .orders import orders_bp
 from .quotes import quotes_bp
 from .routes import main_bp
 
@@ -31,6 +32,7 @@ def create_app() -> Flask:
     app.register_blueprint(admin_bp)
     app.register_blueprint(customers_bp)
     app.register_blueprint(quotes_bp)
+    app.register_blueprint(orders_bp)
 
     login_manager.login_view = "auth.login"
     login_manager.login_message = "Please sign in to continue."

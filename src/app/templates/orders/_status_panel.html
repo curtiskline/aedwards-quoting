@@ -1,0 +1,27 @@
+<div id="order-status-panel" class="order-section">
+  {% if error %}
+  <div role="alert" style="margin-bottom:0.75rem;padding:0.6rem 0.9rem;border:1px solid #fca5a5;background:#fef2f2;color:#991b1b;font-weight:600;">
+    {{ error }}
+  </div>
+  {% endif %}
+  <div style="display:flex;align-items:center;gap:1rem;flex-wrap:wrap;">
+    <span><strong>Status:</strong> <span class="status-badge status-{{ order.status.value }}">{{ order.status.value.title() }}</span></span>
+    <span style="font-size:0.85rem;color:#6b7280;">
+      accepted {{ order.accepted_at.strftime('%Y-%m-%d %H:%M') }} UTC{% if order.accepted_by and user_names.get(order.accepted_by) %} by {{ user_names.get(order.accepted_by) }}{% endif %}
+      {% if order.ordered_at %} &middot; ordered {{ order.ordered_at.strftime('%Y-%m-%d %H:%M') }} UTC{% if order.ordered_by and user_names.get(order.ordered_by) %} by {{ user_names.get(order.ordered_by) }}{% endif %}{% endif %}
+      {% if order.fulfilled_at %} &middot; fulfilled {{ order.fulfilled_at.strftime('%Y-%m-%d %H:%M') }} UTC{% if order.fulfilled_by and user_names.get(order.fulfilled_by) %} by {{ user_names.get(order.fulfilled_by) }}{% endif %}{% endif %}
+    </span>
+    {% if manual_next %}
+    <form method="post" action="/orders/{{ order.id }}/status"
+          hx-post="/orders/{{ order.id }}/status"
+          hx-target="#order-status-panel"
+          hx-swap="outerHTML"
+          onsubmit="return confirm('Mark this order as Ordered?');">
+      <input type="hidden" name="status" value="{{ manual_next.value }}" />
+      <button type="submit" style="background:var(--accent);color:#fff;border:none;padding:0.4rem 0.9rem;border-radius:6px;font-weight:600;cursor:pointer;">Mark Ordered</button>
+    </form>
+    {% elif order.status.value == 'ordered' %}
+    <span style="font-size:0.85rem;color:#6b7280;">Fulfillment is recorded by the pick/ship flow (coming in a later checkpoint).</span>
+    {% endif %}
+  </div>
+</div>

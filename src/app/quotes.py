@@ -20,7 +20,7 @@ from .confidence import (
     sync_quote_confidence,
 )
 from .extensions import db
-from .models import AuditLog, AutoSendClaim, Quote, QuoteStatus, User
+from .models import AuditLog, AutoSendClaim, Order, Quote, QuoteStatus, User
 from .quote_numbers import generate_quote_number
 
 quotes_bp = Blueprint("quotes", __name__, url_prefix="/quotes")
@@ -77,6 +77,12 @@ def _enrich_quotes(quotes: list[Quote]) -> list[dict]:
         c.quote_id: c
         for c in db.session.query(AutoSendClaim)
         .filter(AutoSendClaim.quote_id.in_([q.id for q in quotes]))
+        .all()
+    } if quotes else {}
+    orders_by_quote = {
+        o.quote_id: o
+        for o in db.session.query(Order)
+        .filter(Order.quote_id.in_([q.id for q in quotes]))
         .all()
     } if quotes else {}
     results = []
@@ -136,6 +142,13 @@ def _enrich_quotes(quotes: list[Quote]) -> list[dict]:
             # failed) must be visibly surfaced, never silently stuck.
             "auto_send_status": claim.status if claim else None,
             "auto_send_needs_attention": claim.status in ("claimed", "failed") if claim else False,
+            # CP-3: SENT quotes without an order get a queue-level Accept
+            # action; accepted ones link to their order instead.
+            "order_id": orders_by_quote[q.id].id if q.id in orders_by_quote else None,
+            "order_status": (
+                orders_by_quote[q.id].status.value if q.id in orders_by_quote else None
+            ),
+            "acceptable": q.status == QuoteStatus.SENT and q.id not in orders_by_quote,
         })
     return results
 

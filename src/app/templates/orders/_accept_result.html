@@ -1,0 +1,25 @@
+{% if success %}
+<div id="accept-modal" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:100;">
+  <div style="background:#fff;border-radius:8px;padding:1.5rem;max-width:480px;width:100%;box-shadow:0 4px 24px rgba(0,0,0,0.15);">
+    <h2 style="margin-top:0;color:#16a34a;">{% if created %}Order Created{% else %}Already Accepted{% endif %}</h2>
+    <p>
+      Quote {{ quote.quote_number }} (version {{ version.version_number }})
+      {% if created %}is now accepted.{% else %}was already accepted — no duplicate order was created.{% endif %}
+    </p>
+    <div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:1rem;">
+      <a href="/orders/{{ order.id }}"><button type="button" style="background:var(--accent);color:#fff;border:none;padding:0.5rem 1rem;border-radius:4px;cursor:pointer;">Open Order</button></a>
+      <button type="button" onclick="document.getElementById('accept-modal').remove();location.reload();">Close</button>
+    </div>
+  </div>
+</div>
+{% else %}
+<div id="accept-modal" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:100;">
+  <div style="background:#fff;border-radius:8px;padding:1.5rem;max-width:480px;width:100%;box-shadow:0 4px 24px rgba(0,0,0,0.15);">
+    <h2 style="margin-top:0;color:#dc2626;">Cannot Accept</h2>
+    <p>{{ error }}</p>
+    <div style="display:flex;justify-content:flex-end;margin-top:1rem;">
+      <button type="button" onclick="document.getElementById('accept-modal').remove();">Close</button>
+    </div>
+  </div>
+</div>
+{% endif %}
