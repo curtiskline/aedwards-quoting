@@ -463,6 +463,117 @@ def test_multi_rfq_email_numbers_never_alias_existing_quote(app, tmp_path):
                 )
 
 
+def test_multi_quote_children_advance_sequence(app):
+    """Multi-quote children consume their base even with NO bare-base row.
+
+    A multi-RFQ email writes only {base}-01/{base}-02 — never a bare {base}
+    row (monitor._process_message). The generator must still see that base as
+    consumed; anchoring strictly on ^prefix-(\\d+)$ made it invisible and the
+    base was issued twice (task 412, observed live on staging as 126-030).
+    """
+    with app.app_context():
+        db.session.add(DBQuote(quote_number="126-030-01", status=QuoteStatus.NEW))
+        db.session.add(DBQuote(quote_number="126-030-02", status=QuoteStatus.NEW))
+        db.session.commit()
+
+        assert generate_quote_number() == "126-031"
+
+
+def test_revision_of_multi_quote_child_does_not_double_advance(app):
+    """Composed suffix (multi-quote child + revision, 126-030-01-R2).
+
+    The revision re-contributes the same base sequence its parent child
+    already contributes, so the next number is base+1, not base+2.
+    """
+    with app.app_context():
+        for number in ("126-030-01", "126-030-02", "126-030-01-R2"):
+            db.session.add(DBQuote(quote_number=number, status=QuoteStatus.NEW))
+        db.session.commit()
+
+        assert generate_quote_number() == "126-031"
+
+
+def test_revise_then_new_does_not_double_advance(app):
+    """A revision must not advance the sequence past its root (task 377 rule).
+
+    With root 126-050 and revision 126-050-R2 present, the next number is
+    126-051 — the revision's base segment is idempotent against the root row,
+    never additive.
+    """
+    with app.app_context():
+        db.session.add(DBQuote(quote_number="126-050", status=QuoteStatus.NEW))
+        db.session.add(DBQuote(quote_number="126-050-R2", status=QuoteStatus.NEW))
+        db.session.commit()
+
+        assert generate_quote_number() == "126-051"
+
+
+def test_consecutive_multi_quote_emails_do_not_collide(app, tmp_path):
+    """Two consecutive multi-RFQ emails through the real monitor path.
+
+    The first email consumes a base via its -01/-02 children only (no bare
+    base row). The second email must get a fresh base; before task 412 the
+    generator could not see the consumed base and re-issued it, and the second
+    write UNIQUE-collided (failed intake). Also covers multi-quote-then-single
+    via a third, single-RFQ message.
+    """
+    from allenedwards.outlook import OutlookMessage
+
+    def _msg(msg_id):
+        return OutlookMessage(
+            id=msg_id,
+            subject="RFQ - two sleeve orders",
+            sender_name="Test User",
+            sender_email="test@example.com",
+            body_preview="Please quote two sleeve orders",
+            body_content="Please quote 10 pcs 6-5/8 x 0.25 GR50 sleeves for two sites",
+            body_content_type="text",
+            internet_message_id=f"<{msg_id}@example.com>",
+            received_datetime="2026-08-14T12:00:00Z",
+            has_attachments=False,
+        )
+
+    def _monitor(provider):
+        return InboxMonitor(
+            outlook=MagicMock(),
+            provider=provider,
+            poll_interval_seconds=60,
+            state_path=tmp_path / "state.json",
+            output_dir=tmp_path / "quotes",
+            enable_db_writes=True,
+            enable_outlook_drafts=False,
+            flask_app=app,
+        )
+
+    multi = _monitor(_MultiRFQProvider())
+    assert multi._process_message(_msg("multi-rfq-1")) is True
+    assert multi._process_message(_msg("multi-rfq-2")) is True
+
+    # Multi-quote then single: same hazard, single-quote shape.
+    single_provider = _MultiRFQProvider()
+    single_quote = single_provider._quote("Austin")
+
+    class _SingleRFQProvider(_MultiRFQProvider):
+        def complete_json(self, prompt: str, system: str = "") -> dict:
+            result = super().complete_json(prompt, system)
+            if "quotes" in result:
+                result["quotes"] = [single_quote]
+            return result
+
+    single = _monitor(_SingleRFQProvider())
+    assert single._process_message(_msg("single-rfq-1")) is True
+
+    with app.app_context():
+        numbers = sorted(q.quote_number for q in DBQuote.query.all())
+        assert numbers == [
+            "126-001-01",
+            "126-001-02",
+            "126-002-01",
+            "126-002-02",
+            "126-003",
+        ]
+
+
 def test_fiscal_quote_number_ignores_revision_suffix(app):
     """A revision-suffixed number must not be read as the sequence.
 

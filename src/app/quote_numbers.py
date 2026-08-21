@@ -31,20 +31,33 @@ def generate_quote_number() -> str:
     """Generate the next sequential quote number for the current fiscal year.
 
     Shape is ``{prefix}-{seq:03d}`` (e.g. ``126-001`` for 2026). The next
-    sequence is the numeric max of the SEQUENCE segment across existing base
-    quote numbers for this prefix, plus one.
+    sequence is the numeric max of the SEQUENCE segment across ALL existing
+    quote numbers for this prefix — suffixed or not — plus one.
 
-    Revisions append a suffix (``{prefix}-{seq}-R{n}`` /  ``{prefix}-{seq}-{nn}``,
-    see routes._revision_quote_number). The matching regex anchors on the base
-    shape ``^{prefix}-(\\d+)$`` so revision-suffixed numbers are ignored entirely
-    rather than being misread as the sequence. The old code took the string max
-    and read ``split("-")[-1]`` as the sequence; once revisions existed that
-    grabbed the revision suffix and regenerated an existing number, failing the
-    UNIQUE constraint and blocking ALL new auto-quotes (prod outage 2026-08-13).
+    Two kinds of suffix hang off a base number, and both must feed the max via
+    their BASE segment, never via the suffix itself:
+
+    - Multi-quote children: a multi-RFQ email numbers its quotes
+      ``{base}-01``/``{base}-02`` (monitor._process_message) and writes NO bare
+      ``{base}`` row. The base sequence is therefore only visible through the
+      suffixed forms; a regex that skips them re-issues the consumed base and
+      the next multi-quote (or single) email UNIQUE-collides (task 412,
+      126-030 issued twice on staging).
+    - Revisions: ``{root}-R{n}`` (routes._revision_quote_number). The root row
+      always exists, so counting a revision's base segment is idempotent —
+      max(root_seq, root_seq) — and the task-377 rule holds: a revision never
+      advances the sequence past its root.
+
+    The regex captures the FIRST numeric segment after the prefix and tolerates
+    any trailing suffix: ``^{prefix}-(\\d+)(?:-.*)?$``. The suffix segment is
+    never read as the sequence. (The old code took the string max and read
+    ``split("-")[-1]`` as the sequence; once revisions existed that grabbed the
+    revision suffix and regenerated an existing number, failing the UNIQUE
+    constraint and blocking ALL new auto-quotes — prod outage 2026-08-13.)
     """
     year = datetime.utcnow().year
     prefix = _fiscal_prefix(year)
-    pattern = re.compile(rf"^{re.escape(prefix)}-(\d+)$")
+    pattern = re.compile(rf"^{re.escape(prefix)}-(\d+)(?:-.*)?$")
 
     sequences = (
         int(match.group(1))
