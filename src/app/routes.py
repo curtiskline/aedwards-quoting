@@ -56,6 +56,7 @@ from allenedwards.pricing import QuoteLineItem as PricingLineItem
 from allenedwards.ship_to import SHIP_TO_KEYS, is_domestic_ship_to, normalize_ship_to
 
 from . import send_service
+from .orders import order_for_quote
 from .confidence import (
     SIGNAL_LABELS,
     active_trust_tier,
@@ -1228,6 +1229,7 @@ def _quote_context(quote: Quote) -> dict:
         "recommendation": quote_recommendation(quote),
         "confidence_signal_rows": _confidence_signal_rows(quote),
         "auto_send_claim": send_service.get_auto_send_claim(quote),
+        "quote_order": order_for_quote(quote),
     }
 
 
@@ -1556,6 +1558,17 @@ def quote_attachment_download(quote_id: int, attachment_id: int):
 def quote_delete(quote_id: int):
     """Soft-delete a quote so it disappears from lists and searches."""
     quote = _get_active_quote_or_404(quote_id)
+    # An order must never dangle from a deleted quote: once any version of
+    # this quote has been accepted, the quote is part of the order's record.
+    existing_order = order_for_quote(quote)
+    if existing_order is not None:
+        abort(
+            409,
+            description=(
+                "This quote has an order and cannot be deleted. "
+                f"See /orders/{existing_order.id}."
+            ),
+        )
     user = _current_user()
     quote.deleted_at = datetime.utcnow()
     quote.reviewed_by = None

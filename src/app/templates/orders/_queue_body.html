@@ -1,0 +1,28 @@
+<div id="orders-body">
+  {% if orders %}
+    {% for o in orders %}
+    <a href="/orders/{{ o.id }}" style="text-decoration:none;color:inherit;display:block;">
+    <div class="order-card">
+      <div>
+        <div class="top-row">
+          <span class="quote-number">{{ o.quote_number }} v{{ o.version_number }}</span>
+          <span class="customer-name">{{ o.customer_name }}</span>
+          <span class="status-badge status-{{ o.status }}">{{ o.status_label }}</span>
+          {% if o.po_number %}<span class="meta">PO {{ o.po_number }}</span>{% endif %}
+        </div>
+        <div class="meta">
+          <span>{{ o.item_count }} item{{ 's' if o.item_count != 1 else '' }}</span>
+          <span>accepted {{ o.accepted_at.strftime('%Y-%m-%d %H:%M') }} UTC</span>
+          {% if o.snapshot_missing %}<span style="color:#b91c1c;">snapshot missing (pre-archive send)</span>{% endif %}
+        </div>
+      </div>
+      <div class="amount">{{ o.total }}</div>
+    </div>
+    </a>
+    {% endfor %}
+  {% else %}
+    <div class="empty-state">
+      <p>No orders yet. Accepting a sent quote creates one.</p>
+    </div>
+  {% endif %}
+</div>

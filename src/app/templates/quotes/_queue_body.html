@@ -19,6 +19,18 @@
           {% elif q.auto_send_status == 'sent' %}
           <span class="rec-pill" style="background:#f0fdf4;color:#166534;" title="Sent automatically by the engine at Tier 2.">Auto-sent</span>
           {% endif %}
+          {% if q.acceptable %}
+          <button type="button" class="rec-pill" style="background:#16a34a;color:#fff;border:1px solid #16a34a;cursor:pointer;"
+                  onclick="event.preventDefault();event.stopPropagation();"
+                  hx-get="/quotes/{{ q.id }}/accept-form"
+                  hx-target="body"
+                  hx-swap="beforeend"
+                  title="Record the customer's acceptance and create an order">Mark Accepted</button>
+          {% elif q.order_id %}
+          <a href="/orders/{{ q.order_id }}" class="rec-pill" style="background:#f0fdf4;color:#166534;border:1px solid #86efac;"
+             onclick="event.stopPropagation();"
+             title="This quote was accepted — open its order">Order: {{ q.order_status | title }}</a>
+          {% endif %}
           {% if q.lock_active and q.reviewer_name %}
           <span class="reviewer-tag">{{ q.reviewer_name }}</span>
           {% endif %}
