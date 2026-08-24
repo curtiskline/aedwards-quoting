@@ -422,6 +422,32 @@ def test_order_detail_renders_snapshot_not_live_quote(app, client):
     assert b"$255.00" in resp.data
 
 
+def test_order_detail_renders_real_producer_snapshot(app, client):
+    """The REAL snapshot producer stores numerics as strings (str(Decimal));
+    the detail template must render that shape, not just the float-typed
+    fixture above. Regression: /orders/<id> 500ed (TypeError: must be real
+    number, not str) on every order created through the actual accept path
+    — first hit on the task-422 staging demo pass."""
+    from app.send_service import quote_line_items_snapshot
+
+    with app.app_context():
+        quote = _make_sent_quote(number="126-422")
+        version = acceptable_version(quote)
+        version.line_items_snapshot = quote_line_items_snapshot(quote)
+        _db.session.commit()
+        # Producer really does emit strings — the shape this test exists for.
+        assert isinstance(version.line_items_snapshot[0]["unit_price"], str)
+        order, _ = create_order_from_acceptance(
+            version, source=AcceptanceSource.EXPLICIT_CLICK, actor=_owner()
+        )
+        order_id = order.id
+
+    resp = client.get(f"/orders/{order_id}")
+    assert resp.status_code == 200
+    assert b"$100.00" in resp.data
+    assert b"$200.00" in resp.data
+
+
 def test_orders_queue_lists_and_filters(app, client):
     with app.app_context():
         o1 = _make_order("126-114")
