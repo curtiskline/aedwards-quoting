@@ -48,6 +48,14 @@ One caveat to know before you click: **opening any New quote marks it
 "In Review by you"** (the team-awareness lock) and moves it out of the New tab.
 That's expected behavior, not a bug — but it shifts the tab counts as you demo.
 
+**Inventory numbers are placeholders (task 428).** The Stock pages now show 12
+seeded SKUs, but every count and min/max except item #1's demo values is INVENTED
+(each is labeled "PLACEHOLDER … confirm w/ Chip" in the UI). Part of the demo is
+telling Chip exactly that — "we made these up; here's where you change each one"
+— and showing him the edit boxes on `/stock/seed`. The full table of invented
+values, the rationale for each, and the exact edit path per SKU is in
+[placeholder-inventory-values.md](placeholder-inventory-values.md).
+
 ### Step 1 — The queue: every quote request, already priced
 
 - **Go to:** `/quotes/` (Quotes in the top nav)
@@ -92,7 +100,7 @@ That's expected behavior, not a bug — but it shifts the tab counts as you demo
 
 ### Step 8 — Shipping updates the count automatically
 
-- **Go to:** Shop (top nav), or `/pick-lists/?status=all`, then **Stock**, click the item, or `/stock/items/1`
+- **Go to:** Shop (top nav), or `/pick-lists/?status=all`, then **Stock**, click the item, or `/stock/items/1`. (The other 11 stock rows you'll see are the task-428 placeholder set — invented numbers, labeled as such; see [placeholder-inventory-values.md](placeholder-inventory-values.md).)
 - **You'll see:** the shipped pick list in the queue; on the stock page, the item's Movement history ledger: seeded 45 → shipped −40 → 5 on hand → reorder opened → received +40 → 45 → adjusted −40 → 5.
 - **Say:** "When the truck left, the system took those 40 pieces out of stock by itself — and every change to the count is written down with who, when, and why. No mystery numbers."
 
