@@ -38,8 +38,12 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload
 
+from allenedwards.ship_to import normalize_ship_to
+
 from .extensions import db
 from .models import (
+    Order,
+    OrderVendorPoClaim,
     PickList,
     ProductCatalog,
     Reorder,
@@ -267,6 +271,136 @@ def maybe_trigger_reorder(
         )
     )
     return reorder
+
+
+# ---------------------------------------------------------------------------
+# Order-triggered vendor PO (engine v2 §3, task 444): never-stock items
+# ---------------------------------------------------------------------------
+
+
+def _line_context_by_snapshot_id(order: Order) -> dict[int, dict]:
+    """The quote-version line details the vendor order needs (notes/specs),
+    keyed by snapshot line id. Pick lines drop specs; the version snapshot
+    is the frozen source that still has them."""
+    by_id: dict[int, dict] = {}
+    for raw in order.quote_version.line_items_snapshot or []:
+        line_id = raw.get("id")
+        if line_id is not None:
+            by_id[line_id] = raw
+    return by_id
+
+
+def emit_order_triggered_reorders(
+    pick_list: PickList, order: Order, actor: User | None
+) -> list[Reorder]:
+    """Emit a customer-linked vendor PO for each pick line whose product is
+    never-stock (min = max = 0), at pick-list generation.
+
+    Chip (I148.2): "treat those exactly the same but min/max set at zero. So
+    if order is received it automatically sends build order with the
+    customer details." The stocked path fires on the shipment decrement; a
+    never-stocked item can't ship first, so the PO fires when the order
+    becomes a physical instruction — the same moment the shop manifest fans
+    out (D41: absorb, don't add).
+
+    Runs inside the pick-list-creation transaction — the caller commits.
+    Idempotent per (pick_list, line) via OrderVendorPoClaim; a line that
+    doesn't match a catalog row, or whose product is unseeded or genuinely
+    stocked, is skipped (the stocked path handles it at shipment). The
+    customer details are FROZEN into Reorder.customer_context so the
+    printed order cannot change under later quote or catalog edits.
+    """
+    quote = order.quote
+    line_details = _line_context_by_snapshot_id(order)
+    emitted: list[Reorder] = []
+    for index, line in enumerate(pick_list.lines_snapshot or []):
+        pieces = int(line.get("pieces") or 0)
+        if pieces <= 0:
+            continue
+        row, _matched_by = match_catalog_row(line)
+        if row is None:
+            continue
+        item = (
+            db.session.query(StockItem)
+            .filter(StockItem.catalog_id == row.id)
+            .one_or_none()
+        )
+        if item is None or not item.is_non_stocked:
+            continue
+        try:
+            with db.session.begin_nested():
+                db.session.add(
+                    OrderVendorPoClaim(
+                        pick_list_id=pick_list.id, line_index=index
+                    )
+                )
+        except IntegrityError:
+            continue
+        detail = line_details.get(line.get("snapshot_line_id")) or {}
+        specs = dict(detail.get("specs_json") or {})
+        reorder = Reorder(
+            stock_item_id=item.id,
+            status=ReorderStatus.OPEN,
+            qty=pieces,
+            on_hand_at_trigger=item.on_hand,
+            min_qty_at_trigger=item.min_qty,
+            max_qty_at_trigger=item.max_qty,
+            vendor_at_trigger=item.catalog.vendor or None,
+            order_id=order.id,
+            customer_context={
+                "order_id": order.id,
+                "pick_list_id": pick_list.id,
+                "quote_number": quote.quote_number,
+                "customer_name": quote.customer_name_raw
+                or quote.sender_name
+                or None,
+                "po_number": order.po_number or None,
+                "ship_to": normalize_ship_to(quote.ship_to_json),
+                "line": {
+                    "part_number": line.get("part_number"),
+                    "description": line.get("description"),
+                    "pieces": pieces,
+                    "notes": specs.get("notes"),
+                    "specs": specs or None,
+                },
+            },
+        )
+        db.session.add(reorder)
+        db.session.flush()
+        movement = StockMovement(
+            stock_item_id=item.id,
+            movement_type=StockMovementType.REORDER,
+            qty_delta=0,
+            resulting_on_hand=item.on_hand,
+            user_id=actor.id if actor else None,
+            reason=(
+                f"order-triggered: never-stock item ordered by "
+                f"{reorder.customer_context.get('customer_name') or 'customer'}"
+            ),
+            details={
+                "reorder_id": reorder.id,
+                "order_id": order.id,
+                "pick_list_id": pick_list.id,
+                "qty": pieces,
+                "vendor": reorder.vendor_at_trigger,
+            },
+        )
+        db.session.add(movement)
+        db.session.flush()
+        reorder.reorder_movement_id = movement.id
+        db.session.add(
+            ShopPing(
+                reorder_id=reorder.id,
+                channel=ShopPingChannel.MANUAL_PRINT,
+                details={
+                    "stock_item_id": item.id,
+                    "qty": pieces,
+                    "order_id": order.id,
+                },
+            )
+        )
+        emitted.append(reorder)
+    return emitted
 
 
 def mark_reorder_sent(reorder: Reorder, actor: User | None) -> None:
@@ -625,8 +759,11 @@ def item_detail(item_id: int):
         .order_by(StockMovement.id.desc())
         .all()
     )
+    # first(), not one_or_none(): a never-stock item can hold SEVERAL open
+    # order-triggered reorders at once (one per customer order) — the badge
+    # just needs to know one exists.
     open_reorder = (
-        open_reorders_query().filter(Reorder.stock_item_id == item.id).one_or_none()
+        open_reorders_query().filter(Reorder.stock_item_id == item.id).first()
     )
     return render_template(
         "stock/detail.html", item=item, movements=movements, open_reorder=open_reorder
@@ -769,10 +906,11 @@ def seed_row_save(catalog_id: int):
     )
     open_reorder = None
     if item is not None:
+        # first(): several order-triggered reorders can be open at once.
         open_reorder = (
             open_reorders_query()
             .filter(Reorder.stock_item_id == item.id)
-            .one_or_none()
+            .first()
         )
     return render_template(
         "stock/_seed_row.html",

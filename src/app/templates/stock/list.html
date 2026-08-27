@@ -60,7 +60,9 @@
         {% if open_reorders.get(item.id) %}<a class="badge badge-reorder" href="{{ url_for('stock.reorders_list') }}" title="A vendor PO is open for this item — see the Reorders screen.">{{ 'PO sent' if open_reorders.get(item.id).status.value == 'sent' else 'reorder open' }}</a>{% endif %}
       </td>
       <td class="num">
-        {% if item.is_seeded %}
+        {% if item.is_non_stocked %}
+          <span class="badge badge-unseeded" title="Min/max 0: never stocked — each customer order fires its own vendor PO at pick-list generation.">never stocked</span>
+        {% elif item.is_seeded %}
           {{ item.min_qty }} / {{ item.max_qty }}
         {% else %}
           <span class="badge badge-unseeded" title="Min/max thresholds not set yet — reorder logic cannot fire until they are seeded (CP-5b).">unseeded</span>

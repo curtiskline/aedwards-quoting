@@ -6,6 +6,7 @@
   <td class="num current">
     {% if row.item %}{{ row.item.on_hand }}{% else %}<span class="muted">no record</span>{% endif %}
     {% if row.item and not row.item.is_seeded %}<span class="badge badge-unseeded">unseeded</span>{% endif %}
+    {% if row.item and row.item.is_non_stocked %}<span class="badge badge-unseeded" title="Min/max 0: never stocked — each customer order fires its own vendor PO.">never stocked</span>{% endif %}
     {% if row.open_reorder %}<span class="badge badge-reorder" title="An auto-reorder is open for this item.">reorder open</span>{% endif %}
   </td>
   <td class="entry">

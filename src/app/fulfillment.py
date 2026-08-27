@@ -218,6 +218,12 @@ def create_pick_list(order: Order, actor: User | None) -> tuple[PickList, bool]:
                 details={"order_id": order.id},
             )
         )
+        # Engine v2 §3 (task 444): the same human step fans out the vendor
+        # POs for never-stock (min/max 0) lines — customer details frozen on
+        # each, in this same transaction.
+        from .inventory import emit_order_triggered_reorders
+
+        emit_order_triggered_reorders(pick_list, order, actor)
         if order.status == OrderStatus.ACCEPTED:
             advance_order(order, OrderStatus.ORDERED, actor)
         db.session.commit()

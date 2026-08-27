@@ -1,10 +1,20 @@
-{# The printable vendor purchase order — CP-4's MANUAL_PRINT channel for
-   reorders (Chip onsite: paper/phone first). Engine v2 (D72): AEI is a
-   distributor — replenishment is a PO to a vendor, never an in-house make.
-   Renders ONLY the qty + vendor + context frozen on the reorder row at
-   trigger time, plus the item's identity — reprinting always yields the
-   same instruction even after later stock movement, threshold, or catalog
-   edits. NO outbound delivery of any kind — Chip prints/sends it himself. #}
+{# The printable vendor order — CP-4's MANUAL_PRINT channel for reorders
+   (Chip onsite: paper/phone first). Engine v2 (D72): AEI is a distributor —
+   replenishment is an order to a vendor, never an in-house make.
+
+   Per Chip's real AE MFG order forms (I153): this is an UNPRICED ORDER
+   INSTRUCTION, not a commercial PO — no prices, no PO-number accounting,
+   no payment linkage ("AEI does not track these PO numbers and we do not
+   pay on POs"). Goods always ship to AEI, never direct to the customer
+   (I150). Order-triggered rows (never-stock items, task 444) additionally
+   carry the customer/job context block — customer, PO/AFE, ship-to, line
+   notes/specs — frozen at emission; that context is what makes custom
+   orders useful to the vendor.
+
+   Renders ONLY what is frozen on the reorder row at trigger time, plus the
+   item's identity — reprinting always yields the same instruction even
+   after later stock movement, threshold, quote, or catalog edits. NO
+   outbound delivery of any kind — Chip prints/sends it himself. #}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -32,6 +42,10 @@
     th, td { border: 1px solid #111; padding: 0.5rem 0.8rem; text-align: left; }
     th { background: #eee; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; }
     td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    .customer-block { margin-top: 1.5rem; }
+    .customer-block h2 { font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.04em; margin: 0 0 0.5rem; }
+    .context-table { max-width: 40rem; }
+    .context-table td:first-child { width: 14rem; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.03em; background: #f7f7f7; }
     .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; margin-top: 3rem; max-width: 36rem; }
     .sig-line { border-top: 1.5px solid #111; padding-top: 0.3rem; font-size: 0.85rem; }
     .sig-space { height: 3rem; }
@@ -52,6 +66,7 @@
     </div>
     <div class="company">
       <strong>Allan Edwards, Inc.</strong><br />
+      Ship to: Allan Edwards, Inc.<br />
       Status: {{ reorder.status.value.title() }}<br />
       Opened {{ reorder.created_at.strftime('%Y-%m-%d %H:%M') }} UTC
     </div>
@@ -66,6 +81,44 @@
 
   <table>
     <thead>
+      <tr><th>Part number</th><th>Description</th><th class="num">Qty</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>{{ item.catalog.part_number or '—' }}</td>
+        <td>{{ item.catalog.description }}</td>
+        <td class="num"><strong>{{ reorder.qty }}</strong></td>
+      </tr>
+    </tbody>
+  </table>
+
+  {% set ctx = reorder.customer_context %}
+  {% if reorder.order_id and ctx %}
+  {# Order-triggered (never-stock item): the customer/job context block —
+     what makes a custom order useful to the vendor (I153). All frozen at
+     emission. #}
+  <div class="customer-block">
+    <h2>Customer / job</h2>
+    <table class="context-table">
+      <tbody>
+        <tr><td>Customer</td><td>{{ ctx.customer_name or '—' }}</td></tr>
+        <tr><td>Customer PO / AFE</td><td>{{ ctx.po_number or '—' }}</td></tr>
+        <tr><td>Our quote</td><td>{{ ctx.quote_number or '—' }}</td></tr>
+        {% if ctx.ship_to %}
+        <tr><td>Job ship-to (AEI ships onward)</td><td>
+          {% for key in ('company', 'attention', 'address_line1', 'address_line2') %}{% if ctx.ship_to[key] %}{{ ctx.ship_to[key] }}<br />{% endif %}{% endfor %}
+          {{ ctx.ship_to.city }}{% if ctx.ship_to.city and ctx.ship_to.state %},{% endif %} {{ ctx.ship_to.state }} {{ ctx.ship_to.postal_code }}
+        </td></tr>
+        {% endif %}
+        {% if ctx.line and ctx.line.notes %}
+        <tr><td>Line notes / specs</td><td style="white-space:pre-line;">{{ ctx.line.notes }}</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <table>
+    <thead>
       <tr><th>At trigger</th><th class="num">Qty</th></tr>
     </thead>
     <tbody>
@@ -75,6 +128,7 @@
       <tr><td><strong>Order</strong></td><td class="num"><strong>{{ reorder.qty }}</strong></td></tr>
     </tbody>
   </table>
+  {% endif %}
 
   <div class="signatures">
     <div>

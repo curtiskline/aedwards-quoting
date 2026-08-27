@@ -723,9 +723,20 @@ class StockItem(TimestampMixin, db.Model):
         return self.min_qty is not None and self.max_qty is not None
 
     @property
+    def is_non_stocked(self) -> bool:
+        """min = max = 0 is a VALID SEEDED state meaning "never stock this"
+        (engine v2 §3, I148.2) — distinct from NULL/NULL unseeded. These
+        items replenish per customer order (the order-triggered vendor PO at
+        pick-list generation), never by the min threshold."""
+        return self.min_qty == 0 and self.max_qty == 0
+
+    @property
     def needs_reorder(self) -> bool:
-        """THE CP-5b reorder seam. Unseeded thresholds can never fire."""
-        if not self.is_seeded:
+        """THE CP-5b reorder seam. Unseeded thresholds can never fire, and
+        neither can never-stock (0/0) items — their vendor PO fired at
+        pick-list generation, and the shipment decrement that later drives
+        on_hand negative must not stack a second, min-triggered one."""
+        if not self.is_seeded or self.is_non_stocked:
             return False
         return self.on_hand <= self.min_qty
 
@@ -807,6 +818,31 @@ class StockDecrementClaim(TimestampMixin, db.Model):
     )
 
 
+class OrderVendorPoClaim(TimestampMixin, db.Model):
+    """Claim-in-transaction guard for the order-triggered vendor PO (§12.1,
+    task 444): one PO per pick-list line, ever.
+
+    line_index is the line's position in PickList.lines_snapshot (not
+    snapshot_line_id, which legacy snapshots may lack) — always present,
+    and stable because a pick list is never edited or regenerated. The
+    emitter inserts the claim inside the pick-list-creation transaction; a
+    replayed generate hits the UNIQUE and emits nothing.
+    """
+
+    __tablename__ = "order_vendor_po_claim"
+    __table_args__ = (
+        db.UniqueConstraint(
+            "pick_list_id", "line_index", name="uq_order_vendor_po_claim_line"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    pick_list_id: Mapped[int] = mapped_column(
+        ForeignKey("pick_list.id"), nullable=False, index=True
+    )
+    line_index: Mapped[int] = mapped_column(nullable=False)
+
+
 class Reorder(TimestampMixin, db.Model):
     """An auto-reorder: AEI's purchase order to a vendor for more of a stock
     item (CP-5b + engine v2, D72: AEI is a distributor — replenishment is a
@@ -815,12 +851,21 @@ class Reorder(TimestampMixin, db.Model):
     Created when a ledger write drops a FULLY SEEDED item's on_hand to/below
     min_qty (StockItem.needs_reorder — NULL thresholds can never fire).
     Idempotency is the claim pattern the design mandates: a partial UNIQUE
-    index on stock_item_id WHERE status IN ('OPEN','SENT') means at most one
-    un-received reorder per item, ever — a second trigger while one is open
-    OR in flight to the vendor hits the constraint and is a no-op (a PO
-    already sent tops the item back up; a stock drop mid-transit must not
-    double-order). Phantom decrement -> phantom reorder is THE Stage-F
-    hazard; this is the second gate behind CP-5a's decrement claim.
+    index on stock_item_id WHERE status IN ('OPEN','SENT') AND order_id IS
+    NULL means at most one un-received MIN-TRIGGERED reorder per item, ever —
+    a second trigger while one is open OR in flight to the vendor hits the
+    constraint and is a no-op (a PO already sent tops the item back up; a
+    stock drop mid-transit must not double-order). Phantom decrement ->
+    phantom reorder is THE Stage-F hazard; this is the second gate behind
+    CP-5a's decrement claim.
+
+    ORDER-TRIGGERED rows (engine v2 §3, task 444) carry order_id +
+    customer_context: the vendor PO for a never-stock (min/max 0) item,
+    emitted at pick-list generation with the customer's details frozen on
+    it. These are per-customer-order — two customers ordering the same 0/0
+    part must EACH get a PO, so the partial index deliberately excludes
+    them; their idempotency guard is OrderVendorPoClaim, UNIQUE per
+    (pick_list, line).
 
     qty, the *_at_trigger columns, and vendor_at_trigger are FROZEN at
     creation so the printable sheet cannot change under later threshold or
@@ -843,8 +888,10 @@ class Reorder(TimestampMixin, db.Model):
             "uq_reorder_open_per_item",
             "stock_item_id",
             unique=True,
-            postgresql_where=db.text("status IN ('OPEN', 'SENT')"),
-            sqlite_where=db.text("status IN ('OPEN', 'SENT')"),
+            postgresql_where=db.text(
+                "status IN ('OPEN', 'SENT') AND order_id IS NULL"
+            ),
+            sqlite_where=db.text("status IN ('OPEN', 'SENT') AND order_id IS NULL"),
         ),
     )
 
@@ -863,6 +910,15 @@ class Reorder(TimestampMixin, db.Model):
     min_qty_at_trigger: Mapped[int] = mapped_column(nullable=False)
     max_qty_at_trigger: Mapped[int] = mapped_column(nullable=False)
     vendor_at_trigger: Mapped[str | None]
+    # Order-triggered vendor POs only (task 444): the customer order this PO
+    # exists for, plus the customer details frozen at emission (customer
+    # name, PO/AFE, ship-to, quote number, the line's notes/specs) — the
+    # sheet renders ONLY this, so it cannot change under later quote edits.
+    # Both NULL on min-triggered reorders.
+    order_id: Mapped[int | None] = mapped_column(
+        ForeignKey("customer_order.id"), nullable=True, index=True
+    )
+    customer_context: Mapped[dict | None] = mapped_column(db.JSON)
     sent_at: Mapped[datetime | None]
     sent_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"))
     trigger_movement_id: Mapped[int | None] = mapped_column(
@@ -878,6 +934,7 @@ class Reorder(TimestampMixin, db.Model):
     )
 
     stock_item: Mapped[StockItem] = relationship()
+    order: Mapped["Order | None"] = relationship()
     trigger_movement: Mapped["StockMovement | None"] = relationship(
         foreign_keys=[trigger_movement_id]
     )

@@ -63,8 +63,12 @@
       <div class="meta">
         <span>{{ r.stock_item.catalog.description }}</span>
         {% if not r.vendor_at_trigger %}<span>no vendor on catalog row yet</span>{% endif %}
+        {% if r.order_id and r.customer_context %}
+        <span><strong>for {{ r.customer_context.customer_name or 'customer' }}</strong>{% if r.customer_context.po_number %} — PO/AFE {{ r.customer_context.po_number }}{% endif %}{% if r.customer_context.quote_number %} — quote {{ r.customer_context.quote_number }}{% endif %}</span>
+        {% else %}
         <span>on hand now {{ r.stock_item.on_hand }}</span>
         <span>min {{ r.min_qty_at_trigger }} / max {{ r.max_qty_at_trigger }}</span>
+        {% endif %}
         <span>opened {{ r.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</span>
         {% if r.sent_at %}<span>PO sent {{ r.sent_at.strftime('%Y-%m-%d %H:%M') }} UTC</span>{% endif %}
       </div>
