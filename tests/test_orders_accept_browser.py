@@ -171,4 +171,4 @@ def test_accept_flow_creates_order_and_is_idempotent(live_app, browser_page):
     page.wait_for_load_state("networkidle")
     body = page.locator("#orders-body").inner_text()
     assert "ACC-1 v1" in body
-    assert "PO PO-BROWSER-1" in body
+    assert "PO/AFE PO-BROWSER-1" in body

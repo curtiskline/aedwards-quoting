@@ -37,8 +37,8 @@
   {% if open_reorder %}
   <div>
     <a class="badge badge-negative" href="{{ url_for('stock.reorders_list') }}"
-       title="Opened {{ open_reorder.created_at.strftime('%Y-%m-%d %H:%M') }} UTC — the shop has a restock sheet.">
-      reorder open: make {{ open_reorder.qty }}
+       title="Opened {{ open_reorder.created_at.strftime('%Y-%m-%d %H:%M') }} UTC — a vendor PO sheet exists for it.">
+      {{ 'PO sent' if open_reorder.status.value == 'sent' else 'reorder open' }}: order {{ open_reorder.qty }}{% if open_reorder.vendor_at_trigger %} from {{ open_reorder.vendor_at_trigger }}{% endif %}
     </a>
   </div>
   {% endif %}

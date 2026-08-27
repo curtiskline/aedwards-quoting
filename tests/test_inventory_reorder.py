@@ -29,6 +29,7 @@ from app.inventory import (
     StockError,
     close_reorder,
     compute_reorder_qty,
+    mark_reorder_sent,
     consume_shipped_event,
     parse_seed_csv,
     record_adjustment,
@@ -458,13 +459,13 @@ def test_receive_route_and_reorders_page(app, client):
         reorder_id = reorder.id
     resp = client.get("/stock/reorders/")
     assert resp.status_code == 200
-    assert b"Make 12" in resp.data
+    assert b"Order 12" in resp.data
     assert b"SLV-12" in resp.data
 
     sheet = client.get(f"/stock/reorders/{reorder_id}/sheet")
     assert sheet.status_code == 200
-    assert b"RESTOCK SHEET" in sheet.data
-    assert b"Make 12" in sheet.data
+    assert b"PURCHASE ORDER" in sheet.data
+    assert b"Order 12" in sheet.data
 
     resp = client.post(
         f"/stock/reorders/{reorder_id}/receive",
@@ -550,3 +551,125 @@ def test_csv_apply_seeds_rows(app, client):
         )
         assert {m.reason for m in seeds} == {REASON_INITIAL_SEED}
         assert verify_stock_integrity() == []
+
+
+# ---------------------------------------------------------------------------
+# Engine v2 (task 439): vendor freezing + OPEN -> SENT -> RECEIVED lifecycle
+# ---------------------------------------------------------------------------
+
+
+def test_vendor_frozen_at_trigger_like_min_max(app):
+    """The reorder freezes the catalog vendor at trigger time; a later
+    catalog edit must not change what the printed PO says."""
+    with app.app_context():
+        sleeve = _sleeve()
+        sleeve.vendor = "AE MFG"
+        _db.session.commit()
+        _, _, reorder = _seed(sleeve, on_hand=2, min_qty=5, max_qty=20)
+        assert reorder is not None
+        assert reorder.vendor_at_trigger == "AE MFG"
+
+        sleeve.vendor = "Some Other Vendor"
+        _db.session.commit()
+        assert _db.session.get(Reorder, reorder.id).vendor_at_trigger == "AE MFG"
+
+
+def test_missing_vendor_freezes_null_and_sheet_renders_bare_order(app, client):
+    with app.app_context():
+        item, _, reorder = _seed(_sleeve(), on_hand=2, min_qty=5, max_qty=20)
+        assert reorder.vendor_at_trigger is None
+        reorder_id = reorder.id
+    sheet = client.get(f"/stock/reorders/{reorder_id}/sheet")
+    assert sheet.status_code == 200
+    assert b"Order 18" in sheet.data
+    assert b"from" not in sheet.data.split(b"make-line")[1].split(b"</p>")[0]
+
+
+def test_mark_sent_moves_open_to_sent_with_stamps(app):
+    with app.app_context():
+        _, _, reorder = _seed(_sleeve(), on_hand=2, min_qty=5, max_qty=20)
+        mark_reorder_sent(reorder, _owner())
+        _db.session.commit()
+        assert reorder.status == ReorderStatus.SENT
+        assert reorder.sent_at is not None
+        assert reorder.sent_by == _owner().id
+
+
+def test_mark_sent_twice_is_refused(app):
+    with app.app_context():
+        _, _, reorder = _seed(_sleeve(), on_hand=2, min_qty=5, max_qty=20)
+        mark_reorder_sent(reorder, _owner())
+        _db.session.commit()
+        with pytest.raises(StockError, match="Only an open reorder"):
+            mark_reorder_sent(reorder, _owner())
+
+
+def test_mark_sent_on_received_is_refused(app):
+    with app.app_context():
+        _, _, reorder = _seed(_sleeve(), on_hand=2, min_qty=5, max_qty=20)
+        close_reorder(reorder, 18, _owner())
+        _db.session.commit()
+        with pytest.raises(StockError, match="Only an open reorder"):
+            mark_reorder_sent(reorder, _owner())
+
+
+def test_receive_from_sent_closes_normally(app):
+    with app.app_context():
+        item, _, reorder = _seed(_sleeve(), on_hand=2, min_qty=5, max_qty=20)
+        mark_reorder_sent(reorder, _owner())
+        _db.session.commit()
+        movement, new_reorder = close_reorder(reorder, 18, _owner())
+        _db.session.commit()
+        assert reorder.status == ReorderStatus.RECEIVED
+        assert movement.qty_delta == 18
+        assert item.on_hand == 20
+        assert new_reorder is None
+        assert verify_stock_integrity() == []
+
+
+def test_receive_straight_from_open_still_works(app):
+    """Receipt implies sent (PM agreement, task 439): goods can arrive
+    without mark-sent ever being clicked."""
+    with app.app_context():
+        item, _, reorder = _seed(_sleeve(), on_hand=2, min_qty=5, max_qty=20)
+        assert reorder.status == ReorderStatus.OPEN
+        close_reorder(reorder, 18, _owner())
+        _db.session.commit()
+        assert reorder.status == ReorderStatus.RECEIVED
+        assert reorder.sent_at is None  # never marked sent — honest record
+        assert item.on_hand == 20
+
+
+def test_sent_reorder_still_holds_the_one_active_claim(app):
+    """A PO in flight to the vendor must keep the one-active-reorder-per-item
+    claim — a further stock drop mid-transit must NOT open a duplicate PO."""
+    with app.app_context():
+        item, _, reorder = _seed(_sleeve(), on_hand=2, min_qty=5, max_qty=20)
+        mark_reorder_sent(reorder, _owner())
+        _db.session.commit()
+        record_adjustment(item, -1, _owner(), "recount while PO in transit")
+        _db.session.commit()
+        assert len(_reorders(item)) == 1  # no duplicate stacked
+
+
+def test_mark_sent_route(app, client):
+    with app.app_context():
+        sleeve = _sleeve()
+        sleeve.vendor = "AE MFG"
+        _db.session.commit()
+        _, _, reorder = _seed(sleeve, on_hand=2, min_qty=5, max_qty=20)
+        reorder_id = reorder.id
+
+    page = client.get("/stock/reorders/")
+    assert b"Mark PO sent" in page.data
+    assert b"from AE MFG" in page.data
+
+    resp = client.post(
+        f"/stock/reorders/{reorder_id}/mark-sent", follow_redirects=True
+    )
+    assert resp.status_code == 200
+    assert b"PO marked sent to AE MFG" in resp.data
+    assert b"Mark PO sent" not in resp.data  # SENT rows lose the action
+    assert b"Mark received" in resp.data  # ...but can still be received
+    with app.app_context():
+        assert _db.session.get(Reorder, reorder_id).status == ReorderStatus.SENT

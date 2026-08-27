@@ -426,7 +426,7 @@ def test_queue_view_tabs_and_progression_route(app, client):
         assert _db.session.get(PickList, pick_list_id).status == PickListStatus.PICKED
 
 
-def test_sheet_renders_pack_units_checkboxes_signature(app, client):
+def test_sheet_renders_pack_units_checkboxes_no_signature(app, client):
     with app.app_context():
         order = _make_order()
         pick_list, _ = create_pick_list(order, _owner())
@@ -440,7 +440,9 @@ def test_sheet_renders_pack_units_checkboxes_signature(app, client):
     assert "1 Pipeline Rd" in html
     assert "2 bundles" in html and "5 pcs / bundle" in html
     assert "2 pallets" in html and "50 pcs / pallet" in html
-    assert "Driver signature" in html
+    # Pick sheets are NOT signed (I148.3, engine v2): pure pack manifest.
+    assert "Driver signature" not in html
+    assert "Picked by" not in html
     assert html.count('class="checkbox"') == 3  # one per material line
     assert "Freight" not in html  # non-material excluded
     assert "customer asked for 8" in html  # original_qty surfaced

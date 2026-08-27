@@ -35,6 +35,9 @@
           {% endfor %}
         </select>
       </label>
+      <label>Vendor
+        <input name="vendor" maxlength="255" placeholder="e.g. AE MFG" />
+      </label>
       <button type="submit" class="save-btn">Add product</button>
       {% if catalog_just_saved %}<span class="save-confirmation">Saved</span>{% endif %}
     </form>
@@ -50,14 +53,15 @@
             <th>Part Number</th>
             <th>Description</th>
             <th>Type</th>
+            <th>Vendor</th>
             <th>Active</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
           {% for item in catalog_items %}
-            <tr id="catalog-item-{{ item.id }}" class="{% if not item.is_active %}catalog-inactive{% endif %}" data-catalog-search="{{ (item.part_number or '')|lower }} {{ item.description|lower }}">
-              <td colspan="5">
+            <tr id="catalog-item-{{ item.id }}" class="{% if not item.is_active %}catalog-inactive{% endif %}" data-catalog-search="{{ (item.part_number or '')|lower }} {{ item.description|lower }} {{ (item.vendor or '')|lower }}">
+              <td colspan="6">
                 <form method="post" action="/admin/catalog/{{ item.id }}/update" hx-post="/admin/catalog/{{ item.id }}/update" hx-target="#product-catalog-card" hx-swap="outerHTML" class="catalog-form catalog-form-row">
                   <input type="hidden" name="catalog_filter" value="{{ catalog_filter }}" />
                   <input name="part_number" value="{{ item.part_number or '' }}" aria-label="Part Number" maxlength="255" placeholder="Optional" />
@@ -68,6 +72,7 @@
                       <option value="{{ pt.name }}" {% if item.product_type == pt.name %}selected{% endif %}>{{ pt.label }}</option>
                     {% endfor %}
                   </select>
+                  <input name="vendor" value="{{ item.vendor or '' }}" aria-label="Vendor" maxlength="255" placeholder="e.g. AE MFG" />
                   <label class="checkbox-row"><input type="checkbox" name="is_active" {% if item.is_active %}checked{% endif %} /> Active</label>
                   <button type="submit" class="save-btn">Save</button>
                 </form>

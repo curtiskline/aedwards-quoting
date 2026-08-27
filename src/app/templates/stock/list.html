@@ -57,7 +57,7 @@
       <td class="num">
         {{ item.on_hand }}
         {% if item.on_hand < 0 %}<span class="badge badge-negative" title="On hand is below zero: shipments were decremented before an initial count was imported (arrives with CP-5b).">negative</span>{% endif %}
-        {% if open_reorders.get(item.id) %}<a class="badge badge-reorder" href="{{ url_for('stock.reorders_list') }}" title="An auto-reorder is open for this item — the shop has a restock sheet.">reorder open</a>{% endif %}
+        {% if open_reorders.get(item.id) %}<a class="badge badge-reorder" href="{{ url_for('stock.reorders_list') }}" title="A vendor PO is open for this item — see the Reorders screen.">{{ 'PO sent' if open_reorders.get(item.id).status.value == 'sent' else 'reorder open' }}</a>{% endif %}
       </td>
       <td class="num">
         {% if item.is_seeded %}

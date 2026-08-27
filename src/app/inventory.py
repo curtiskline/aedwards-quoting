@@ -209,12 +209,12 @@ def maybe_trigger_reorder(
     resolution, seeding save) — needs_reorder hard-returns False on NULL
     thresholds, so unseeded items can never fire (CP-5a regression).
 
-    Idempotent by the claim pattern: the partial UNIQUE index (one OPEN
-    reorder per stock item) is taken inside a savepoint; a second trigger
-    while one is open hits the constraint and is a no-op returning None.
-    This is the second gate behind CP-5a's decrement claim — a replayed
-    shipped event decrements nothing, and even a real second decrement
-    cannot stack a second reorder.
+    Idempotent by the claim pattern: the partial UNIQUE index (one
+    un-received — OPEN or SENT — reorder per stock item) is taken inside a
+    savepoint; a second trigger while one is open or in flight hits the
+    constraint and is a no-op returning None. This is the second gate behind
+    CP-5a's decrement claim — a replayed shipped event decrements nothing,
+    and even a real second decrement cannot stack a second reorder.
     """
     if not item.needs_reorder:
         return None
@@ -226,6 +226,10 @@ def maybe_trigger_reorder(
         on_hand_at_trigger=item.on_hand,
         min_qty_at_trigger=item.min_qty,
         max_qty_at_trigger=item.max_qty,
+        # Frozen like min/max: the sheet must not change under later catalog
+        # edits. NULL vendor is fine — the sheet renders "Order {qty}" with
+        # the vendor line blank (D72; data arrives as Chip fills it in).
+        vendor_at_trigger=item.catalog.vendor or None,
         trigger_movement_id=trigger_movement.id if trigger_movement else None,
     )
     try:
@@ -247,6 +251,7 @@ def maybe_trigger_reorder(
             "on_hand": item.on_hand,
             "min_qty": item.min_qty,
             "max_qty": item.max_qty,
+            "vendor": reorder.vendor_at_trigger,
         },
     )
     db.session.add(movement)
@@ -264,11 +269,32 @@ def maybe_trigger_reorder(
     return reorder
 
 
+def mark_reorder_sent(reorder: Reorder, actor: User | None) -> None:
+    """OPEN -> SENT: the PO went to the vendor (Chip printed/sent it).
+
+    Stamps sent_at/sent_by. Only an OPEN reorder can be marked sent — a
+    RECEIVED one is done, and a second mark-sent is refused rather than
+    silently re-stamping the date the vendor actually got the order.
+    Does not commit — the caller owns the transaction.
+    """
+    if reorder.status != ReorderStatus.OPEN:
+        raise StockError(
+            f"Only an open reorder can be marked sent (this one is "
+            f"{reorder.status.value})."
+        )
+    reorder.status = ReorderStatus.SENT
+    reorder.sent_at = datetime.utcnow()
+    reorder.sent_by = actor.id if actor else None
+
+
 def close_reorder(
     reorder: Reorder, received_qty: int, actor: User | None
 ) -> tuple[StockMovement | None, Reorder | None]:
-    """Mark-received: book what the shop ACTUALLY made and close the reorder.
+    """Mark-received: book what the vendor ACTUALLY delivered and close the
+    reorder.
 
+    Allowed from OPEN or SENT — receipt implies sent (goods can arrive
+    without mark-sent ever being clicked; PM agreement, task 439).
     received_qty may differ from the ordered qty — no partial tracking (PM
     agreement, task 419). A qty of 0 closes the reorder without a receipt
     (the false-fire escape hatch). If the receipt leaves the item still
@@ -277,7 +303,7 @@ def close_reorder(
 
     Returns (receipt_movement, new_reorder) — either may be None.
     """
-    if reorder.status != ReorderStatus.OPEN:
+    if reorder.status == ReorderStatus.RECEIVED:
         raise StockError("This reorder is already received.")
     if received_qty < 0:
         raise StockError("Received quantity cannot be negative.")
@@ -312,9 +338,13 @@ def close_reorder(
 
 
 def open_reorders_query():
+    """Un-received reorders (OPEN or SENT) — everything still holding the
+    one-active-reorder-per-item claim. SENT rows are in flight to the vendor
+    and still need mark-received, so every 'open reorder' surface (badges,
+    reorders screen, shop-queue tab) treats them as active."""
     return (
         db.session.query(Reorder)
-        .filter(Reorder.status == ReorderStatus.OPEN)
+        .filter(Reorder.status.in_((ReorderStatus.OPEN, ReorderStatus.SENT)))
         .order_by(Reorder.id.asc())
     )
 
@@ -914,12 +944,35 @@ def reorders_list():
 
 @stock_bp.get("/reorders/<int:reorder_id>/sheet")
 def reorder_sheet(reorder_id: int):
-    """The printable restock sheet — CP-4's MANUAL_PRINT channel for
-    reorders: make [qty] to restock [item], with the frozen trigger context."""
+    """The printable vendor purchase order — CP-4's MANUAL_PRINT channel for
+    reorders: order [qty] from [vendor], with the frozen trigger context."""
     reorder = db.get_or_404(Reorder, reorder_id)
     return render_template(
         "stock/reorder_sheet.html", reorder=reorder, item=reorder.stock_item
     )
+
+
+@stock_bp.post("/reorders/<int:reorder_id>/mark-sent")
+def reorder_mark_sent(reorder_id: int):
+    """OPEN -> SENT: Chip printed/sent the PO to the vendor."""
+    reorder = db.get_or_404(Reorder, reorder_id)
+    try:
+        mark_reorder_sent(reorder, _current_user())
+        db.session.commit()
+        item_name = (
+            reorder.stock_item.catalog.part_number
+            or reorder.stock_item.catalog.description
+        )
+        vendor = reorder.vendor_at_trigger
+        flash(
+            f"PO marked sent{f' to {vendor}' if vendor else ''} ({item_name}). "
+            "Mark it received when the delivery arrives.",
+            "success",
+        )
+    except StockError as exc:
+        db.session.rollback()
+        flash(exc.message, "error")
+    return redirect(url_for("stock.reorders_list"))
 
 
 @stock_bp.post("/reorders/<int:reorder_id>/receive")

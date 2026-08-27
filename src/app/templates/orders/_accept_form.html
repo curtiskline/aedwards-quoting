@@ -16,23 +16,32 @@
       {% if version.sent_to %} to {{ version.sent_to }}{% endif %}.
       This records the customer's yes against the exact lines they were sent and creates an order.
     </p>
+    {% if no_po_warning %}
+    {# Soft confirm, not a hard block (I148.1): some customers go ahead
+       verbally — but the PO/AFE is what makes the later invoice easy. #}
+    <p style="margin:0 0 0.75rem;padding:0.6rem 0.9rem;background:#fffbeb;color:#78350f;border:1px solid #fcd34d;border-radius:6px;font-weight:600;">
+      No PO / AFE number — accept anyway? Enter it above if the customer gave one, or confirm to accept without.
+    </p>
+    {% endif %}
     <form method="post" action="/quotes/{{ quote.id }}/accept"
           hx-post="/quotes/{{ quote.id }}/accept"
           hx-target="#accept-modal"
           hx-swap="outerHTML"
           hx-disabled-elt="find button[type='submit']">
       <input type="hidden" name="quote_version_id" value="{{ version.id }}" />
+      {% if no_po_warning %}<input type="hidden" name="confirm_no_po" value="1" />{% endif %}
       <label style="display:block;margin-bottom:0.75rem;">
-        PO number (optional)
-        <input name="po_number" style="width:100%;margin-top:0.25rem;" />
+        PO / AFE number
+        <input name="po_number" value="{{ po_value if po_value is defined and po_value else (quote.po_number or '') }}" placeholder="the customer's PO or AFE reference" style="width:100%;margin-top:0.25rem;" />
+        {% if quote.po_number and not no_po_warning %}<span style="display:block;margin-top:0.2rem;font-size:0.78rem;color:#6b7280;">Pre-filled from the RFQ — edit if the customer gave a different reference.</span>{% endif %}
       </label>
       <label style="display:block;margin-bottom:0.75rem;">
         Note (optional)
-        <textarea name="note" rows="2" placeholder="e.g. Chip called, PO to follow" style="width:100%;margin-top:0.25rem;"></textarea>
+        <textarea name="note" rows="2" placeholder="e.g. Chip called, PO to follow" style="width:100%;margin-top:0.25rem;">{{ note_value if note_value is defined else '' }}</textarea>
       </label>
       <div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:1rem;">
         <button type="button" onclick="document.getElementById('accept-modal').remove();">Cancel</button>
-        <button type="submit" style="background:#16a34a;color:#fff;border:none;padding:0.5rem 1rem;border-radius:4px;cursor:pointer;">Mark Accepted</button>
+        <button type="submit" style="background:#16a34a;color:#fff;border:none;padding:0.5rem 1rem;border-radius:4px;cursor:pointer;">{{ 'Accept without PO / AFE' if no_po_warning else 'Mark Accepted' }}</button>
       </div>
     </form>
     {% endif %}

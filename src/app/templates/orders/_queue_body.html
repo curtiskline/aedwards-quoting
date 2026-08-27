@@ -8,7 +8,7 @@
           <span class="quote-number">{{ o.quote_number }} v{{ o.version_number }}</span>
           <span class="customer-name">{{ o.customer_name }}</span>
           <span class="status-badge status-{{ o.status }}">{{ o.status_label }}</span>
-          {% if o.po_number %}<span class="meta">PO {{ o.po_number }}</span>{% endif %}
+          {% if o.po_number %}<span class="meta">PO/AFE {{ o.po_number }}</span>{% endif %}
         </div>
         <div class="meta">
           <span>{{ o.item_count }} item{{ 's' if o.item_count != 1 else '' }}</span>

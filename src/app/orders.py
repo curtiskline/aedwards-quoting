@@ -277,6 +277,20 @@ def quote_accept(quote_id: int):
                 "A newer version of this quote was sent after this form was "
                 "opened. Re-open Accept to see the current version."
             )
+        # Soft confirm, not a hard block (I148.1): an empty PO/AFE gets one
+        # "accept anyway?" round-trip — the re-rendered form carries
+        # confirm_no_po so the second submit goes through.
+        if not po_number and not request.form.get("confirm_no_po"):
+            existing = _order_for_version(version.id)
+            return render_template(
+                "orders/_accept_form.html",
+                quote=quote,
+                version=version,
+                existing_order=existing,
+                no_po_warning=True,
+                po_value="",
+                note_value=note,
+            )
         order, created = create_order_from_acceptance(
             version,
             source=AcceptanceSource.EXPLICIT_CLICK,

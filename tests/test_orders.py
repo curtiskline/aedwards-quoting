@@ -207,10 +207,12 @@ def test_double_accept_is_idempotent(app, client):
         version_id = acceptable_version(quote).id
 
     first = client.post(
-        f"/quotes/{quote_id}/accept", data={"quote_version_id": version_id}
+        f"/quotes/{quote_id}/accept",
+        data={"quote_version_id": version_id, "po_number": "PO-777"},
     )
     second = client.post(
-        f"/quotes/{quote_id}/accept", data={"quote_version_id": version_id}
+        f"/quotes/{quote_id}/accept",
+        data={"quote_version_id": version_id, "po_number": "PO-777"},
     )
     assert first.status_code == second.status_code == 200
     assert b"Order Created" in first.data
@@ -476,7 +478,9 @@ def test_quote_status_bar_shows_accept_then_order_link(app, client):
     before = client.get(f"/quotes/{quote_id}")
     assert b"Mark Accepted" in before.data
 
-    accept = client.post(f"/quotes/{quote_id}/accept", data={})
+    accept = client.post(
+        f"/quotes/{quote_id}/accept", data={"po_number": "PO-116"}
+    )
     assert b"Order Created" in accept.data
 
     after = client.get(f"/quotes/{quote_id}")
@@ -511,3 +515,71 @@ def test_quote_without_order_still_deletable(app, client):
     assert resp.status_code in (302, 303)
     with app.app_context():
         assert _db.session.get(Quote, quote_id).deleted_at is not None
+
+
+# ---------------------------------------------------------------------------
+# PO / AFE capture (engine v2, I148.1): prefill + soft confirm at accept
+# ---------------------------------------------------------------------------
+
+
+def test_accept_form_prefills_po_afe_from_quote(app, client):
+    with app.app_context():
+        quote = _make_sent_quote(number="126-120")
+        quote.po_number = "AFE-2026-0042"
+        _db.session.commit()
+        quote_id = quote.id
+
+    form = client.get(f"/quotes/{quote_id}/accept-form")
+    assert form.status_code == 200
+    assert b"PO / AFE number" in form.data
+    assert b'value="AFE-2026-0042"' in form.data
+
+
+def test_accept_with_empty_po_afe_soft_confirms_then_accepts(app, client):
+    """Empty PO/AFE is a visible 'accept anyway?' round-trip, never a hard
+    block (I148.1: some customers go ahead verbally)."""
+    with app.app_context():
+        quote = _make_sent_quote(number="126-121")
+        quote_id = quote.id
+        version_id = acceptable_version(quote).id
+
+    first = client.post(
+        f"/quotes/{quote_id}/accept",
+        data={"quote_version_id": version_id, "po_number": "", "note": "verbal go"},
+    )
+    assert first.status_code == 200
+    assert b"No PO / AFE number" in first.data
+    assert b'name="confirm_no_po"' in first.data
+    assert b"verbal go" in first.data  # the typed note survives the round-trip
+    with app.app_context():
+        assert _db.session.query(Order).count() == 0  # nothing accepted yet
+
+    second = client.post(
+        f"/quotes/{quote_id}/accept",
+        data={
+            "quote_version_id": version_id,
+            "po_number": "",
+            "note": "verbal go",
+            "confirm_no_po": "1",
+        },
+    )
+    assert b"Order Created" in second.data
+    with app.app_context():
+        order = _db.session.query(Order).one()
+        assert order.po_number is None
+        assert order.acceptance_event.note == "verbal go"
+
+
+def test_accept_with_po_afe_skips_soft_confirm(app, client):
+    with app.app_context():
+        quote = _make_sent_quote(number="126-122")
+        quote_id = quote.id
+        version_id = acceptable_version(quote).id
+
+    resp = client.post(
+        f"/quotes/{quote_id}/accept",
+        data={"quote_version_id": version_id, "po_number": "PO-9001"},
+    )
+    assert b"Order Created" in resp.data
+    with app.app_context():
+        assert _db.session.query(Order).one().po_number == "PO-9001"

@@ -66,14 +66,19 @@ class ShopPingChannel(str, Enum):
 
 
 class ReorderStatus(str, Enum):
-    """Lifecycle of an auto-reorder (CP-5b, design Stage F). OPEN from the
-    moment the trigger fires; RECEIVED when the shop's restock is booked as a
-    RECEIPT movement. The received qty is what the shop ACTUALLY made — it
-    may differ from the ordered qty. No partial tracking: a short receipt
-    closes the reorder and the still-below-min state re-triggers a fresh one
-    naturally (PM agreement, task 419)."""
+    """Lifecycle of a vendor purchase order (CP-5b + engine v2, D72: AEI is
+    a distributor — replenishment is a PO to a vendor, never an in-house
+    make). OPEN from the moment the trigger fires; SENT once the PO has gone
+    to the vendor (Chip printing/marking it — the mark-sent action); RECEIVED
+    when the delivery is booked as a RECEIPT movement. Receipt is allowed
+    straight from OPEN — goods can arrive without mark-sent ever being
+    clicked, so receipt implies sent. The received qty is what the vendor
+    ACTUALLY delivered — it may differ from the ordered qty. No partial
+    tracking: a short receipt closes the reorder and the still-below-min
+    state re-triggers a fresh one naturally (PM agreement, task 419)."""
 
     OPEN = "open"
+    SENT = "sent"
     RECEIVED = "received"
 
 
@@ -663,6 +668,10 @@ class ProductCatalog(db.Model):
     # Category slug, mirroring QuoteLineItem.product_type (matches an editable
     # ProductType.name). Nullable: untriaged legacy rows carry no type yet.
     product_type: Mapped[str | None] = mapped_column(nullable=True, index=True)
+    # Who AEI buys this product from (engine v2, D72: AEI resells — e.g.
+    # "AE MFG"). Plain text at <50 SKUs; a Vendor table only if/when POs go
+    # out by email. NULL = Chip hasn't filled it in yet.
+    vendor: Mapped[str | None] = mapped_column(nullable=True)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
@@ -799,26 +808,33 @@ class StockDecrementClaim(TimestampMixin, db.Model):
 
 
 class Reorder(TimestampMixin, db.Model):
-    """An auto-reorder: the shop's instruction to make more of a stock item
-    (CP-5b, design Stage F).
+    """An auto-reorder: AEI's purchase order to a vendor for more of a stock
+    item (CP-5b + engine v2, D72: AEI is a distributor — replenishment is a
+    vendor PO, never an in-house make).
 
     Created when a ledger write drops a FULLY SEEDED item's on_hand to/below
     min_qty (StockItem.needs_reorder — NULL thresholds can never fire).
     Idempotency is the claim pattern the design mandates: a partial UNIQUE
-    index on stock_item_id WHERE status='OPEN' means at most one open reorder
-    per item, ever — a second trigger while one is open hits the constraint
-    and is a no-op. Phantom decrement -> phantom reorder is THE Stage-F
+    index on stock_item_id WHERE status IN ('OPEN','SENT') means at most one
+    un-received reorder per item, ever — a second trigger while one is open
+    OR in flight to the vendor hits the constraint and is a no-op (a PO
+    already sent tops the item back up; a stock drop mid-transit must not
+    double-order). Phantom decrement -> phantom reorder is THE Stage-F
     hazard; this is the second gate behind CP-5a's decrement claim.
 
-    qty and the *_at_trigger columns are FROZEN at creation so the printable
-    sheet cannot change under later threshold edits or stock movement.
-    qty rule (documented for the shop): reorder_qty if set, else
-    max(max_qty - on_hand, 1) — the fallback tops the item back up to max.
+    qty, the *_at_trigger columns, and vendor_at_trigger are FROZEN at
+    creation so the printable sheet cannot change under later threshold or
+    catalog edits. qty rule (documented for the shop): reorder_qty if set,
+    else max(max_qty - on_hand, 1) — the fallback tops the item back up to
+    max. vendor_at_trigger may be NULL — the sheet renders "Order {qty}"
+    with the vendor blank until Chip fills catalog vendors in.
 
-    Closing = mark-received: books a RECEIPT movement for the qty the shop
-    ACTUALLY made (may differ from qty ordered; no partial tracking) and
-    stamps received_*. If the receipt leaves the item still at/below min, the
-    normal trigger fires a FRESH reorder — that is the re-arm semantics.
+    Mark-sent stamps sent_* and moves OPEN -> SENT (Chip printed/sent the PO).
+    Closing = mark-received (allowed from OPEN or SENT — receipt implies
+    sent): books a RECEIPT movement for the qty ACTUALLY delivered (may
+    differ from qty ordered; no partial tracking) and stamps received_*. If
+    the receipt leaves the item still at/below min, the normal trigger fires
+    a FRESH reorder — that is the re-arm semantics.
     """
 
     __tablename__ = "reorder"
@@ -827,8 +843,8 @@ class Reorder(TimestampMixin, db.Model):
             "uq_reorder_open_per_item",
             "stock_item_id",
             unique=True,
-            postgresql_where=db.text("status = 'OPEN'"),
-            sqlite_where=db.text("status = 'OPEN'"),
+            postgresql_where=db.text("status IN ('OPEN', 'SENT')"),
+            sqlite_where=db.text("status IN ('OPEN', 'SENT')"),
         ),
     )
 
@@ -846,6 +862,9 @@ class Reorder(TimestampMixin, db.Model):
     on_hand_at_trigger: Mapped[int] = mapped_column(nullable=False)
     min_qty_at_trigger: Mapped[int] = mapped_column(nullable=False)
     max_qty_at_trigger: Mapped[int] = mapped_column(nullable=False)
+    vendor_at_trigger: Mapped[str | None]
+    sent_at: Mapped[datetime | None]
+    sent_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"))
     trigger_movement_id: Mapped[int | None] = mapped_column(
         ForeignKey("stock_movement.id"), nullable=True
     )

@@ -2037,3 +2037,30 @@ def test_price_override_is_visible_in_the_editor(db_url):
     # The form carries the baseline token so the next blur cannot resubmit a
     # price the reviewer never typed.
     assert 'name="unit_price_baseline" value="6000.00"' in html
+
+
+def test_po_afe_saves_from_customer_form_and_survives_posts_without_field(db_url):
+    """Engine v2 (I148.1): the quote view captures the customer's PO/AFE.
+    A post that carries the field saves it; a post WITHOUT the field (older
+    form, partial hx-include) must not silently wipe it."""
+    app = _make_app(db_url)
+    quote_id, user_id = _seed_priced_quote(app, "126-326", "po-afe@example.com")
+    client = app.test_client()
+    _login(client, user_id)
+
+    html = client.get(f"/quotes/{quote_id}").get_data(as_text=True)
+    assert "PO / AFE number" in html
+
+    client.post(
+        f"/quotes/{quote_id}/customer",
+        data={"customer_name_raw": "Acme", "po_number": "AFE-2026-0099"},
+    )
+    with app.app_context():
+        assert db.session.get(Quote, quote_id).po_number == "AFE-2026-0099"
+
+    client.post(
+        f"/quotes/{quote_id}/customer",
+        data={"customer_name_raw": "Acme"},  # no po_number field at all
+    )
+    with app.app_context():
+        assert db.session.get(Quote, quote_id).po_number == "AFE-2026-0099"

@@ -4,7 +4,7 @@
       <span class="quote-number">{{ row.quote_number }}</span>
       <span class="customer-name">{{ row.customer_name }}</span>
       <span class="status-badge picklist-{{ row.status.value }}">{{ row.status.value.title() }}</span>
-      {% if row.po_number %}<span class="meta">PO {{ row.po_number }}</span>{% endif %}
+      {% if row.po_number %}<span class="meta">PO/AFE {{ row.po_number }}</span>{% endif %}
     </div>
     <div class="meta">
       <span>{{ row.line_count }} line{{ 's' if row.line_count != 1 else '' }}</span>

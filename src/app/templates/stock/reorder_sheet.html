@@ -1,13 +1,15 @@
-{# The printable restock sheet — CP-4's MANUAL_PRINT channel for reorders
-   (Chip onsite: paper/phone first). Renders ONLY the qty + context frozen on
-   the reorder row at trigger time, plus the item's identity — reprinting
-   always yields the same instruction even after later stock movement or
-   threshold edits. NO outbound delivery of any kind. #}
+{# The printable vendor purchase order — CP-4's MANUAL_PRINT channel for
+   reorders (Chip onsite: paper/phone first). Engine v2 (D72): AEI is a
+   distributor — replenishment is a PO to a vendor, never an in-house make.
+   Renders ONLY the qty + vendor + context frozen on the reorder row at
+   trigger time, plus the item's identity — reprinting always yields the
+   same instruction even after later stock movement, threshold, or catalog
+   edits. NO outbound delivery of any kind — Chip prints/sends it himself. #}
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Restock sheet — {{ item.catalog.part_number or item.catalog.description }}</title>
+  <title>Purchase order — {{ item.catalog.part_number or item.catalog.description }}</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -45,8 +47,8 @@
 
   <header>
     <div>
-      <h1>RESTOCK SHEET</h1>
-      <p style="margin:0.25rem 0 0;font-size:1.1rem;font-weight:700;">Reorder #{{ reorder.id }}</p>
+      <h1>PURCHASE ORDER</h1>
+      <p style="margin:0.25rem 0 0;font-size:1.1rem;font-weight:700;">PO / Reorder #{{ reorder.id }}</p>
     </div>
     <div class="company">
       <strong>Allan Edwards, Inc.</strong><br />
@@ -55,11 +57,12 @@
     </div>
   </header>
 
-  <p class="make-line">Make {{ reorder.qty }} &mdash; {{ item.catalog.part_number or item.catalog.description }}</p>
+  <p class="make-line">Order {{ reorder.qty }}{% if reorder.vendor_at_trigger %} from {{ reorder.vendor_at_trigger }}{% endif %} &mdash; {{ item.catalog.part_number or item.catalog.description }}</p>
   <p class="item-desc">
     {{ item.catalog.description }}
     {% if item.catalog.product_type %} ({{ item.catalog.product_type }}){% endif %}
   </p>
+  <p class="item-desc">Vendor: {% if reorder.vendor_at_trigger %}<strong>{{ reorder.vendor_at_trigger }}</strong>{% else %}<span style="display:inline-block;min-width:14rem;border-bottom:1.5px solid #111;">&nbsp;</span>{% endif %}</p>
 
   <table>
     <thead>
@@ -69,19 +72,26 @@
       <tr><td>On hand when this fired</td><td class="num">{{ reorder.on_hand_at_trigger }}</td></tr>
       <tr><td>Minimum to keep</td><td class="num">{{ reorder.min_qty_at_trigger }}</td></tr>
       <tr><td>Maximum to keep</td><td class="num">{{ reorder.max_qty_at_trigger }}</td></tr>
-      <tr><td><strong>Make</strong></td><td class="num"><strong>{{ reorder.qty }}</strong></td></tr>
+      <tr><td><strong>Order</strong></td><td class="num"><strong>{{ reorder.qty }}</strong></td></tr>
     </tbody>
   </table>
 
   <div class="signatures">
-    <div><div class="sig-space"></div><div class="sig-line">Made by / date</div></div>
-    <div><div class="sig-space"></div><div class="sig-line">Received into stock by / date</div></div>
+    <div>
+      <div class="sig-space">{% if reorder.sent_at %}<p style="margin:1.5rem 0 0;font-weight:700;">{{ reorder.sent_at.strftime('%Y-%m-%d %H:%M') }} UTC</p>{% endif %}</div>
+      <div class="sig-line">Ordered / date</div>
+    </div>
+    <div>
+      <div class="sig-space">{% if reorder.received_at %}<p style="margin:1.5rem 0 0;font-weight:700;">{{ reorder.received_at.strftime('%Y-%m-%d %H:%M') }} UTC</p>{% endif %}</div>
+      <div class="sig-line">Received / date</div>
+    </div>
   </div>
 
   <footer>
     Internal reference: reorder #{{ reorder.id }} &middot; stock item #{{ item.id }} &middot;
-    catalog #{{ item.catalog.id }}. When the pieces are on the shelf, mark this reorder
-    received on the Reorders screen with the quantity actually made.
+    catalog #{{ item.catalog.id }}. When the PO goes to the vendor, mark it sent on the
+    Reorders screen; when the delivery is on the shelf, mark it received there with the
+    quantity actually delivered.
   </footer>
 </body>
 </html>

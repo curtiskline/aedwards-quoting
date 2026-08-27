@@ -4,6 +4,8 @@
    live quote or catalog, so reprinting always yields the same sheet. There is
    no regenerate path for a pick list — a botched order is handled at the
    ORDER level (revise + re-accept), never by editing this sheet's record.
+   Pick sheets are NOT signed (I148.3, engine v2): this is a pure pack
+   manifest — no signature block, no confirmation semantics ride on it.
    Shop-facing paper: the big reference is the QUOTE number; the internal ids
    are traceability fine print (customer-facing order numbering is a deferred
    Chip decision). #}
@@ -43,9 +45,6 @@
     .pack { font-weight: 700; }
     .pack-detail { font-size: 0.85rem; color: #333; }
     .totals { margin-top: 0.5rem; font-size: 0.95rem; font-weight: 700; text-align: right; }
-    .signatures { display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; margin-top: 3rem; }
-    .sig-line { border-top: 1.5px solid #111; padding-top: 0.3rem; font-size: 0.85rem; }
-    .sig-space { height: 3rem; }
     footer { margin-top: 2rem; font-size: 0.75rem; color: #555; }
     @media print {
       body { padding: 0; }
@@ -74,7 +73,7 @@
       <p><strong>{{ quote.customer_name_raw or quote.sender_name or 'Unknown' }}</strong></p>
       {% if quote.contact_name %}<p>{{ quote.contact_name }}</p>{% endif %}
       {% if quote.contact_phone %}<p>{{ quote.contact_phone }}</p>{% endif %}
-      {% if order.po_number %}<p>Customer PO: <strong>{{ order.po_number }}</strong></p>{% endif %}
+      {% if order.po_number %}<p>Customer PO / AFE: <strong>{{ order.po_number }}</strong></p>{% endif %}
     </div>
     <div>
       <h2>Ship to</h2>
@@ -126,17 +125,6 @@
     </tbody>
   </table>
   <div class="totals">Total: {{ total_pieces }} pieces</div>
-
-  <div class="signatures">
-    <div>
-      <div class="sig-space"></div>
-      <div class="sig-line">Picked by / date</div>
-    </div>
-    <div>
-      <div class="sig-space"></div>
-      <div class="sig-line">Driver signature / date</div>
-    </div>
-  </div>
 
   <footer>
     Internal refs: pick list #{{ pick_list.id }} &middot; order record #{{ order.id }} &middot; quote version v{{ order.quote_version.version_number }}.

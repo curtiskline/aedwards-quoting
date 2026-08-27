@@ -192,7 +192,7 @@ def test_generate_print_progress_flow(live_app, browser_page):
     assert "PICK-1" in sheet_text
     assert "1 Pipeline Rd" in sheet_text
     assert "2 bundles" in sheet_text
-    assert "Driver signature" in sheet_text
+    assert "Driver signature" not in sheet_text  # unsigned pack manifest (I148.3)
     assert "Freight" not in sheet_text
     sheet.close()
 

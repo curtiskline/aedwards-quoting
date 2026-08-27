@@ -43,7 +43,7 @@
     <dt>Recorded by</dt>
     <dd>{% if event.actor %}{{ event.actor.name }}{% elif event.actor_label %}{{ event.actor_label }}{% else %}&mdash;{% endif %}</dd>
     <dt>Recorded at</dt><dd>{{ event.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</dd>
-    {% if event.po_number %}<dt>PO number</dt><dd>{{ event.po_number }}</dd>{% endif %}
+    {% if event.po_number %}<dt>PO / AFE number</dt><dd>{{ event.po_number }}</dd>{% endif %}
     {% if event.note %}<dt>Note</dt><dd>{{ event.note }}</dd>{% endif %}
     <dt>Quote sent to</dt><dd>{{ version.sent_to or '&mdash;' | safe }}</dd>
     <dt>Quote sent at</dt><dd>{% if version.sent_at %}{{ version.sent_at.strftime('%Y-%m-%d %H:%M') }} UTC{% else %}&mdash;{% endif %}</dd>

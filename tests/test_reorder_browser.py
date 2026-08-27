@@ -174,18 +174,18 @@ def test_seed_ship_reorder_print_receive_rearm(live_app, browser_page):
     reorders_tab.click()
     page.wait_for_load_state("networkidle")
     body = page.locator("body").inner_text()
-    assert "Make 18" in body  # fallback qty: max 20 - on_hand 2
+    assert "Order 18" in body  # fallback qty: max 20 - on_hand 2
     assert "SLV-12" in body
     assert "on hand now 2" in body
 
-    # 4. The printable restock sheet renders the frozen trigger context.
+    # 4. The printable vendor PO sheet renders the frozen trigger context.
     with page.context.expect_page() as sheet_info:
-        page.click("a:has-text('Restock sheet')")
+        page.click("a:has-text('PO sheet')")
     sheet = sheet_info.value
     sheet.wait_for_load_state("networkidle")
     sheet_text = sheet.locator("body").inner_text()
-    assert "RESTOCK SHEET" in sheet_text
-    assert "Make 18" in sheet_text
+    assert "PURCHASE ORDER" in sheet_text
+    assert "Order 18" in sheet_text
     assert "Minimum to keep\t5" in sheet_text or "5" in sheet_text
     sheet.close()
 
@@ -216,7 +216,7 @@ def test_seed_ship_reorder_print_receive_rearm(live_app, browser_page):
     page.goto(f"{base}/stock/reorders/")
     page.wait_for_load_state("networkidle")
     body = page.locator("body").inner_text()
-    assert "Make" in body and "SLV-12" in body
+    assert "Order" in body and "SLV-12" in body
     assert "on hand now 5" in body
 
     with live_app["app"].app_context():

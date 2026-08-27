@@ -1448,6 +1448,10 @@ def _update_quote_customer_from_request(quote: Quote) -> None:
     quote.contact_name = (request.form.get("contact_name") or "").strip() or None
     quote.contact_email = (request.form.get("contact_email") or "").strip() or None
     quote.contact_phone = (request.form.get("contact_phone") or "").strip() or None
+    # PO / AFE (I148.1): guarded so posts that don't carry the field (older
+    # forms, partial hx-includes) can't silently wipe a captured reference.
+    if "po_number" in request.form:
+        quote.po_number = (request.form.get("po_number") or "").strip() or None
     quote.ship_to_json = normalize_ship_to(
         {
             "company": (request.form.get("ship_to_company") or "").strip(),
@@ -2539,6 +2543,7 @@ def add_catalog_item():
             part_number=part_number,
             description=description,
             product_type=product_type,
+            vendor=(request.form.get("vendor") or "").strip() or None,
             is_active=True,
         )
     )
@@ -2577,6 +2582,7 @@ def update_catalog_item(item_id: int):
     item.part_number = part_number
     item.description = description
     item.product_type = product_type
+    item.vendor = (request.form.get("vendor") or "").strip() or None
     catalog_filter = _catalog_filter(request.form.get("catalog_filter"))
     was_active = item.is_active
     item.is_active = request.form.get("is_active") == "on"
