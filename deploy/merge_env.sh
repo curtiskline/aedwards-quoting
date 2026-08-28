@@ -21,7 +21,10 @@ HOST_ENV="$1"
 DEPLOY_ENV="$2"
 OUT="$3"
 
-HOST_AUTHORITATIVE_KEYS=(DATABASE_URL SECRET_KEY EMAIL_DELIVERY_ENABLED)
+# ENABLE_MONITOR is host-authoritative because deploy.sh defaults it to true
+# in its fragment: without this, a plain monitor deploy would silently flip a
+# monitor-off host (staging) back to polling a live mailbox.
+HOST_AUTHORITATIVE_KEYS=(DATABASE_URL SECRET_KEY EMAIL_DELIVERY_ENABLED ENABLE_MONITOR)
 
 TMP_OUT="$(mktemp)"
 trap 'rm -f "${TMP_OUT}"' EXIT

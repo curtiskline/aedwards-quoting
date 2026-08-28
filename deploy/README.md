@@ -7,9 +7,10 @@ droplet-local PostgreSQL (`postgresql://aedwards@/aedwards?host=/var/run/postgre
 the old SQLite file remains at `/opt/aedwards/instance/allenedwards.db*` as the
 rehearsal's rollback artifact.
 
-## `deploy_web.sh` .env safety (task 449)
+## Deploy `.env` safety (tasks 449, 452)
 
-As of task 449, `deploy_web.sh` treats the **host's `/opt/aedwards/.env` as
+As of task 449 (`deploy_web.sh`) and task 452 (`deploy.sh`, the monitor
+deploy), both deploy scripts treat the **host's `/opt/aedwards/.env` as
 authoritative** for environment-specific values. The merge lives in
 `deploy/merge_env.sh` (the same code runs in the local preflight and on the
 host) and guarantees:
@@ -22,12 +23,22 @@ host) and guarantees:
   ever a manual edit of the host `.env` followed by a service restart.
   (Setting `EMAIL_DELIVERY_ENABLED=true` locally only bundles mail
   credentials into the deploy; it cannot turn delivery on.)
-- an existing host `SECRET_KEY` is preserved; delivery-off hosts get any
-  leftover mail-credential lines stripped;
+- an existing host `SECRET_KEY` is preserved (generated host-side only when
+  absent everywhere); delivery-off hosts get any leftover mail-credential
+  lines stripped;
+- an existing host `ENABLE_MONITOR` is preserved: `deploy.sh` defaults it to
+  `true` for fresh hosts, but a deploy can never flip a monitor-off host
+  (staging) back to polling a live mailbox;
 - `--dry-run` prints the resulting host `.env` diff and applies **nothing**;
 - the target is printed loudly (staging `134.122.29.15` / prod
   `157.230.227.28` are auto-detected) and `--env staging|prod` aborts on a
   mismatch.
+
+Note for fresh monitor-on hosts: the delivery-off credential strip means
+mailbox credentials only persist on a host whose `.env` already says
+`EMAIL_DELIVERY_ENABLED=true`. On a brand-new prod host, set that manually
+in `/opt/aedwards/.env` before (or after) the first `deploy.sh` run —
+enabling delivery is always a manual host edit, never a deploy side effect.
 
 Guard rails are fixture-tested in `tests/test_deploy_env_safety.sh` (run
 `bash tests/test_deploy_env_safety.sh`; it never contacts a real host).
@@ -39,16 +50,20 @@ export KEY_PATH="$HOME/.ssh/id_rsa"
 export ENABLE_MONITOR=false
 export SERVER_NAME=staging.quotes.vectorforgeinteractive.com
 export APP_URL=https://staging.quotes.vectorforgeinteractive.com
-bash deploy/deploy.sh <staging-ip>
+bash deploy/deploy.sh --dry-run --env staging <staging-ip>       # inspect the .env diff first
+bash deploy/deploy.sh --env staging <staging-ip>
 bash deploy/deploy_web.sh --dry-run --env staging <staging-ip>   # inspect the .env diff first
 bash deploy/deploy_web.sh --env staging <staging-ip>
 ```
 
 `ENABLE_MONITOR=false` stops and disables `aedwards-monitor` and prevents the
-monitor deploy from copying O365 mailbox credentials (that gate lives in
-`deploy.sh`, which has not been reworked — keep exporting it there).
+monitor deploy from copying O365 mailbox credentials. Since task 452 the
+export is only needed for a **fresh** host: once the host `.env` says
+`ENABLE_MONITOR=false`, that value survives every subsequent `deploy.sh` run
+by construction (a plain deploy defaults the key to `true` only for hosts
+that have never set it).
 Staging's `EMAIL_DELIVERY_ENABLED=false` and PostgreSQL `DATABASE_URL` now
-survive `deploy_web.sh` deploys without any exports: the host values are
+survive both deploy scripts without any exports: the host values are
 preserved by construction, and `EMAIL_DELIVERY_ENABLED=false` blocks both
 quote delivery and magic-link delivery in the application even if mail
 credentials are later accidentally added to the host.

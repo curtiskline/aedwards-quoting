@@ -1,12 +1,32 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -lt 1 ]]; then
-  echo "Usage: $0 <host-or-ip>" >&2
+usage() {
+  echo "Usage: $0 [--dry-run] [--env staging|prod] <host-or-ip>" >&2
+  echo "  --dry-run   print the resulting host .env diff and apply nothing" >&2
+  echo "  --env       assert the deploy target; aborts if it contradicts the known host map" >&2
+}
+
+DRY_RUN=false
+TARGET_ENV=""
+POSITIONAL=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run) DRY_RUN=true; shift ;;
+    --env) TARGET_ENV="${2:-}"; shift 2 ;;
+    --env=*) TARGET_ENV="${1#--env=}"; shift ;;
+    -h|--help) usage; exit 0 ;;
+    -*) echo "Unknown option: $1" >&2; usage; exit 1 ;;
+    *) POSITIONAL+=("$1"); shift ;;
+  esac
+done
+
+if [[ ${#POSITIONAL[@]} -ne 1 ]]; then
+  usage
   exit 1
 fi
 
-HOST="$1"
+HOST="${POSITIONAL[0]}"
 KEY_PATH="${KEY_PATH:-$HOME/.ssh/NoJobDevKey.pem}"
 SSH_USER="${SSH_USER:-root}"
 APP_DIR="${APP_DIR:-/opt/aedwards}"
@@ -15,6 +35,41 @@ SERVICE_NAME="aedwards-monitor"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DOTENV_FILE="${ROOT_DIR}/.env"
+SERVICE_FILE="${ROOT_DIR}/deploy/aedwards-monitor.service"
+MERGE_ENV_FILE="${ROOT_DIR}/deploy/merge_env.sh"
+
+# Known host map (docs/runbooks/postgres-cutover.md). Anything else is "unknown"
+# and deploys with a loud warning; --env only cross-checks, it cannot re-label.
+detect_env() {
+  case "$1" in
+    134.122.29.15|staging.quotes.vectorforgeinteractive.com) echo staging ;;
+    157.230.227.28|quotes.allanedwards.io) echo prod ;;
+    *) echo unknown ;;
+  esac
+}
+
+DETECTED_ENV="$(detect_env "${HOST}")"
+if [[ -n "${TARGET_ENV}" ]]; then
+  if [[ "${TARGET_ENV}" != "staging" && "${TARGET_ENV}" != "prod" ]]; then
+    echo "--env must be 'staging' or 'prod', got: ${TARGET_ENV}" >&2
+    exit 1
+  fi
+  if [[ "${DETECTED_ENV}" != "unknown" && "${DETECTED_ENV}" != "${TARGET_ENV}" ]]; then
+    echo "ABORT: --env ${TARGET_ENV} but ${HOST} is the known ${DETECTED_ENV} host." >&2
+    exit 1
+  fi
+  EFFECTIVE_ENV="${TARGET_ENV}"
+else
+  EFFECTIVE_ENV="${DETECTED_ENV}"
+fi
+
+echo "=============================================================="
+echo "  DEPLOY TARGET: ${HOST}  [${EFFECTIVE_ENV^^}]$( [[ "${DRY_RUN}" == true ]] && echo '  (DRY RUN — nothing will be applied)' )"
+echo "=============================================================="
+if [[ "${EFFECTIVE_ENV}" == "unknown" ]]; then
+  echo "WARNING: ${HOST} is not in the known host map (staging=134.122.29.15, prod=157.230.227.28)." >&2
+  echo "WARNING: pass --env staging|prod to assert the target." >&2
+fi
 
 read_from_dotenv() {
   local key="$1"
@@ -39,26 +94,25 @@ ENABLE_MONITOR="${ENABLE_MONITOR:-true}"
 O365_CLIENT_ID="${O365_CLIENT_ID:-d3590ed6-52b3-4102-aeff-aad2292ab01c}"
 O365_SCOPES="${O365_SCOPES:-https://graph.microsoft.com/.default}"
 LLM_PROVIDER="${LLM_PROVIDER:-claude}"
-# The HOST's current DATABASE_URL is authoritative (Postgres cutover edits it
-# in place on the droplet); only fall back to the sqlite default when neither
-# the caller, the local .env, nor the host has one. Without this, every deploy
-# silently reverted a cut-over host back to SQLite.
-if [[ -z "${DATABASE_URL}" ]]; then
-  DATABASE_URL="$(ssh -i "${KEY_PATH}" "root@${HOST}" \
-    "sed -n 's/^DATABASE_URL=//p' ${APP_DIR}/.env 2>/dev/null | head -n1" || true)"
-fi
-DATABASE_URL="${DATABASE_URL:-sqlite:////opt/aedwards/instance/allenedwards.db}"
 QUOTE_ARTIFACT_DIR="${QUOTE_ARTIFACT_DIR:-${APP_DIR}/instance/quote_versions}"
-if [[ -z "${SECRET_KEY}" ]]; then
-  SECRET_KEY="$(openssl rand -hex 32)"
-fi
+
+# DATABASE_URL: the host's current value is authoritative (deploy/merge_env.sh
+# preserves it; the Postgres cutover edits it in place on the droplet, runbook
+# docs/runbooks/postgres-cutover.md). A value here is only used when the host
+# has none, and there is deliberately NO sqlite fallback: a deploy with no
+# DATABASE_URL anywhere fails in the preflight, before touching the host.
+# SECRET_KEY: the host's value is likewise preserved; when neither side has
+# one it is generated ON THE HOST, never here.
+# EMAIL_DELIVERY_ENABLED is never written by this script at all — the host
+# value governs delivery and merge_env.sh defaults an absent key to false.
+# ENABLE_MONITOR is host-authoritative in the merge: the default above applies
+# only to hosts that have never set it, so a deploy cannot flip a monitor-off
+# host (staging) back to polling a live mailbox.
 
 if [[ "${ENABLE_MONITOR,,}" != "false" && "${ENABLE_MONITOR,,}" != "0" && "${ENABLE_MONITOR,,}" != "no" && -z "${O365_EMAIL}" ]]; then
   echo "O365_EMAIL is required (export it or set it in ${DOTENV_FILE})." >&2
   exit 1
 fi
-
-SERVICE_FILE="${ROOT_DIR}/deploy/aedwards-monitor.service"
 
 if [[ ! -f "${KEY_PATH}" ]]; then
   echo "SSH key not found: ${KEY_PATH}" >&2
@@ -70,6 +124,61 @@ trap 'rm -rf "${TMP_DIR}"' EXIT
 
 SRC_TARBALL="${TMP_DIR}/aedwards-src.tgz"
 ENV_FILE="${TMP_DIR}/.env"
+
+{
+  echo "ENABLE_MONITOR=${ENABLE_MONITOR}"
+  if [[ "${ENABLE_MONITOR,,}" != "false" && "${ENABLE_MONITOR,,}" != "0" && "${ENABLE_MONITOR,,}" != "no" ]]; then
+    echo "O365_EMAIL=${O365_EMAIL}"
+    if [[ -n "${O365_PASSWORD}" ]]; then
+      echo "O365_PASSWORD=${O365_PASSWORD}"
+    fi
+    echo "O365_CLIENT_ID=${O365_CLIENT_ID}"
+    echo "O365_SCOPES=${O365_SCOPES}"
+  fi
+  echo "LLM_PROVIDER=${LLM_PROVIDER}"
+  if [[ -n "${DATABASE_URL}" ]]; then
+    echo "DATABASE_URL=${DATABASE_URL}"
+  fi
+  echo "QUOTE_ARTIFACT_DIR=${QUOTE_ARTIFACT_DIR}"
+  if [[ -n "${SECRET_KEY}" ]]; then
+    echo "SECRET_KEY=${SECRET_KEY}"
+  fi
+  if [[ -n "${ANTHROPIC_API_KEY}" ]]; then
+    echo "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}"
+  fi
+  if [[ -n "${MINIMAX_API_KEY}" ]]; then
+    echo "MINIMAX_API_KEY=${MINIMAX_API_KEY}"
+  fi
+  if [[ -n "${MINIMAX_BASE_URL}" ]]; then
+    echo "MINIMAX_BASE_URL=${MINIMAX_BASE_URL}"
+  fi
+  if [[ -n "${APP_URL}" ]]; then
+    echo "APP_URL=${APP_URL}"
+  fi
+} > "${ENV_FILE}"
+
+SSH_OPTS=(-i "${KEY_PATH}" -o StrictHostKeyChecking=accept-new)
+
+# Preflight: fetch the host's current .env and run the same merge the host
+# will run. This fails BEFORE any remote change when the merge would (e.g. no
+# DATABASE_URL anywhere), and gives --dry-run its diff.
+HOST_ENV_SNAPSHOT="${TMP_DIR}/host.env"
+MERGED_PREVIEW="${TMP_DIR}/merged-preview.env"
+# shellcheck disable=SC2029  # APP_DIR expanding client-side is intentional
+ssh "${SSH_OPTS[@]}" "${SSH_USER}@${HOST}" "cat ${APP_DIR}/.env 2>/dev/null || true" > "${HOST_ENV_SNAPSHOT}"
+bash "${MERGE_ENV_FILE}" "${HOST_ENV_SNAPSHOT}" "${ENV_FILE}" "${MERGED_PREVIEW}"
+
+echo ""
+echo "Resulting host .env change (current -> after deploy; SECRET_KEY may additionally be generated host-side if absent, and monitor-off hosts get mailbox credentials stripped host-side):"
+if diff -u "${HOST_ENV_SNAPSHOT}" "${MERGED_PREVIEW}"; then
+  echo "(no .env changes)"
+fi
+echo ""
+
+if [[ "${DRY_RUN}" == true ]]; then
+  echo "DRY RUN: nothing was copied or applied to ${HOST}."
+  exit 0
+fi
 
 tar \
   --exclude='.git' \
@@ -98,37 +207,8 @@ tar \
   -czf "${SRC_TARBALL}" \
   -C "${ROOT_DIR}" .
 
-{
-  echo "ENABLE_MONITOR=${ENABLE_MONITOR}"
-  if [[ "${ENABLE_MONITOR,,}" != "false" && "${ENABLE_MONITOR,,}" != "0" && "${ENABLE_MONITOR,,}" != "no" ]]; then
-    echo "O365_EMAIL=${O365_EMAIL}"
-    if [[ -n "${O365_PASSWORD}" ]]; then
-      echo "O365_PASSWORD=${O365_PASSWORD}"
-    fi
-    echo "O365_CLIENT_ID=${O365_CLIENT_ID}"
-    echo "O365_SCOPES=${O365_SCOPES}"
-  fi
-  echo "LLM_PROVIDER=${LLM_PROVIDER}"
-  echo "DATABASE_URL=${DATABASE_URL}"
-  echo "QUOTE_ARTIFACT_DIR=${QUOTE_ARTIFACT_DIR}"
-  echo "SECRET_KEY=${SECRET_KEY}"
-  if [[ -n "${ANTHROPIC_API_KEY}" ]]; then
-    echo "ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}"
-  fi
-  if [[ -n "${MINIMAX_API_KEY}" ]]; then
-    echo "MINIMAX_API_KEY=${MINIMAX_API_KEY}"
-  fi
-  if [[ -n "${MINIMAX_BASE_URL}" ]]; then
-    echo "MINIMAX_BASE_URL=${MINIMAX_BASE_URL}"
-  fi
-  if [[ -n "${APP_URL}" ]]; then
-    echo "APP_URL=${APP_URL}"
-  fi
-} > "${ENV_FILE}"
-
-SSH_OPTS=(-i "${KEY_PATH}" -o StrictHostKeyChecking=accept-new)
-
 scp "${SSH_OPTS[@]}" "${SRC_TARBALL}" "${SSH_USER}@${HOST}:/tmp/aedwards-src.tgz"
+scp "${SSH_OPTS[@]}" "${MERGE_ENV_FILE}" "${SSH_USER}@${HOST}:/tmp/aedwards-merge-env.sh"
 scp "${SSH_OPTS[@]}" "${SERVICE_FILE}" "${SSH_USER}@${HOST}:/tmp/${SERVICE_NAME}.service"
 scp "${SSH_OPTS[@]}" "${ENV_FILE}" "${SSH_USER}@${HOST}:/tmp/aedwards.env"
 
@@ -174,21 +254,26 @@ else
   sudo touch /tmp/aedwards-existing.env
 fi
 
-while IFS= read -r line || [[ -n "${line}" ]]; do
-  [[ -z "${line}" ]] && continue
-  key="${line%%=*}"
-  value="${line#*=}"
-  sudo sed -i "/^${key}=/d" /tmp/aedwards-existing.env
-  printf '%s=%s\n' "${key}" "${value}" | sudo tee -a /tmp/aedwards-existing.env >/dev/null
-done < /tmp/aedwards.env
+# The host .env is authoritative for environment-specific values: merge_env.sh
+# preserves existing DATABASE_URL / SECRET_KEY / EMAIL_DELIVERY_ENABLED /
+# ENABLE_MONITOR (delivery defaults to false when absent, never true), strips
+# mail credentials on delivery-off hosts, and hard-fails rather than fall back
+# to sqlite when no DATABASE_URL exists anywhere.
+sudo bash /tmp/aedwards-merge-env.sh /tmp/aedwards-existing.env /tmp/aedwards.env /tmp/aedwards-merged.env
 
-if grep -qiE '^ENABLE_MONITOR=(false|0|no)$' /tmp/aedwards-existing.env; then
+if grep -qiE '^ENABLE_MONITOR=(false|0|no)$' /tmp/aedwards-merged.env; then
   # Do not retain a live mailbox credential from an earlier deploy on a host
   # whose monitor is intentionally disabled.
-  sudo sed -i -E '/^(O365_EMAIL|O365_PASSWORD|O365_CLIENT_SECRET|O365_TENANT_ID|GMAIL_EMAIL|GMAIL_CLIENT_ID|GMAIL_CLIENT_SECRET|GMAIL_REFRESH_TOKEN|GMAIL_SERVICE_ACCOUNT_FILE)=/d' /tmp/aedwards-existing.env
+  sudo sed -i -E '/^(O365_EMAIL|O365_PASSWORD|O365_CLIENT_SECRET|O365_TENANT_ID|GMAIL_EMAIL|GMAIL_CLIENT_ID|GMAIL_CLIENT_SECRET|GMAIL_REFRESH_TOKEN|GMAIL_SERVICE_ACCOUNT_FILE)=/d' /tmp/aedwards-merged.env
 fi
 
-sudo install -m 600 -o "${APP_USER}" -g "${APP_USER}" /tmp/aedwards-existing.env "${APP_DIR}/.env"
+# Generate SECRET_KEY on server if not already set
+if ! grep -q '^SECRET_KEY=' /tmp/aedwards-merged.env || [[ -z "$(sed -n 's/^SECRET_KEY=//p' /tmp/aedwards-merged.env)" ]]; then
+  sudo sed -i '/^SECRET_KEY=/d' /tmp/aedwards-merged.env
+  printf 'SECRET_KEY=%s\n' "$(openssl rand -hex 32)" | sudo tee -a /tmp/aedwards-merged.env >/dev/null
+fi
+
+sudo install -m 600 -o "${APP_USER}" -g "${APP_USER}" /tmp/aedwards-merged.env "${APP_DIR}/.env"
 sudo install -m 644 /tmp/${SERVICE_NAME}.service /etc/systemd/system/${SERVICE_NAME}.service
 sudo systemctl daemon-reload
 if grep -qiE '^ENABLE_MONITOR=(false|0|no)$' "${APP_DIR}/.env"; then
