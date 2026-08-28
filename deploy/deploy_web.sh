@@ -1,12 +1,32 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ $# -lt 1 ]]; then
-  echo "Usage: $0 <host-or-ip>" >&2
+usage() {
+  echo "Usage: $0 [--dry-run] [--env staging|prod] <host-or-ip>" >&2
+  echo "  --dry-run   print the resulting host .env diff and apply nothing" >&2
+  echo "  --env       assert the deploy target; aborts if it contradicts the known host map" >&2
+}
+
+DRY_RUN=false
+TARGET_ENV=""
+POSITIONAL=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --dry-run) DRY_RUN=true; shift ;;
+    --env) TARGET_ENV="${2:-}"; shift 2 ;;
+    --env=*) TARGET_ENV="${1#--env=}"; shift ;;
+    -h|--help) usage; exit 0 ;;
+    -*) echo "Unknown option: $1" >&2; usage; exit 1 ;;
+    *) POSITIONAL+=("$1"); shift ;;
+  esac
+done
+
+if [[ ${#POSITIONAL[@]} -ne 1 ]]; then
+  usage
   exit 1
 fi
 
-HOST="$1"
+HOST="${POSITIONAL[0]}"
 KEY_PATH="${KEY_PATH:-$HOME/.ssh/NoJobDevKey.pem}"
 SSH_USER="${SSH_USER:-root}"
 APP_DIR="${APP_DIR:-/opt/aedwards}"
@@ -16,6 +36,40 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DOTENV_FILE="${ROOT_DIR}/.env"
 SERVICE_FILE="${ROOT_DIR}/deploy/aedwards-web.service"
 NGINX_FILE="${ROOT_DIR}/deploy/nginx-aedwards-web.conf"
+MERGE_ENV_FILE="${ROOT_DIR}/deploy/merge_env.sh"
+
+# Known host map (docs/runbooks/postgres-cutover.md). Anything else is "unknown"
+# and deploys with a loud warning; --env only cross-checks, it cannot re-label.
+detect_env() {
+  case "$1" in
+    134.122.29.15|staging.quotes.vectorforgeinteractive.com) echo staging ;;
+    157.230.227.28|quotes.allanedwards.io) echo prod ;;
+    *) echo unknown ;;
+  esac
+}
+
+DETECTED_ENV="$(detect_env "${HOST}")"
+if [[ -n "${TARGET_ENV}" ]]; then
+  if [[ "${TARGET_ENV}" != "staging" && "${TARGET_ENV}" != "prod" ]]; then
+    echo "--env must be 'staging' or 'prod', got: ${TARGET_ENV}" >&2
+    exit 1
+  fi
+  if [[ "${DETECTED_ENV}" != "unknown" && "${DETECTED_ENV}" != "${TARGET_ENV}" ]]; then
+    echo "ABORT: --env ${TARGET_ENV} but ${HOST} is the known ${DETECTED_ENV} host." >&2
+    exit 1
+  fi
+  EFFECTIVE_ENV="${TARGET_ENV}"
+else
+  EFFECTIVE_ENV="${DETECTED_ENV}"
+fi
+
+echo "=============================================================="
+echo "  DEPLOY TARGET: ${HOST}  [${EFFECTIVE_ENV^^}]$( [[ "${DRY_RUN}" == true ]] && echo '  (DRY RUN — nothing will be applied)' )"
+echo "=============================================================="
+if [[ "${EFFECTIVE_ENV}" == "unknown" ]]; then
+  echo "WARNING: ${HOST} is not in the known host map (staging=134.122.29.15, prod=157.230.227.28)." >&2
+  echo "WARNING: pass --env staging|prod to assert the target." >&2
+fi
 
 read_from_dotenv() {
   local key="$1"
@@ -45,18 +99,23 @@ MINIMAX_BASE_URL="${MINIMAX_BASE_URL:-$(read_from_dotenv MINIMAX_BASE_URL || tru
 APP_URL="${APP_URL:-$(read_from_dotenv APP_URL || true)}"
 QUOTE_ARTIFACT_DIR="${QUOTE_ARTIFACT_DIR:-$(read_from_dotenv QUOTE_ARTIFACT_DIR || true)}"
 SERVER_NAME="${SERVER_NAME:-_}"
-EMAIL_DELIVERY_ENABLED="${EMAIL_DELIVERY_ENABLED:-true}"
 
-# The HOST's current DATABASE_URL is authoritative (the Postgres cutover edits
-# it in place on the droplet, runbook docs/runbooks/postgres-cutover.md); only
-# fall back to the sqlite default when neither the caller, the local .env, nor
-# the host has one. Without this, every deploy silently reverted a cut-over
-# host back to SQLite.
-if [[ -z "${DATABASE_URL}" ]]; then
-  DATABASE_URL="$(ssh ${SSH_OPTS:-} -i "${KEY_PATH}" "root@${HOST}" \
-    "sed -n 's/^DATABASE_URL=//p' ${APP_DIR}/.env 2>/dev/null | head -n1" || true)"
+# EMAIL_DELIVERY_ENABLED is NEVER written to the host by this script (the
+# merge in deploy/merge_env.sh ignores it and the host value governs; absent
+# means false). Setting it =true locally only bundles mail credentials into
+# the deploy — it cannot turn delivery on.
+BUNDLE_MAIL_CREDS=false
+if [[ -n "${EMAIL_DELIVERY_ENABLED:-}" && "${EMAIL_DELIVERY_ENABLED,,}" != "false" && "${EMAIL_DELIVERY_ENABLED,,}" != "0" && "${EMAIL_DELIVERY_ENABLED,,}" != "no" ]]; then
+  BUNDLE_MAIL_CREDS=true
+  echo "NOTE: EMAIL_DELIVERY_ENABLED=${EMAIL_DELIVERY_ENABLED} bundles mail credentials but does NOT enable" >&2
+  echo "NOTE: delivery on the host — only the host's own .env governs that (edit it manually to enable)." >&2
 fi
-DATABASE_URL="${DATABASE_URL:-sqlite:////opt/aedwards/instance/allenedwards.db}"
+
+# DATABASE_URL: the host's current value is authoritative (deploy/merge_env.sh
+# preserves it; the Postgres cutover edits it in place on the droplet, runbook
+# docs/runbooks/postgres-cutover.md). A value here is only used when the host
+# has none, and there is deliberately NO sqlite fallback: a deploy with no
+# DATABASE_URL anywhere fails before touching the host.
 QUOTE_ARTIFACT_DIR="${QUOTE_ARTIFACT_DIR:-${APP_DIR}/instance/quote_versions}"
 O365_CLIENT_ID="${O365_CLIENT_ID:-d3590ed6-52b3-4102-aeff-aad2292ab01c}"
 O365_SCOPES="${O365_SCOPES:-https://graph.microsoft.com/.default}"
@@ -69,7 +128,7 @@ fi
 
 
 REMOTE_GMAIL_SERVICE_ACCOUNT_FILE=""
-if [[ "${EMAIL_DELIVERY_ENABLED,,}" != "false" && "${EMAIL_DELIVERY_ENABLED,,}" != "0" && "${EMAIL_DELIVERY_ENABLED,,}" != "no" && -n "${LOCAL_GMAIL_SERVICE_ACCOUNT_FILE}" ]]; then
+if [[ "${BUNDLE_MAIL_CREDS}" == true && -n "${LOCAL_GMAIL_SERVICE_ACCOUNT_FILE}" ]]; then
   if [[ ! -f "${LOCAL_GMAIL_SERVICE_ACCOUNT_FILE}" ]]; then
     echo "GMAIL_SERVICE_ACCOUNT_FILE not found: ${LOCAL_GMAIL_SERVICE_ACCOUNT_FILE}" >&2
     exit 1
@@ -84,31 +143,12 @@ SRC_TARBALL="${TMP_DIR}/aedwards-src.tgz"
 ENV_FILE="${TMP_DIR}/.env"
 RENDERED_NGINX_FILE="${TMP_DIR}/${SERVICE_NAME}.nginx"
 
-tar \
-  --exclude='.git' \
-  --exclude='.venv' \
-  --exclude='venv' \
-  --exclude='__pycache__' \
-  --exclude='*.pyc' \
-  --exclude='worktrees' \
-  --exclude='.agent-*' \
-  --exclude='data' \
-  --exclude='logs' \
-  --exclude='drafts' \
-  --exclude='examples' \
-  --exclude='dist' \
-  --exclude='work' \
-  --exclude='canon' \
-  --exclude='monitor_output' \
-  --exclude='*.mkv' \
-  --exclude='*.mp3' \
-  --exclude='*.xcf' \
-  --exclude='.monitor_state.json' \
-  -czf "${SRC_TARBALL}" \
-  -C "${ROOT_DIR}" .
-
 {
-  echo "DATABASE_URL=${DATABASE_URL}"
+  # No EMAIL_DELIVERY_ENABLED line here, ever: the host value governs delivery
+  # and merge_env.sh would ignore it anyway (defaulting an absent key to false).
+  if [[ -n "${DATABASE_URL}" ]]; then
+    echo "DATABASE_URL=${DATABASE_URL}"
+  fi
   echo "QUOTE_ARTIFACT_DIR=${QUOTE_ARTIFACT_DIR}"
   if [[ -n "${SECRET_KEY}" ]]; then
     echo "SECRET_KEY=${SECRET_KEY}"
@@ -116,26 +156,25 @@ tar \
   echo "O365_CLIENT_ID=${O365_CLIENT_ID}"
   echo "O365_SCOPES=${O365_SCOPES}"
   echo "LLM_PROVIDER=${LLM_PROVIDER}"
-  echo "EMAIL_DELIVERY_ENABLED=${EMAIL_DELIVERY_ENABLED}"
-  if [[ "${EMAIL_DELIVERY_ENABLED,,}" != "false" && "${EMAIL_DELIVERY_ENABLED,,}" != "0" && "${EMAIL_DELIVERY_ENABLED,,}" != "no" && -n "${O365_EMAIL}" ]]; then
+  if [[ "${BUNDLE_MAIL_CREDS}" == true && -n "${O365_EMAIL}" ]]; then
     echo "O365_EMAIL=${O365_EMAIL}"
   fi
-  if [[ "${EMAIL_DELIVERY_ENABLED,,}" != "false" && "${EMAIL_DELIVERY_ENABLED,,}" != "0" && "${EMAIL_DELIVERY_ENABLED,,}" != "no" && -n "${O365_PASSWORD}" ]]; then
+  if [[ "${BUNDLE_MAIL_CREDS}" == true && -n "${O365_PASSWORD}" ]]; then
     echo "O365_PASSWORD=${O365_PASSWORD}"
   fi
-  if [[ "${EMAIL_DELIVERY_ENABLED,,}" != "false" && "${EMAIL_DELIVERY_ENABLED,,}" != "0" && "${EMAIL_DELIVERY_ENABLED,,}" != "no" && -n "${GMAIL_EMAIL}" ]]; then
+  if [[ "${BUNDLE_MAIL_CREDS}" == true && -n "${GMAIL_EMAIL}" ]]; then
     echo "GMAIL_EMAIL=${GMAIL_EMAIL}"
   fi
-  if [[ "${EMAIL_DELIVERY_ENABLED,,}" != "false" && "${EMAIL_DELIVERY_ENABLED,,}" != "0" && "${EMAIL_DELIVERY_ENABLED,,}" != "no" && -n "${GMAIL_CLIENT_ID}" ]]; then
+  if [[ "${BUNDLE_MAIL_CREDS}" == true && -n "${GMAIL_CLIENT_ID}" ]]; then
     echo "GMAIL_CLIENT_ID=${GMAIL_CLIENT_ID}"
   fi
-  if [[ "${EMAIL_DELIVERY_ENABLED,,}" != "false" && "${EMAIL_DELIVERY_ENABLED,,}" != "0" && "${EMAIL_DELIVERY_ENABLED,,}" != "no" && -n "${GMAIL_CLIENT_SECRET}" ]]; then
+  if [[ "${BUNDLE_MAIL_CREDS}" == true && -n "${GMAIL_CLIENT_SECRET}" ]]; then
     echo "GMAIL_CLIENT_SECRET=${GMAIL_CLIENT_SECRET}"
   fi
-  if [[ "${EMAIL_DELIVERY_ENABLED,,}" != "false" && "${EMAIL_DELIVERY_ENABLED,,}" != "0" && "${EMAIL_DELIVERY_ENABLED,,}" != "no" && -n "${GMAIL_REFRESH_TOKEN}" ]]; then
+  if [[ "${BUNDLE_MAIL_CREDS}" == true && -n "${GMAIL_REFRESH_TOKEN}" ]]; then
     echo "GMAIL_REFRESH_TOKEN=${GMAIL_REFRESH_TOKEN}"
   fi
-  if [[ "${EMAIL_DELIVERY_ENABLED,,}" != "false" && "${EMAIL_DELIVERY_ENABLED,,}" != "0" && "${EMAIL_DELIVERY_ENABLED,,}" != "no" && -n "${GMAIL_SCOPES}" ]]; then
+  if [[ "${BUNDLE_MAIL_CREDS}" == true && -n "${GMAIL_SCOPES}" ]]; then
     echo "GMAIL_SCOPES=${GMAIL_SCOPES}"
   fi
   if [[ -n "${REMOTE_GMAIL_SERVICE_ACCOUNT_FILE}" ]]; then
@@ -168,7 +207,52 @@ sed "s|__SERVER_NAME__|${SERVER_NAME}|g" "${NGINX_FILE}" > "${RENDERED_NGINX_FIL
 
 SSH_OPTS=(-i "${KEY_PATH}" -o StrictHostKeyChecking=accept-new)
 
+# Preflight: fetch the host's current .env and run the same merge the host
+# will run. This fails BEFORE any remote change when the merge would (e.g. no
+# DATABASE_URL anywhere), and gives --dry-run its diff.
+HOST_ENV_SNAPSHOT="${TMP_DIR}/host.env"
+MERGED_PREVIEW="${TMP_DIR}/merged-preview.env"
+# shellcheck disable=SC2029  # APP_DIR expanding client-side is intentional
+ssh "${SSH_OPTS[@]}" "${SSH_USER}@${HOST}" "cat ${APP_DIR}/.env 2>/dev/null || true" > "${HOST_ENV_SNAPSHOT}"
+bash "${MERGE_ENV_FILE}" "${HOST_ENV_SNAPSHOT}" "${ENV_FILE}" "${MERGED_PREVIEW}"
+
+echo ""
+echo "Resulting host .env change (current -> after deploy; SECRET_KEY may additionally be generated host-side if absent):"
+if diff -u "${HOST_ENV_SNAPSHOT}" "${MERGED_PREVIEW}"; then
+  echo "(no .env changes)"
+fi
+echo ""
+
+if [[ "${DRY_RUN}" == true ]]; then
+  echo "DRY RUN: nothing was copied or applied to ${HOST}."
+  exit 0
+fi
+
+tar \
+  --exclude='.git' \
+  --exclude='.venv' \
+  --exclude='venv' \
+  --exclude='__pycache__' \
+  --exclude='*.pyc' \
+  --exclude='worktrees' \
+  --exclude='.agent-*' \
+  --exclude='data' \
+  --exclude='logs' \
+  --exclude='drafts' \
+  --exclude='examples' \
+  --exclude='dist' \
+  --exclude='work' \
+  --exclude='canon' \
+  --exclude='monitor_output' \
+  --exclude='*.mkv' \
+  --exclude='*.mp3' \
+  --exclude='*.xcf' \
+  --exclude='.monitor_state.json' \
+  -czf "${SRC_TARBALL}" \
+  -C "${ROOT_DIR}" .
+
 scp "${SSH_OPTS[@]}" "${SRC_TARBALL}" "${SSH_USER}@${HOST}:/tmp/aedwards-src.tgz"
+scp "${SSH_OPTS[@]}" "${MERGE_ENV_FILE}" "${SSH_USER}@${HOST}:/tmp/aedwards-merge-env.sh"
 scp "${SSH_OPTS[@]}" "${SERVICE_FILE}" "${SSH_USER}@${HOST}:/tmp/${SERVICE_NAME}.service"
 scp "${SSH_OPTS[@]}" "${RENDERED_NGINX_FILE}" "${SSH_USER}@${HOST}:/tmp/${SERVICE_NAME}.nginx"
 scp "${SSH_OPTS[@]}" "${ENV_FILE}" "${SSH_USER}@${HOST}:/tmp/aedwards-web.env"
@@ -218,28 +302,24 @@ else
   sudo touch /tmp/aedwards-existing.env
 fi
 
-while IFS= read -r line || [[ -n "${line}" ]]; do
-  [[ -z "${line}" ]] && continue
-  key="${line%%=*}"
-  value="${line#*=}"
-  sudo sed -i "/^${key}=/d" /tmp/aedwards-existing.env
-  printf '%s=%s\n' "${key}" "${value}" | sudo tee -a /tmp/aedwards-existing.env >/dev/null
-done < /tmp/aedwards-web.env
+# The host .env is authoritative for environment-specific values: merge_env.sh
+# preserves existing DATABASE_URL / SECRET_KEY / EMAIL_DELIVERY_ENABLED
+# (delivery defaults to false when absent, never true), strips mail
+# credentials on delivery-off hosts, and hard-fails rather than fall back to
+# sqlite when no DATABASE_URL exists anywhere.
+sudo bash /tmp/aedwards-merge-env.sh /tmp/aedwards-existing.env /tmp/aedwards-web.env /tmp/aedwards-merged.env
 
-if grep -qiE '^EMAIL_DELIVERY_ENABLED=(false|0|no)$' /tmp/aedwards-existing.env; then
-  # The merge-on-deploy behavior must not preserve mail credentials left by a
-  # prior deploy when a host is converted to an isolated staging environment.
-  sudo sed -i -E '/^(O365_EMAIL|O365_PASSWORD|O365_CLIENT_SECRET|O365_TENANT_ID|GMAIL_EMAIL|GMAIL_CLIENT_ID|GMAIL_CLIENT_SECRET|GMAIL_REFRESH_TOKEN|GMAIL_SERVICE_ACCOUNT_FILE)=/d' /tmp/aedwards-existing.env
+if grep -qiE '^EMAIL_DELIVERY_ENABLED=(false|0|no)$' /tmp/aedwards-merged.env; then
   sudo rm -f "${APP_DIR}/secrets/gmail-service-account.json"
 fi
 
 # Generate SECRET_KEY on server if not already set
-if ! grep -q '^SECRET_KEY=' /tmp/aedwards-existing.env || [[ -z "$(sed -n 's/^SECRET_KEY=//p' /tmp/aedwards-existing.env)" ]]; then
-  sudo sed -i '/^SECRET_KEY=/d' /tmp/aedwards-existing.env
-  printf 'SECRET_KEY=%s\n' "$(openssl rand -hex 32)" | sudo tee -a /tmp/aedwards-existing.env >/dev/null
+if ! grep -q '^SECRET_KEY=' /tmp/aedwards-merged.env || [[ -z "$(sed -n 's/^SECRET_KEY=//p' /tmp/aedwards-merged.env)" ]]; then
+  sudo sed -i '/^SECRET_KEY=/d' /tmp/aedwards-merged.env
+  printf 'SECRET_KEY=%s\n' "$(openssl rand -hex 32)" | sudo tee -a /tmp/aedwards-merged.env >/dev/null
 fi
 
-sudo install -m 600 -o "${APP_USER}" -g "${APP_USER}" /tmp/aedwards-existing.env "${APP_DIR}/.env"
+sudo install -m 600 -o "${APP_USER}" -g "${APP_USER}" /tmp/aedwards-merged.env "${APP_DIR}/.env"
 sudo install -m 644 /tmp/${SERVICE_NAME}.service /etc/systemd/system/${SERVICE_NAME}.service
 if grep -q ssl_certificate /etc/nginx/sites-enabled/${SERVICE_NAME} 2>/dev/null; then
   echo "Skipping nginx config — certbot SSL config already in place"
