@@ -7,23 +7,51 @@ droplet-local PostgreSQL (`postgresql://aedwards@/aedwards?host=/var/run/postgre
 the old SQLite file remains at `/opt/aedwards/instance/allenedwards.db*` as the
 rehearsal's rollback artifact.
 
-Deploy staging with its safety gates explicitly enabled:
+## `deploy_web.sh` .env safety (task 449)
+
+As of task 449, `deploy_web.sh` treats the **host's `/opt/aedwards/.env` as
+authoritative** for environment-specific values. The merge lives in
+`deploy/merge_env.sh` (the same code runs in the local preflight and on the
+host) and guarantees:
+
+- an existing host `DATABASE_URL` is never overwritten, and there is **no
+  sqlite fallback**: a deploy with no `DATABASE_URL` on the host and none
+  provided fails before touching the host;
+- `EMAIL_DELIVERY_ENABLED` is **never written by a deploy**. The host's value
+  is preserved; if absent it is written as `false`. Enabling delivery is only
+  ever a manual edit of the host `.env` followed by a service restart.
+  (Setting `EMAIL_DELIVERY_ENABLED=true` locally only bundles mail
+  credentials into the deploy; it cannot turn delivery on.)
+- an existing host `SECRET_KEY` is preserved; delivery-off hosts get any
+  leftover mail-credential lines stripped;
+- `--dry-run` prints the resulting host `.env` diff and applies **nothing**;
+- the target is printed loudly (staging `134.122.29.15` / prod
+  `157.230.227.28` are auto-detected) and `--env staging|prod` aborts on a
+  mismatch.
+
+Guard rails are fixture-tested in `tests/test_deploy_env_safety.sh` (run
+`bash tests/test_deploy_env_safety.sh`; it never contacts a real host).
+
+Deploy staging:
 
 ```bash
 export KEY_PATH="$HOME/.ssh/id_rsa"
 export ENABLE_MONITOR=false
-export EMAIL_DELIVERY_ENABLED=false
 export SERVER_NAME=staging.quotes.vectorforgeinteractive.com
 export APP_URL=https://staging.quotes.vectorforgeinteractive.com
-export DATABASE_URL='postgresql://aedwards@/aedwards?host=/var/run/postgresql'
 bash deploy/deploy.sh <staging-ip>
-bash deploy/deploy_web.sh <staging-ip>
+bash deploy/deploy_web.sh --dry-run --env staging <staging-ip>   # inspect the .env diff first
+bash deploy/deploy_web.sh --env staging <staging-ip>
 ```
 
 `ENABLE_MONITOR=false` stops and disables `aedwards-monitor` and prevents the
-monitor deploy from copying O365 mailbox credentials. `EMAIL_DELIVERY_ENABLED=false`
-blocks both quote delivery and magic-link delivery in the application, even if
-mail credentials are later accidentally added to the host.
+monitor deploy from copying O365 mailbox credentials (that gate lives in
+`deploy.sh`, which has not been reworked — keep exporting it there).
+Staging's `EMAIL_DELIVERY_ENABLED=false` and PostgreSQL `DATABASE_URL` now
+survive `deploy_web.sh` deploys without any exports: the host values are
+preserved by construction, and `EMAIL_DELIVERY_ENABLED=false` blocks both
+quote delivery and magic-link delivery in the application even if mail
+credentials are later accidentally added to the host.
 
 After each staging deploy, positively verify the isolation boundary:
 
