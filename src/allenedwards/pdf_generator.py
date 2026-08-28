@@ -400,7 +400,11 @@ class QuotePDFBuilder:
             # read. Internal wording never reaches this cell — see
             # allenedwards.line_notes.
             description_cell: list = [Paragraph(item.description, self.styles["normal_small"])]
-            note_text = customer_note(item.notes) if not item.is_note else None
+            note_text = (
+                customer_note(item.notes, priced=item.unit_price > 0)
+                if not item.is_note
+                else None
+            )
             if note_text:
                 description_cell.append(
                     Paragraph(escape(note_text), self.styles["line_note"])

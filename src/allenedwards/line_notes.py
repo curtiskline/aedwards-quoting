@@ -113,6 +113,23 @@ _RULES: list[tuple[re.Pattern[str], Callable[[re.Match[str]], str | None]]] = [
     ),
 ]
 
+# The clause _tbd_line_item writes on a $0 line the engine could not price. It
+# describes the PRICE, not the specs, so it is stale the moment the line has a
+# real price — matched here so both the price-set path (app.routes) and the
+# render-time guard (customer_note(priced=True)) recognize the same text.
+_TBD_CLAUSE = re.compile(r"^Pricing TBD, contact sales$", re.I)
+
+
+def is_tbd_clause(clause: str) -> bool:
+    """Return whether one stripped clause is the needs-pricing TBD note."""
+    return bool(_TBD_CLAUSE.match(clause.strip()))
+
+
+def strip_tbd_clauses(notes: str | None) -> str | None:
+    """Drop the TBD clause from a stored note string, keeping everything else."""
+    kept = [clause for clause in split_clauses(notes) if not is_tbd_clause(clause)]
+    return "; ".join(kept) or None
+
 
 # Backstop over the rules above. A clause may be recognized and still be worded
 # for Chip; if the customer text a rule produced still carries one of these, the
@@ -149,11 +166,22 @@ def customer_clause(clause: str) -> str | None:
     return None
 
 
-def customer_note(notes: str | None) -> str | None:
+def customer_note(notes: str | None, *, priced: bool = False) -> str | None:
     """Return the customer-facing rendering of a stored note, or None.
 
     Unrecognized clauses are dropped. If nothing survives, the line prints no
     note at all rather than a partial or internal one.
+
+    ``priced=True`` additionally drops the "Pricing TBD, contact sales" clause:
+    that note only ever means "this line has no price", so on a line that now
+    has one it is stale by definition (Chip-reported bug, quote 126-107). The
+    stored note is normally cleared when the price is set, but old rows predate
+    that — this guard keeps the stale text off the PDF regardless.
     """
-    kept = [rendered for clause in split_clauses(notes) if (rendered := customer_clause(clause))]
+    kept = [
+        rendered
+        for clause in split_clauses(notes)
+        if not (priced and is_tbd_clause(clause))
+        and (rendered := customer_clause(clause))
+    ]
     return "; ".join(kept) or None

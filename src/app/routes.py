@@ -32,6 +32,7 @@ from flask_login import current_user, login_required
 from sqlalchemy import func, inspect, or_
 from sqlalchemy.exc import IntegrityError
 
+from allenedwards.line_notes import strip_tbd_clauses
 from allenedwards.pdf_generator import generate_quote_pdf
 from allenedwards.pricing import (
     DEFAULT_LENGTH_SLEEVE,
@@ -2194,6 +2195,15 @@ def quote_update_line_item(quote_id: int, item_id: int):
         prior_description,
         unit_price_typed,
     )
+
+    # "Pricing TBD, contact sales" means the engine could not price this line.
+    # Once the line has a real price (typed here or recomputed just above) the
+    # note is stale — clear it from storage so neither the editor nor the PDF
+    # keeps showing it (Chip-reported bug, quote 126-107).
+    if Decimal(str(item.unit_price)) > 0:
+        specs["notes"] = strip_tbd_clauses(specs.get("notes"))
+        if specs["notes"] is None:
+            specs.pop("notes", None)
 
     item.specs_json = specs or None
     _apply_auto_shipping_line_item(quote)
