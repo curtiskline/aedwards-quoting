@@ -192,6 +192,31 @@ class OutlookClient(EmailProvider):
         """Backward-compatible alias for fetch_messages()."""
         return self.fetch_messages(limit=limit, since=since)
 
+    def fetch_message(self, message_id: str) -> EmailMessage:
+        """Fetch a single message by Graph id, regardless of folder.
+
+        Used by tools/replay_inbound.py to re-run a mis-handled email through
+        the intake pipeline after its idempotency claim is cleared.
+        """
+        params = {
+            "$select": "id,subject,from,bodyPreview,body,internetMessageId,hasAttachments,receivedDateTime",
+        }
+        item = self._request("GET", f"{self._mailbox}/messages/{message_id}", params=params)
+        sender = item.get("from", {}).get("emailAddress", {})
+        body = item.get("body") or {}
+        return EmailMessage(
+            id=item["id"],
+            subject=item.get("subject") or "",
+            sender_name=sender.get("name"),
+            sender_email=sender.get("address"),
+            body_preview=item.get("bodyPreview") or "",
+            body_content=body.get("content") or "",
+            body_content_type=body.get("contentType") or "text",
+            internet_message_id=item.get("internetMessageId"),
+            received_datetime=item.get("receivedDateTime"),
+            has_attachments=bool(item.get("hasAttachments", False)),
+        )
+
     def get_attachments(self, message_id: str) -> list[OutlookAttachment]:
         """Fetch attachments for a message via GET /me/messages/{id}/attachments."""
         data = self._request("GET", f"{self._mailbox}/messages/{message_id}/attachments")

@@ -60,7 +60,7 @@ FREIGHT_TERM_PATTERN = re.compile(
     """,
     re.IGNORECASE | re.VERBOSE,
 )
-DEFAULT_RFQ_CLASSIFY_BODY_CHARS = 500
+DEFAULT_RFQ_CLASSIFY_BODY_CHARS = 2000
 MAX_PDF_ATTACHMENT_BYTES = 15 * 1024 * 1024
 MAX_PDF_EXTRACTION_PAGES = 10
 MAX_PDF_EXTRACTION_CHARS = 30_000
@@ -109,6 +109,8 @@ Return JSON:
 Classification guidance:
 - RFQs include requests for pricing, quotes, proposals, or availability on any pipeline products or services Allan Edwards supplies: sleeves, girth weld bands, pipe weights, compression sleeves, OmegaWrap, backing strips, milling, painting, heating equipment, or related pipeline integrity products.
 - Forwarded emails from internal staff (Jamee, Josh, Chip, etc.) that contain an external customer's product request are RFQs.
+- Subject lines carry almost no signal on reply/forward threads. A generic subject like "Checking in", "Following up", "Touching base", "RE: intro", or a bare company name says NOTHING about the content — outreach threads keep their original subject when a prospect replies with a real request. Judge such emails by the body alone.
+- Forwarded/reply bodies often start with quoted headers (From:/Sent:/To:/Subject:) and greetings; the actual product request may appear further down the thread. Read past the boilerplate before deciding.
 - Internal status updates, invoices, shipping notifications, meeting invites, signatures-only emails, and personal messages with no product request are not RFQs.
 - When uncertain, classify as RFQ (true). False negatives lose business; false positives are reviewed and discarded cheaply.
 """
@@ -667,21 +669,46 @@ def _extract_message_text(msg: Message) -> str:
 
 
 def _strip_html(html: str) -> str:
-    """Strip HTML tags and decode entities."""
-    # Remove script and style elements
+    """Strip HTML tags and decode entities, preserving line structure."""
+    # Remove elements whose content is never prose
     html = re.sub(r"<script[^>]*>.*?</script>", "", html, flags=re.DOTALL | re.I)
     html = re.sub(r"<style[^>]*>.*?</style>", "", html, flags=re.DOTALL | re.I)
-    # Remove HTML tags
+    html = re.sub(r"<head[^>]*>.*?</head>", "", html, flags=re.DOTALL | re.I)
+    html = re.sub(r"<!--.*?-->", "", html, flags=re.DOTALL)
+    # Block-level boundaries become newlines so lists/tables of specs keep
+    # their one-item-per-line shape instead of running together.
+    html = re.sub(r"<br\s*/?>", "\n", html, flags=re.I)
+    html = re.sub(r"</(p|div|tr|li|table|h[1-6]|blockquote)\s*>", "\n", html, flags=re.I)
+    html = re.sub(r"</t[dh]\s*>", "\t", html, flags=re.I)
+    # Remove remaining HTML tags
     html = re.sub(r"<[^>]+>", " ", html)
     # Decode common entities
     html = html.replace("&nbsp;", " ")
     html = html.replace("&quot;", '"')
-    html = html.replace("&amp;", "&")
+    html = html.replace("&#39;", "'")
     html = html.replace("&lt;", "<")
     html = html.replace("&gt;", ">")
-    # Collapse whitespace
-    html = re.sub(r"\s+", " ", html)
+    html = html.replace("&amp;", "&")
+    # Collapse whitespace but keep line breaks
+    html = re.sub(r"[ \t\r\f\v]+", " ", html)
+    html = re.sub(r" ?\n ?", "\n", html)
+    html = re.sub(r"\n{3,}", "\n\n", html)
     return html.strip()
+
+
+_HTML_BODY_PATTERN = re.compile(
+    r"<(?:html|head|body|div|table|span|font|style|meta|p|br)\b", re.I
+)
+
+
+def looks_like_html(text: str) -> bool:
+    """Heuristic: does this email body carry HTML markup rather than plain text?"""
+    return bool(_HTML_BODY_PATTERN.search(text or ""))
+
+
+def html_to_text(html: str) -> str:
+    """Public HTML-to-text conversion for email bodies (Graph sends HTML)."""
+    return _strip_html(html)
 
 
 def _is_metadata_item(item_data: dict) -> bool:
@@ -1277,7 +1304,13 @@ def classify_rfq(subject: str, body: str, provider: LLMProvider) -> tuple[bool, 
     False negatives are costlier than false positives, so uncertain outcomes
     intentionally bias to True.
     """
-    snippet = (body or "")[:DEFAULT_RFQ_CLASSIFY_BODY_CHARS]
+    # Graph delivers HTML bodies; a raw-HTML snippet is all <style> CSS and
+    # starves the classifier of content (the John Galt "FW: Checking in"
+    # rejections, T459). Always classify on extracted text.
+    body = body or ""
+    if looks_like_html(body):
+        body = html_to_text(body)
+    snippet = body[:DEFAULT_RFQ_CLASSIFY_BODY_CHARS]
     prompt = (
         "Classify this email:\n\n"
         f"Subject: {subject or ''}\n"
