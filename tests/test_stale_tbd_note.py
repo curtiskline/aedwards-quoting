@@ -11,7 +11,10 @@ Two fixes, both pinned here:
   2. Render time: customer_note(priced=True) drops the TBD clause even if it is
      still stored (old rows from before fix 1).
 
-The intentional pack/bundle-rounding notes must keep printing on priced lines.
+Legitimate pack/pallet-rounding notes must keep printing on priced lines. The
+sleeve bundle-of-5 note is the exception: K124 says "Do NOT mention the minimum
+on the quote" and it is editor-only (task 458, Chip flagged it leaking on quote
+126-111), so it is pinned here as hidden even on a priced line.
 """
 
 from __future__ import annotations
@@ -55,8 +58,15 @@ def test_customer_note_priced_keeps_the_other_clauses():
 
 
 def test_customer_note_priced_keeps_pack_rounding_notes():
+    pack = "billed as 1 pack of 10"
+    assert customer_note(pack, priced=True) == "Billed as 1 pack of 10"
+
+
+def test_customer_note_drops_sleeve_bundle_note_even_on_a_priced_line():
+    """Task 458: the sleeve bundle-of-5 note is editor-only (K124)."""
     bundle = "Priced as 1 bundle (5 pcs / 50 ft)"
-    assert customer_note(bundle, priced=True) == bundle
+    assert customer_note(bundle, priced=True) is None
+    assert customer_note(bundle) is None
 
 
 def test_strip_tbd_clauses():
@@ -125,9 +135,19 @@ def test_pdf_still_shows_tbd_note_on_a_genuinely_unpriced_line():
     assert "Pricing TBD, contact sales" in text
 
 
-def test_pdf_keeps_bundle_note_on_a_priced_line():
-    text = _pdf_text([_line("Half Sole", "724.75", "Priced as 1 bundle (5 pcs / 50 ft)")])
-    assert "Priced as 1 bundle (5 pcs / 50 ft)" in text
+def test_pdf_keeps_pack_rounding_note_on_a_priced_line():
+    """A legitimate pack-rounding note still prints on a priced line; only TBD
+    and the sleeve bundle-of-5 note are suppressed."""
+    text = _pdf_text([_line("Backing Strip", "724.75", "billed as 1 pack of 10")])
+    assert "Billed as 1 pack of 10" in text
+
+
+def test_pdf_hides_sleeve_bundle_note_on_a_priced_line():
+    """Task 458: the sleeve bundle-of-5 packaging note is editor-only (K124:
+    'Do NOT mention the minimum on the quote'); Chip flagged it leaking onto the
+    customer PDF (quote 126-111)."""
+    text = _pdf_text([_line("Sleeve, Sealing", "724.75", "Priced as 1 bundle (5 pcs / 50 ft)")])
+    assert "bundle" not in text.lower()
 
 
 # --------------------------------------------------------------------------
