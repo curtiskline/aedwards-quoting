@@ -17,7 +17,7 @@ from sqlalchemy.exc import IntegrityError
 
 from .email_provider import EmailMessage, EmailProvider
 from .outlook import OutlookAttachment, OutlookClient, OutlookMessage
-from .parser import ParsedRFQ, classify_rfq, parse_rfq_multi
+from .parser import ParsedRFQ, classify_rfq, html_to_text, looks_like_html, parse_rfq_multi
 from .pdf_generator import generate_quote_pdf
 from .pricing import Quote, generate_quote
 from .providers.base import LLMProvider, LLMResponseTruncated
@@ -234,7 +234,9 @@ class InboxMonitor:
         return self._process_message_inner(msg)
 
     def _process_message_inner(self, msg: EmailMessage) -> bool:
-        body_text = _normalize_body(msg.body_content, msg.body_preview)
+        body_text = _normalize_body(
+            msg.body_content, msg.body_preview, getattr(msg, "body_content_type", None)
+        )
         is_rfq, reason = classify_rfq(msg.subject, body_text, self.provider)
         if not is_rfq:
             logger.info("Message %s classified as non-RFQ: %s", msg.id, reason)
@@ -254,7 +256,17 @@ class InboxMonitor:
         rfqs = _parse_message_to_rfqs(msg, body_text, self.provider, attachments)
         rfqs = [rfq for rfq in rfqs if rfq.items]
         if not rfqs:
-            logger.info("Message %s parsed but produced no line items; skipping", msg.id)
+            # An email the classifier called an RFQ but the parser got nothing
+            # from must surface to a human — the 2026-08-25 Sable RFQ vanished
+            # here with no record and no retry cap (T437).
+            logger.warning(
+                "Message %s classified as RFQ but produced no line items; recording failed intake",
+                msg.id,
+            )
+            self._record_failed_intake(
+                msg,
+                NoLineItemsExtracted("classified as RFQ but no line items could be extracted"),
+            )
             self._finalize_message(msg.id)
             return False
 
@@ -404,6 +416,29 @@ class InboxMonitor:
         with self._flask_app.app_context():
             return db.session.query(ProcessedInboundEmail.id).filter_by(source_email_id=message_id).first() is not None
 
+    @staticmethod
+    def _add_processed_claim(message_id: str | None) -> None:
+        """Queue a ProcessedInboundEmail claim on the caller's open transaction.
+
+        A deliberate reject/quarantine outcome needs a claim, or the poll loop
+        re-processes the message every cycle until the watermark passes it (one
+        John Galt forward produced nine duplicate rejections this way, T459).
+        The claim is reversible, not a tombstone: delete the row and replay the
+        message (tools/replay_inbound.py) to re-run it through the pipeline.
+        """
+        if not message_id:
+            return
+        from app.extensions import db
+        from app.models import ProcessedInboundEmail
+
+        exists = (
+            db.session.query(ProcessedInboundEmail.id)
+            .filter_by(source_email_id=message_id)
+            .first()
+        )
+        if not exists:
+            db.session.add(ProcessedInboundEmail(source_email_id=message_id))
+
     def _write_rejected_email(self, msg: EmailMessage, reason: str | None) -> None:
         """Write a rejected email record to the database."""
         from datetime import datetime
@@ -432,6 +467,8 @@ class InboxMonitor:
                 classifier_reason=reason,
             )
             db.session.add(record)
+            if self.enable_db_writes:
+                self._add_processed_claim(msg.id)
             db.session.commit()
 
     def _record_failed_intake(self, msg: EmailMessage, error: Exception) -> None:
@@ -476,6 +513,10 @@ class InboxMonitor:
             )
             with self._flask_app.app_context():
                 db.session.add(record)
+                # Deterministic outcomes get a claim so they stop retrying;
+                # transient failures (DB down, truncation) keep retrying.
+                if stage == "no_line_items":
+                    self._add_processed_claim(getattr(msg, "id", None))
                 db.session.commit()
         except Exception:
             logger.exception(
@@ -600,12 +641,18 @@ class InboxMonitor:
         self.state.add(message_id)
 
 
+class NoLineItemsExtracted(Exception):
+    """The classifier accepted an email as an RFQ but parsing yielded zero items."""
+
+
 def _classify_failure_stage(error: Exception) -> str:
     """Map an exception to a coarse failure-stage label for the intake record."""
     if isinstance(error, LLMResponseTruncated):
         return "parse_truncated"
     if isinstance(error, IntegrityError):
         return "db_write"
+    if isinstance(error, NoLineItemsExtracted):
+        return "no_line_items"
     return "processing"
 
 
@@ -618,11 +665,19 @@ def _received_at_or_now(received_datetime: str | None) -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _normalize_body(content: str, preview: str) -> str:
+def _normalize_body(content: str, preview: str, content_type: str | None = None) -> str:
+    """Pick the message body and reduce it to readable text.
+
+    Graph returns Outlook bodies as HTML whose first kilobytes are <style>
+    CSS. Both the classifier (which snippets the front of the body) and the
+    parser must see extracted text, not markup.
+    """
     body = (content or "").strip()
-    if body:
-        return body
-    return (preview or "").strip()
+    if not body:
+        return (preview or "").strip()
+    if (content_type or "").lower() == "html" or looks_like_html(body):
+        return html_to_text(body)
+    return body
 
 
 def _parse_datetime(value: str) -> datetime | None:
