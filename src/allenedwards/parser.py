@@ -2,6 +2,7 @@
 
 import csv
 import email
+import html as _html_entities
 import re
 from dataclasses import dataclass, field
 from email.message import Message
@@ -682,13 +683,10 @@ def _strip_html(html: str) -> str:
     html = re.sub(r"</t[dh]\s*>", "\t", html, flags=re.I)
     # Remove remaining HTML tags
     html = re.sub(r"<[^>]+>", " ", html)
-    # Decode common entities
-    html = html.replace("&nbsp;", " ")
-    html = html.replace("&quot;", '"')
-    html = html.replace("&#39;", "'")
-    html = html.replace("&lt;", "<")
-    html = html.replace("&gt;", ">")
-    html = html.replace("&amp;", "&")
+    # Decode ALL entities (named and numeric): an undecoded &#8212; between a
+    # quantity and a diameter reads as noise and degrades LLM extraction.
+    html = _html_entities.unescape(html)
+    html = html.replace("\xa0", " ")
     # Collapse whitespace but keep line breaks
     html = re.sub(r"[ \t\r\f\v]+", " ", html)
     html = re.sub(r" ?\n ?", "\n", html)
