@@ -70,11 +70,14 @@ _RULES: list[tuple[re.Pattern[str], Callable[[re.Match[str]], str | None]]] = [
         re.compile(r"^Requested (.+?) ft → (.+?) pc\(s\) of (.+?) ft$", re.I),
         lambda m: f"Requested {m.group(1)} ft quoted as {m.group(2)} pc(s) of {m.group(3)} ft",
     ),
-    # allenedwards.pricing bundle rounding
-    (
-        re.compile(r"^Priced as (\d+ bundles?) \((.+?)\)$", re.I),
-        lambda m: f"Priced as {m.group(1)} ({m.group(2)})",
-    ),
+    # allenedwards.pricing bundle rounding. The "Priced as N bundles (M pcs /
+    # K ft)" clause is an internal packaging/billing-unit breakdown for standard
+    # grayscale sleeves sold in bundles of 5. Chip flagged it leaking onto the
+    # customer PDF (quote 126-111, task 458): the customer buys against their
+    # requested footage and should not see the bundle-of-5 packaging math. It
+    # matches nothing here on purpose so it stays in the editor only; the count
+    # and price still reach the customer through the normal quantity/price
+    # columns, not through this note.
     # allenedwards.pricing pallet rounding for bags
     (
         re.compile(

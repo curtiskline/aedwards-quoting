@@ -174,6 +174,26 @@ def test_internal_backing_strip_basis_never_becomes_customer_text():
     assert "interim" not in rendered.lower()
 
 
+def test_grayscale_bundle_of_5_note_never_becomes_customer_text():
+    """Chip flagged the bundle-of-5 packaging note leaking to the PDF (task 458).
+
+    The "Priced as N bundles (...)" clause is an internal packaging/billing
+    breakdown and must stay in the editor only. Other clauses on the same line
+    still print.
+    """
+    bundle_note = "Priced as 2 bundles (10 pcs / 100 ft)"
+    assert customer_note(bundle_note) is None
+    assert customer_note(f'wall thickness defaulted to 3/8"; {bundle_note}') == (
+        'Priced at 3/8" wall'
+    )
+
+
+def test_pdf_hides_the_grayscale_bundle_of_5_note():
+    text = _pdf_text(_quote_with_note("Priced as 2 bundles (10 pcs / 100 ft)"))
+    assert "bundle" not in text.lower()
+    assert "10 pcs" not in text
+
+
 def test_unrecognized_clause_is_treated_as_internal():
     """Fail closed: a note added to pricing later must not leak to the customer."""
     assert customer_note("some brand new provenance note nobody has classified") is None
