@@ -194,6 +194,32 @@ def test_pdf_hides_the_grayscale_bundle_of_5_note():
     assert "10 pcs" not in text
 
 
+def test_pallet_rounding_note_never_becomes_customer_text():
+    """Chip flagged this one on quote 126-121 (task 464).
+
+    Same packaging math as the bundle clause above, same audience call: the
+    customer buys against the quantity column and does not read our pallet
+    arithmetic. Other clauses on the same line still print.
+    """
+    pallet_note = "1 pcs rounded to 1 pallet (30 pcs)"
+    assert customer_note(pallet_note) is None
+    assert customer_note(f'wall thickness defaulted to 3/8"; {pallet_note}') == (
+        'Priced at 3/8" wall'
+    )
+
+
+def test_pdf_hides_a_stale_pallet_note():
+    """The 126-121 case verbatim: the note said 1 pallet, the line said 1740.
+
+    The note is computed once at pricing time and is not recomputed when the
+    quantity is edited, so it can contradict the line it sits on. Keeping it off
+    the PDF is what stops a stale note reaching a customer.
+    """
+    text = _pdf_text(_quote_with_note("1 pcs rounded to 1 pallet (30 pcs)"))
+    assert "pallet" not in text.lower()
+    assert "30 pcs" not in text
+
+
 def test_unrecognized_clause_is_treated_as_internal():
     """Fail closed: a note added to pricing later must not leak to the customer."""
     assert customer_note("some brand new provenance note nobody has classified") is None
