@@ -78,13 +78,18 @@ _RULES: list[tuple[re.Pattern[str], Callable[[re.Match[str]], str | None]]] = [
     # matches nothing here on purpose so it stays in the editor only; the count
     # and price still reach the customer through the normal quantity/price
     # columns, not through this note.
-    # allenedwards.pricing pallet rounding for bags
-    (
-        re.compile(
-            r"^(\d+) pcs rounded to (\d+ pallets?) \((\d+) pcs\)$", re.I
-        ),
-        lambda m: f"Quantity rounded to {m.group(2)}, {m.group(3)} pcs",
-    ),
+    # allenedwards.pricing pallet rounding for bags. Same call as the bundle
+    # clause above, for the same reason. Chip reported "its still showing the
+    # gray stuff" on quote 126-121 (task 464), which carried no sleeves at all:
+    # what he was pointing at was this pallet note, the sibling rule task 458
+    # left behind. Packaging math is editor-only (K124); the customer reads the
+    # count they are buying off the quantity column.
+    #
+    # It is also the clause most likely to go stale. The note is written once at
+    # pricing time and the editor does not recompute it, so 126-121 printed
+    # "rounded to 1 pallet, 30 pcs" beside a hand-edited quantity of 1740.
+    # Keeping it off the PDF means a stale note can no longer reach a customer;
+    # the editor-side staleness is tracked separately (task 467).
     # allenedwards.pricing._backing_strip_packs (task 343). Only the billing
     # unit prints. The "N lf = M strips at 5 ft per strip (interim conversion,
     # confirm with Chip)" basis clause matches nothing here on purpose — it is
