@@ -533,7 +533,7 @@ def _is_manual_shipping_override(item: QuoteLineItem | None) -> bool:
 
 
 def _steel_weight_for_item(item: QuoteLineItem, default_length_ft: Decimal) -> Decimal:
-    if item.product_type == "shipping":
+    if item.product_type in {"shipping", on_site_fill.TYPE}:
         return Decimal("0")
     specs = dict(item.specs_json or {})
     od = _decimal_from_raw(specs.get("diameter"))

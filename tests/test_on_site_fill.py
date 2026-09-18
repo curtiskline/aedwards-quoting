@@ -309,7 +309,7 @@ def test_converting_empty_bag_generates_fill_text(editor):
             quantity=25,
             unit_price=80,
             line_total=2000,
-            specs_json={"diameter": "16"},
+            specs_json={"diameter": "16", "wall_thickness": "0.5", "length_ft": "10"},
         )
         db.session.add(line)
         db.session.commit()
@@ -329,3 +329,9 @@ def test_converting_empty_bag_generates_fill_text(editor):
         assert line.description == "Geotextile Bag Weight 36in Pipe 9,000 lb Fill — On-site Filling"
         assert line.part_number == "GTB-36-9000-ONSITE"
         assert line.unit_price == Decimal("349.50")
+
+        # Pipe specs left from a prior type must not turn a local fill job into
+        # a steel-freight calculation. Filled bags are not shipped to the site.
+        from app.routes import _steel_weight_for_item
+
+        assert _steel_weight_for_item(line, Decimal("10")) == 0
