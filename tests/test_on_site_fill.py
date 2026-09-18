@@ -231,7 +231,12 @@ def test_duplicate_requires_new_local_price_and_revision_preserves_context(edito
         assert revised.on_site_priced_at is not None
 
 
-def test_existing_empty_bag_price_and_pdf_unchanged_after_fill_added(editor):
+def test_existing_empty_bag_price_and_pdf_unchanged_after_fill_added(editor, monkeypatch):
+    from reportlab import rl_config
+
+    # Freeze ReportLab's random document ID / creation timestamp, so compare
+    # actual PDF bytes rather than masking a customer-facing layout change.
+    monkeypatch.setattr(rl_config, "invariant", 1)
     app, client, qid = editor
     with app.app_context():
         empty = Quote(
@@ -267,9 +272,11 @@ def test_existing_empty_bag_price_and_pdf_unchanged_after_fill_added(editor):
         db.session.commit()
         empty_id, lid = empty.id, line.id
         snapshot = quote_line_items_snapshot(empty)
+    before_bytes = client.get(f"/quotes/{empty_id}/preview-pdf").data
     before = pdf_text(client, empty_id)
     assert "(Empty)" in before and "80.00" in before
     add(editor)
+    assert client.get(f"/quotes/{empty_id}/preview-pdf").data == before_bytes
     assert pdf_text(client, empty_id) == before
     with app.app_context():
         assert quote_line_items_snapshot(db.session.get(Quote, empty_id)) == snapshot
