@@ -21,23 +21,23 @@ Migration `20260918_0001` follows `20260827_0002`. Deployed only to staging,
 
 ```text
                                              Table "public.quote_line_item"
-        Column        |            Type             | Collation | Nullable |                   Default                   
+        Column        |            Type             | Collation | Nullable |                   Default
 ----------------------+-----------------------------+-----------+----------+---------------------------------------------
  id                   | integer                     |           | not null | nextval('quote_line_item_id_seq'::regclass)
- quote_id             | integer                     |           | not null | 
- product_type         | character varying           |           | not null | 
- description          | character varying           |           | not null | 
- quantity             | numeric(12,2)               |           | not null | 
- unit_price           | numeric(12,2)               |           | not null | 
- line_total           | numeric(12,2)               |           | not null | 
- specs_json           | json                        |           |          | 
- part_number          | character varying           |           |          | 
- sort_order           | integer                     |           | not null | 
- on_site_label        | character varying           |           |          | 
- on_site_city         | character varying           |           |          | 
- on_site_state        | character varying           |           |          | 
- on_site_price_source | text                        |           |          | 
- on_site_priced_at    | timestamp without time zone |           |          | 
+ quote_id             | integer                     |           | not null |
+ product_type         | character varying           |           | not null |
+ description          | character varying           |           | not null |
+ quantity             | numeric(12,2)               |           | not null |
+ unit_price           | numeric(12,2)               |           | not null |
+ line_total           | numeric(12,2)               |           | not null |
+ specs_json           | json                        |           |          |
+ part_number          | character varying           |           |          |
+ sort_order           | integer                     |           | not null |
+ on_site_label        | character varying           |           |          |
+ on_site_city         | character varying           |           |          |
+ on_site_state        | character varying           |           |          |
+ on_site_price_source | text                        |           |          |
+ on_site_priced_at    | timestamp without time zone |           |          |
 Indexes:
     "quote_line_item_pkey" PRIMARY KEY, btree (id)
     "ix_quote_line_item_fill_location" btree (on_site_city, on_site_state)
@@ -46,7 +46,7 @@ Indexes:
 Foreign-key constraints:
     "quote_line_item_quote_id_fkey" FOREIGN KEY (quote_id) REFERENCES quote(id)
 
-  version_num  
+  version_num
 ---------------
  20260918_0001
 (1 row)
