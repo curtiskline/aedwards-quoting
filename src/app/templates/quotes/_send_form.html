@@ -35,7 +35,7 @@
         Message (optional)
         <textarea name="email_message" rows="4" aria-describedby="email-message-help"
                   oninput="this.form.querySelector('[data-send-quote]').disabled = true; document.getElementById('email-preview-status').textContent = 'Message changed. Preview email before sending.';"
-                  style="width:100%;margin-top:0.25rem;">{{ quote.email_message or '' }}</textarea>
+                  style="width:100%;box-sizing:border-box;margin-top:0.25rem;padding:0.45rem;border:1px solid #d1d5db;border-radius:4px;font:inherit;font-weight:normal;">{{ quote.email_message or '' }}</textarea>
       </label>
       <p id="email-message-help" style="font-size:0.85rem;color:#6b7280;">Add options or an explanation below the attachment introduction. Leave blank to use the standard email. Preview saves your message for this quote.</p>
       <label style="display:block;margin-bottom:0.75rem;">

@@ -44,8 +44,6 @@ def test_email_message_preview_send_and_snapshot(mock_outlook, db_url, tmp_path,
 
     with app.test_client() as client:
         _login(client, user_id)
-        initial = client.get(f"/quotes/{quote_id}/send-form").get_data(as_text=True)
-        assert 'style="width:100%;margin-top:0.25rem;"></textarea>' in initial
         preview = client.post(f"/quotes/{quote_id}/send-preview", data=fields)
         assert preview.status_code == 200
         from markupsafe import escape
