@@ -190,7 +190,7 @@ def quote_line_items_snapshot(quote: Quote) -> list[dict[str, object]]:
     # These records feed downstream order documents: keep final prices only.
     # Physical specs remain for picking; unadjusted pricing provenance must
     # not accompany the final customer prices on an adjusted quote.
-    if price_adjustments.percentage(quote) > 0:
+    if price_adjustments.percentage(quote):
         from allenedwards.line_notes import customer_note
         for row in snapshot:
             specs = row["specs_json"] or {}
@@ -201,13 +201,6 @@ def quote_line_items_snapshot(quote: Quote) -> list[dict[str, object]]:
             note = customer_note(specs.get("notes"), priced=float(row["unit_price"]) > 0)
             if note:
                 row["specs_json"]["notes"] = note
-    _, discount = price_adjustments.merchandise_totals(quote)
-    if price_adjustments.percentage(quote) < 0:
-        snapshot.append({"id": None, "product_type": "discount",
-                         "description": price_adjustments.discount_label(quote),
-                         "quantity": "1", "unit_price": str(-discount),
-                         "line_total": str(-discount), "specs_json": {},
-                         "part_number": None, "sort_order": len(snapshot) + 1})
     return snapshot
 
 

@@ -2,6 +2,7 @@
 
 import io
 import json
+import re
 from decimal import Decimal
 from unittest.mock import patch
 
@@ -71,9 +72,10 @@ def pdf_text(client, quote_id):
     return "\n".join(p.extract_text() for p in PdfReader(io.BytesIO(response.data)).pages)
 
 
-def test_markup_reason_never_reaches_pdf_or_email(setup):
+@pytest.mark.parametrize("pct", ["30", "-5"])
+def test_adjustment_reason_never_reaches_pdf_or_email(setup, pct):
     app, client, quote_id = setup
-    assert save(client, quote_id, "30").status_code == 200
+    assert save(client, quote_id, pct).status_code == 200
     text = pdf_text(client, quote_id)
     assert REASON not in text
     assert "difficult" not in text.lower()
@@ -84,19 +86,22 @@ def test_markup_reason_never_reaches_pdf_or_email(setup):
     assert REASON in client.get(f"/quotes/{quote_id}").get_data(as_text=True)
 
 
-def test_markup_pdf_indistinguishable_from_ordinary_final_prices(setup):
+@pytest.mark.parametrize("pct, factor, subtotal", [
+    ("30", "1.30", "$2,015.00"), ("-5", "0.95", "$1,472.50"),
+])
+def test_markup_pdf_indistinguishable_from_ordinary_final_prices(setup, pct, factor, subtotal):
     app, client, quote_id = setup
-    save(client, quote_id, "30")
+    save(client, quote_id, pct)
     adjusted = pdf_text(client, quote_id)
-    assert "$2,015.00" in adjusted
+    assert subtotal in adjusted
     assert "$1,550.00" not in adjusted
     with app.app_context():
         quote = db.session.get(Quote, quote_id)
         quote.price_adjustment_pct = 0
         for item in quote.line_items:
             if item.product_type != "shipping":
-                item.unit_price *= Decimal("1.30")
-                item.line_total *= Decimal("1.30")
+                item.unit_price *= Decimal(factor)
+                item.line_total *= Decimal(factor)
         db.session.commit()
     assert adjusted == pdf_text(client, quote_id)
 
@@ -105,14 +110,15 @@ def test_discount_pdf_and_downstream_totals(setup):
     app, client, quote_id = setup
     assert save(client, quote_id, "-5").status_code == 200
     text = pdf_text(client, quote_id)
-    assert " ".join(text.split()).count("5% volume discount:") == 1
-    assert "$-77.50" in text or "-$77.50" in text
+    assert "discount" not in text.lower()
+    assert "5%" not in text
     assert "$1,504.50" in text
     with app.app_context():
         quote = db.session.get(Quote, quote_id)
         dto = _db_quote_to_pricing_quote(quote)
         assert dto.total == _quote_totals(quote)["total"] == Decimal("1504.50")
         snapshot = quote_line_items_snapshot(quote)
+        assert all(row["product_type"] != "discount" for row in snapshot)
         assert sum(Decimal(row["line_total"]) for row in snapshot) == Decimal("1492.50")
         assert len(build_pick_lines(snapshot)) == 2
 
@@ -179,14 +185,15 @@ def test_invalid_percentage_rejected_without_changing_quote(setup, value):
         assert db.session.get(Quote, quote_id).price_adjustment_pct == 30
 
 
+@pytest.mark.parametrize("pct, units, delta", [("30", ["195", "6.5", "20"], "465"), ("-5", ["142.5", "4.75", "20"], "-77.50")])
 @patch("allenedwards.outlook.OutlookClient")
-def test_manual_send_freezes_adjusted_prices_and_safe_snapshot(mock_outlook, setup, monkeypatch):
+def test_manual_send_freezes_adjusted_prices_and_safe_snapshot(mock_outlook, setup, monkeypatch, pct, units, delta):
     app, client, quote_id = setup
     monkeypatch.setenv("EMAIL_DELIVERY_ENABLED", "true")
     monkeypatch.setenv("ENABLE_OUTLOOK_DRAFTS", "false")
     monkeypatch.setenv("O365_EMAIL", "sender@example.com")
     monkeypatch.setenv("O365_PASSWORD", "test")
-    save(client, quote_id, "30")
+    save(client, quote_id, pct)
     preview = pdf_text(client, quote_id)
     result = client.post(f"/quotes/{quote_id}/send", data={"to_email": "devin@918.software"})
     assert "Quote Sent" in result.get_data(as_text=True)
@@ -200,14 +207,10 @@ def test_manual_send_freezes_adjusted_prices_and_safe_snapshot(mock_outlook, set
         assert [
             Decimal(row["unit_price"])
             for row in sorted(version.line_items_snapshot, key=lambda row: row["sort_order"])
-        ] == [
-            Decimal("195"),
-            Decimal("6.5"),
-            Decimal("20"),
-        ]
+        ] == [Decimal(value) for value in units]
         audit = db.session.query(AuditLog).filter_by(quote_id=quote_id, action="sent").one()
-        assert Decimal(audit.details["price_adjustment_pct"]) == Decimal("30")
-        assert Decimal(audit.details["price_adjustment_amount"]) == Decimal("465")
+        assert Decimal(audit.details["price_adjustment_pct"]) == Decimal(pct)
+        assert Decimal(audit.details["price_adjustment_amount"]) == Decimal(delta)
         assert audit.details["version_number"] == version.version_number
         serialized = json.dumps(version.line_items_snapshot)
         assert "auto_unit_price" not in serialized
@@ -247,3 +250,42 @@ def test_accept_freezes_the_exact_quoted_total(mock_outlook, setup, monkeypatch,
         assert context["tax"] == Decimal("12.00")
         assert _enrich_orders([order])[0]["total"] == f"${dto.total:,.2f}"
         assert len(build_pick_lines(order.quote_version.line_items_snapshot)) == 2
+
+
+@pytest.mark.parametrize("pct, expected_units", [("30", ["1.44", "2.77"]), ("-5", ["1.05", "2.02"])])
+def test_rendered_adjustment_arithmetic_and_rounding(setup, pct, expected_units):
+    app, client, quote_id = setup
+    with app.app_context():
+        quote = db.session.get(Quote, quote_id)
+        products = [row for row in quote.line_items if row.product_type != "shipping"]
+        for index, (row, price, quantity) in enumerate(zip(products, ["1.11", "2.13"], [3, 7])):
+            row.description = f"Arithmetic item {index}"
+            row.unit_price = Decimal(price)
+            row.quantity = quantity
+            row.line_total = Decimal(price) * quantity
+        before_picks = build_pick_lines(quote_line_items_snapshot(quote))
+        db.session.commit()
+    for _ in range(2):
+        save(client, quote_id, pct)
+        text = " ".join(pdf_text(client, quote_id).split())
+        rows = re.findall(r"Arithmetic item \d+\s+(\d+)\s+\$([\d,.]+)\s+\$([\d,.]+)", text)
+        assert len(rows) == 2
+        rendered = [(Decimal(q), Decimal(u.replace(",", "")), Decimal(t.replace(",", ""))) for q, u, t in rows]
+        assert [unit for _, unit, _ in rendered] == [Decimal(value) for value in expected_units]
+        for quantity, unit, total in rendered:
+            assert quantity * unit == total
+        def amount(label):
+            match = re.search(label + r"\s+\$([\d,.]+)", text)
+            assert match, text
+            return Decimal(match[1].replace(",", ""))
+        subtotal = sum(total for _, _, total in rendered)
+        assert amount("Subtotal:") == subtotal
+        assert amount("Shipping and Handling:") == Decimal("20")
+        assert amount("Tax:") == Decimal("12")
+        assert amount("TOTAL") == subtotal + amount("Shipping and Handling:") + amount("Tax:")
+        with app.app_context():
+            quote = db.session.get(Quote, quote_id)
+            snapshot = quote_line_items_snapshot(quote)
+            assert build_pick_lines(snapshot) == before_picks
+            products = [row for row in quote.line_items if row.product_type != "shipping"]
+            assert [row.unit_price for row in products] == [Decimal("1.11"), Decimal("2.13")]
