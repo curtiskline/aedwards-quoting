@@ -167,6 +167,13 @@ def quote_line_items_snapshot(quote: Quote) -> list[dict[str, object]]:
             "specs_json": copy.deepcopy(item.specs_json),
             "part_number": item.part_number,
             "sort_order": item.sort_order,
+            **({
+                "on_site_label": item.on_site_label,
+                "on_site_city": item.on_site_city,
+                "on_site_state": item.on_site_state,
+                "on_site_price_source": item.on_site_price_source,
+                "on_site_priced_at": item.on_site_priced_at.isoformat() if item.on_site_priced_at else None,
+            } if item.product_type == "on_site_fill" else {}),
         }
         for item in quote.line_items
     ]

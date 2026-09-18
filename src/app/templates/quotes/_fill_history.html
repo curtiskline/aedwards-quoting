@@ -1,0 +1,19 @@
+<strong>Prior on-site fill quotes - reference only</strong>
+<p>Use current local material and labor pricing. History never sets the price.</p>
+{% if fill_history %}
+<table>
+  <thead><tr><th>Date</th><th>Customer / quote</th><th>Job site</th><th>Product</th><th>Unit price</th><th>Source</th></tr></thead>
+  <tbody>{% for prior in fill_history %}
+    <tr>
+      <td>{{ prior.on_site_priced_at.strftime('%Y-%m-%d') }}</td>
+      <td>{{ prior.quote.customer_name_raw or (prior.quote.customer.company_name if prior.quote.customer else '') or prior.quote.sender_name or 'Unknown' }} · <a href="/quotes/{{ prior.quote_id }}" target="_blank" rel="noopener">{{ prior.quote.quote_number }}</a> ({{ prior.quote.status.value.replace('_', ' ') }})</td>
+      <td>{{ prior.on_site_label }} · {{ prior.on_site_city }}, {{ prior.on_site_state }}</td>
+      <td>{{ prior.part_number or '' }} {{ prior.description }}</td>
+      <td>${{ '%.2f'|format(prior.unit_price) }}</td>
+      <td>{{ prior.on_site_price_source or 'Not recorded' }}</td>
+    </tr>
+  {% endfor %}</tbody>
+</table>
+{% else %}
+<p>No prior quotes for this city and state.</p>
+{% endif %}

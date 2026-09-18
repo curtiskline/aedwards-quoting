@@ -196,11 +196,13 @@ def test_dashboard_recommendation_filter_tabs(live_app, browser_page):
     # htmx swap: click the Recommended filter tab.
     page.click("#rec-toolbar a.tab:has-text('Recommended')")
     page.wait_for_selector(".quote-number:has-text('REC-GOOD')")
-    assert page.locator(".quote-number", has_text="REC-BAD").count() == 0
+    # REC-GOOD already existed before the click; wait for the HTMX swap
+    # by waiting for the excluded card to disappear.
+    playwright_sync.expect(page.locator(".quote-number", has_text="REC-BAD")).to_have_count(0)
 
     page.click("#rec-toolbar a.tab:has-text('Not recommended')")
     page.wait_for_selector(".quote-number:has-text('REC-BAD')")
-    assert page.locator(".quote-number", has_text="REC-GOOD").count() == 0
+    playwright_sync.expect(page.locator(".quote-number", has_text="REC-GOOD")).to_have_count(0)
 
 
 def test_dashboard_shows_tier_note(live_app, browser_page):

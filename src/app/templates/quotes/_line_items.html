@@ -45,7 +45,7 @@
             </label>
             <label>Unit Price
               <input type="hidden" name="unit_price_baseline" value="{{ '%.2f'|format(item.unit_price) }}" />
-              <input name="unit_price" type="number" min="0" step="0.01" value="{{ '%.2f'|format(item.unit_price) }}" hx-post="/quotes/{{ quote.id }}/line-items/{{ item.id }}/calc-total" hx-trigger="input changed delay:300ms" hx-target="#line-total-{{ item.id }}" hx-swap="outerHTML" hx-include="[name=quantity],[name=unit_price]" />
+              <input name="unit_price" type="number" min="0" step="0.01" value="{{ '' if item.product_type == 'on_site_fill' and item.unit_price <= 0 else '%.2f'|format(item.unit_price) }}" hx-post="/quotes/{{ quote.id }}/line-items/{{ item.id }}/calc-total" hx-trigger="input changed delay:300ms" hx-target="#line-total-{{ item.id }}" hx-swap="outerHTML" hx-include="[name=quantity],[name=unit_price]" />
             </label>
             {% include "quotes/_line_total.html" %}
             <div class="line-item-pricing-meta">
@@ -67,6 +67,7 @@
             </div>
           </div>
 
+          {% include 'quotes/_fill_fields.html' %}
           {% if item.spec_fields %}
             <div class="line-item-row line-item-row-specs">
               {% for spec in item.spec_fields %}
@@ -127,6 +128,7 @@
         <input name="unit_price" type="number" min="0" step="0.01" value="0" />
       </label>
     </div>
+    {% with item=none %}{% include 'quotes/_fill_fields.html' %}{% endwith %}
     <button type="submit">Add Line Item</button>
   </form>
 
@@ -176,13 +178,75 @@
       const root = document.getElementById("editor-line-items");
       if (!root) return;
 
+      root.querySelectorAll("form").forEach((form) => {
+        const select = form.querySelector(".js-product-type-select");
+        const fields = form.querySelector(".js-fill-fields");
+        if (!select || !fields) return;
+        const history = form.querySelector(".js-fill-history");
+        const price = form.querySelector("[name=unit_price]");
+        let requestId = 0;
+        const toggle = (changed) => {
+          const active = select.value === "on_site_fill";
+          fields.hidden = fields.disabled = !active;
+          history.hidden = !active;
+          // Disable the original type's spec fields when switching to fill.
+          form.querySelectorAll(".line-item-row-specs input").forEach(input => { input.disabled = active; });
+          price.required = active;
+          price.min = active ? "0.01" : "0";
+          if (active && changed) {
+            price.value = "";
+            form.querySelector("[name=description]").value = "";
+            const part = form.querySelector("[name=part_number]");
+            if (part) part.value = "";
+          }
+        };
+        toggle(false);
+        select.addEventListener("change", () => toggle(true));
+        const recall = async () => {
+          const id = ++requestId;
+          const params = new URLSearchParams({
+            on_site_city: form.querySelector("[name=on_site_city]").value,
+            on_site_state: form.querySelector("[name=on_site_state]").value,
+          });
+          history.textContent = "Loading prior quotes…";
+          try {
+            const response = await fetch(`/quotes/{{ quote.id }}/on-site-fill-history?${params}`);
+            if (!response.ok) throw new Error("Recall unavailable");
+            const html = await response.text();
+            if (id === requestId) history.innerHTML = html;
+          } catch (_) {
+            if (id === requestId) history.textContent = "Prior quotes unavailable. Enter your current local estimate manually.";
+          }
+        };
+        let timer;
+        fields.addEventListener("input", (event) => {
+          if (!["on_site_city", "on_site_state"].includes(event.target.name)) return;
+          clearTimeout(timer);
+          ++requestId;
+          history.textContent = "Loading prior quotes…";
+          timer = setTimeout(recall, 250);
+        });
+        form.addEventListener("htmx:confirm", (event) => {
+          if (event.detail.elt !== form) return;
+          if (!form.checkValidity()) {
+            event.preventDefault();
+            form.reportValidity();
+          }
+        });
+        form.addEventListener("htmx:responseError", (event) => {
+          if (event.detail.xhr.status === 422) {
+            form.querySelector(".js-fill-error").textContent = event.detail.xhr.responseText;
+          }
+        });
+      });
+
       // Track which line item forms have unsaved changes.
       const dirtyForms = new Set();
 
       // Flush all dirty forms using sendBeacon (guaranteed delivery on unload).
       function flushDirtyForms() {
         dirtyForms.forEach((form) => {
-          navigator.sendBeacon(form.action, new FormData(form));
+          if (form.checkValidity()) navigator.sendBeacon(form.action, new FormData(form));
         });
         dirtyForms.clear();
       }
@@ -232,6 +296,9 @@
         if (elt.getAttribute("hx-target") !== "#editor-line-items") return;
 
         evt.preventDefault();
+        for (const form of dirtyForms) {
+          if (!form.checkValidity()) { form.reportValidity(); return; }
+        }
         const snapshot = (form) => {
           const values = {};
           new FormData(form).forEach((value, key) => { values[key] = value; });
@@ -254,6 +321,7 @@
         select.addEventListener("change", () => {
           const form = select.closest("form");
           if (!form) return;
+          if (select.value === "on_site_fill") return;
           if (select.value === "shipping") {
             const hidden = form.querySelector("input[name='auto_shipping_trigger']");
             if (hidden) hidden.value = "1";
