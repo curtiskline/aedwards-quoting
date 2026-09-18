@@ -447,6 +447,8 @@ class QuoteVersion(db.Model):
     sent_at: Mapped[datetime | None]
     sent_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"))
     sent_to: Mapped[str | None]
+    # Frozen tax, never read back from a later-edited live quote. NULL for legacy sends.
+    tax_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
     # Exact outgoing text; NULL on historical versions whose email was not retained.
     email_body: Mapped[str | None] = mapped_column(Text)
     email_subject: Mapped[str | None] = mapped_column(Text)

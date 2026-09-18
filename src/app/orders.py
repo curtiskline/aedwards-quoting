@@ -11,6 +11,7 @@ reads pricing off the mutable Quote or writes to the version row.
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 
 from flask import Blueprint, abort, render_template, request
 from sqlalchemy import func
@@ -322,7 +323,7 @@ def _enrich_orders(orders: list[Order]) -> list[dict]:
     results = []
     for o in orders:
         snapshot = o.quote_version.line_items_snapshot or []
-        total = sum(float(line.get("line_total") or 0) for line in snapshot)
+        total = sum((Decimal(str(line.get("line_total") or 0)) for line in snapshot), Decimal("0")) + Decimal(str(o.quote_version.tax_amount or 0))
         results.append(
             {
                 "id": o.id,
@@ -390,15 +391,16 @@ def _detail_context(order: Order) -> dict:
     snapshot = order.quote_version.line_items_snapshot
     lines = snapshot or []
     subtotal = sum(
-        float(line.get("line_total") or 0)
+        Decimal(str(line.get("line_total") or 0))
         for line in lines
         if (line.get("product_type") or "") != "shipping"
     )
     shipping = sum(
-        float(line.get("line_total") or 0)
+        Decimal(str(line.get("line_total") or 0))
         for line in lines
         if (line.get("product_type") or "") == "shipping"
     )
+    tax = Decimal(str(order.quote_version.tax_amount or 0))
     users = {u.id: u.name for u in db.session.query(User).all()}
     next_statuses = sorted(
         (s for s in ORDER_TRANSITIONS.get(order.status, set())),
@@ -417,7 +419,8 @@ def _detail_context(order: Order) -> dict:
         "snapshot_missing": snapshot is None,
         "subtotal": subtotal,
         "shipping": shipping,
-        "total": subtotal + shipping,
+        "tax": tax,
+        "total": subtotal + shipping + tax,
         "user_names": users,
         # CP-4: generating the pick list IS the ACCEPTED->ORDERED trigger
         # (it replaced CP-3's bare Mark Ordered); SHIPPED drives FULFILLED.

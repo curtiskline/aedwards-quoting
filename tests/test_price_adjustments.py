@@ -209,3 +209,36 @@ def test_manual_send_freezes_adjusted_prices_and_safe_snapshot(mock_outlook, set
         assert "price_override" not in serialized
         assert REASON not in serialized
 
+
+@pytest.mark.parametrize("pct, expected", [("30", "2047.00"), ("-5", "1504.50")])
+@patch("allenedwards.outlook.OutlookClient")
+def test_accept_freezes_the_exact_quoted_total(mock_outlook, setup, monkeypatch, pct, expected):
+    from app.models import Order
+    from app.orders import _detail_context, _enrich_orders
+
+    app, client, quote_id = setup
+    monkeypatch.setenv("EMAIL_DELIVERY_ENABLED", "true")
+    monkeypatch.setenv("ENABLE_OUTLOOK_DRAFTS", "false")
+    monkeypatch.setenv("O365_EMAIL", "sender@example.com")
+    monkeypatch.setenv("O365_PASSWORD", "test")
+    save(client, quote_id, pct)
+    with app.app_context():
+        dto = _db_quote_to_pricing_quote(db.session.get(Quote, quote_id))
+        assert dto.total == Decimal(expected)
+    result = client.post(f"/quotes/{quote_id}/send", data={"to_email": "devin@918.software"})
+    assert "Quote Sent" in result.get_data(as_text=True)
+    # Editing the live quote after sending must not rewrite the accepted deal.
+    save(client, quote_id, "0")
+    with app.app_context():
+        quote = db.session.get(Quote, quote_id)
+        quote.tax_amount = 999
+        db.session.commit()
+    response = client.post(f"/quotes/{quote_id}/accept", data={"po_number": "TEST-468"})
+    assert "Order Created" in response.get_data(as_text=True)
+    with app.app_context():
+        order = db.session.query(Order).filter_by(quote_id=quote_id).one()
+        context = _detail_context(order)
+        assert context["total"] == dto.total
+        assert context["tax"] == Decimal("12.00")
+        assert _enrich_orders([order])[0]["total"] == f"${dto.total:,.2f}"
+        assert len(build_pick_lines(order.quote_version.line_items_snapshot)) == 2

@@ -29,11 +29,12 @@ extended prices. Positive adjustments strip pricing provenance from snapshot
 specs, retaining physical specifications and allowlisted customer notes. It
 never stores the base price or positive percentage beside a customer price.
 Discounts are frozen as a negative `discount` row; fulfillment excludes that
-financial row from picking.
+financial row from picking. `QuoteVersion.tax_amount` freezes tax separately;
+legacy versions have NULL because the historical tax cannot be inferred safely.
 The exact sent PDF and email remain retained under the existing version archive.
 
 All future outbound documents (task 431, including invoices) must use the
-accepted `QuoteVersion` prices and discount row, never the mutable
+accepted `QuoteVersion` prices, discount row, and frozen tax, never the mutable
 Quote's base prices. Quote PDF projection, editor totals, queue totals,
 confidence totals, sent snapshots, and accepted order totals use the same price
 calculation. There is no automatic repricing or invoice implementation here.
@@ -42,7 +43,7 @@ calculation. There is no automatic repricing or invoice implementation here.
 
 `tests/test_price_adjustments.py` exercises real rendered PDF text, every-line
 manual overrides, repeated saves, invalid percentages, duplicate/reset versus
-revision/retain, send-time snapshots, and sent snapshots.
+revision/retain, send-time snapshots, and accepted-order totals after live edits.
 `tests/test_auto_send_tier2.py::test_percentage_requires_manual_send` checks both
 signs against an otherwise eligible Tier-2 quote. All external send calls in
 these tests are mocked.

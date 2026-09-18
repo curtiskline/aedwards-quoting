@@ -3029,6 +3029,7 @@ def quote_send(quote_id: int):
         pdf_path=archive_path,
         artifact_status="retained",
         line_items_snapshot=line_items_snapshot,
+        tax_amount=quote.tax_amount,
         sent_at=now,
         sent_by=user.id if user else None,
         sent_to=to_email,

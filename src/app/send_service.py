@@ -333,6 +333,7 @@ def auto_send_quote(quote: Quote) -> dict | None:
         pdf_path=archive_path,
         artifact_status="retained",
         line_items_snapshot=snapshot,
+        tax_amount=quote.tax_amount,
         sent_at=now,
         sent_by=None,
         sent_to=to_email,
