@@ -2897,14 +2897,29 @@ def quote_send_form(quote_id: int):
             error="This quote needs pricing before it can be sent.",
             quote=quote,
         )
+    return _render_send_form(quote)
+
+
+def _render_send_form(quote: Quote, *, error: str | None = None):
     return render_template(
         "quotes/_send_form.html",
         quote=quote,
-        default_to=quote.contact_email or "",
-        default_subject=f"Quote {quote.quote_number} — Allan Edwards, Inc.",
-        default_cc="",
+        default_to=request.form.get("to_email", quote.contact_email or ""),
+        default_subject=request.form.get("subject", send_service.default_quote_subject(quote)),
+        default_cc=request.form.get("cc_email", ""),
+        email_body=send_service.build_quote_email_body(quote),
+        error=error,
         recommendation=quote_recommendation(quote),
     )
+
+
+@main_bp.post("/quotes/<int:quote_id>/send-preview")
+def quote_send_preview(quote_id: int):
+    """Save optional prose for manual sending and preview the exact email."""
+    quote = _get_active_quote_or_404(quote_id)
+    quote.email_message = send_service.normalize_email_message(request.form.get("email_message")) or None
+    db.session.commit()
+    return _render_send_form(quote)
 
 
 @main_bp.post("/quotes/<int:quote_id>/send")
@@ -2913,10 +2928,14 @@ def quote_send(quote_id: int):
     quote = _get_active_quote_or_404(quote_id)
     user = _current_user()
 
+    # Retain prose even on delivery failure, and exclude this quote from any
+    # later automatic attempt. Older callers that omit the field keep the draft.
+    if "email_message" in request.form:
+        quote.email_message = send_service.normalize_email_message(request.form["email_message"]) or None
+        db.session.commit()
+
     def _blocked(message: str):
-        return render_template(
-            "quotes/_send_result.html", success=False, error=message, quote=quote
-        )
+        return _render_send_form(quote, error=message)
 
     # Shared gates (send_service): delivery flag, pricing, allowlist — the
     # same enforcement the auto-send path runs.
@@ -2974,12 +2993,7 @@ def quote_send(quote_id: int):
     except (OutlookAuthError, Exception) as exc:
         Path(archive_path).chmod(0o644)
         Path(archive_path).unlink(missing_ok=True)
-        return render_template(
-            "quotes/_send_result.html",
-            success=False,
-            error=str(exc),
-            quote=quote,
-        )
+        return _blocked(str(exc))
 
     # A customer email is the send event.  A convenience copy in Drafts must
     # not erase its immutable record when Microsoft accepts the email but
@@ -3011,6 +3025,9 @@ def quote_send(quote_id: int):
         sent_at=now,
         sent_by=user.id if user else None,
         sent_to=to_email,
+        email_body=body_text,
+        email_subject=subject,
+        email_cc=cc_email,
     )
     db.session.add(version)
 

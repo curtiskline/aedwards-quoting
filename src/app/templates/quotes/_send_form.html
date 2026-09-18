@@ -1,6 +1,7 @@
 <div id="send-modal" style="position:fixed;inset:0;background:rgba(0,0,0,0.4);display:flex;align-items:center;justify-content:center;z-index:100;">
-  <div style="background:#fff;border-radius:8px;padding:1.5rem;max-width:480px;width:100%;box-shadow:0 4px 24px rgba(0,0,0,0.15);">
+  <div style="background:#fff;border-radius:8px;padding:1.5rem;max-width:640px;width:100%;max-height:90vh;overflow-y:auto;box-shadow:0 4px 24px rgba(0,0,0,0.15);">
     <h2 style="margin-top:0;">Send Quote {{ quote.quote_number }}</h2>
+    {% if error %}<p role="alert" style="color:#dc2626;">Send Failed: {{ error }}</p>{% endif %}
     {# Display-only Tier-1 context: the engine's verdict never blocks or fires
        a send — this button remains the 100% human-initiated gate. #}
     {% if recommendation %}
@@ -18,8 +19,8 @@
       {% endif %}
     </p>
     {% endif %}
-    <form method="post" action="/quotes/{{ quote.id }}/send"
-          hx-post="/quotes/{{ quote.id }}/send"
+    <form method="post" action="/quotes/{{ quote.id }}/send-preview"
+          hx-post="/quotes/{{ quote.id }}/send-preview"
           hx-target="#send-modal"
           hx-swap="outerHTML">
       <label style="display:block;margin-bottom:0.75rem;">
@@ -31,12 +32,24 @@
         <input name="subject" value="{{ default_subject }}" style="width:100%;margin-top:0.25rem;" />
       </label>
       <label style="display:block;margin-bottom:0.75rem;">
+        Message (optional)
+        <textarea name="email_message" rows="4" aria-describedby="email-message-help"
+                  oninput="this.form.querySelector('[data-send-quote]').disabled = true; document.getElementById('email-preview-status').textContent = 'Message changed. Preview email before sending.';"
+                  style="width:100%;margin-top:0.25rem;">{{ quote.email_message or '' }}</textarea>
+      </label>
+      <p id="email-message-help" style="font-size:0.85rem;color:#6b7280;">Add options or an explanation below the attachment introduction. Leave blank to use the standard email. Preview saves your message for this quote.</p>
+      <label style="display:block;margin-bottom:0.75rem;">
         CC (optional)
         <input name="cc_email" type="email" value="{{ default_cc }}" style="width:100%;margin-top:0.25rem;" />
       </label>
+      <p id="email-preview-status" role="status">Email preview</p>
+      <pre id="email-body-preview" style="white-space:pre-wrap;overflow-wrap:anywhere;font-family:inherit;background:#f3f4f6;padding:0.75rem;border-radius:4px;">{{ email_body }}</pre>
       <div style="display:flex;gap:0.5rem;justify-content:flex-end;margin-top:1rem;">
         <button type="button" onclick="document.getElementById('send-modal').remove();">Cancel</button>
-        <button type="submit" style="background:#2563eb;color:#fff;border:none;padding:0.5rem 1rem;border-radius:4px;cursor:pointer;">Send Quote</button>
+        <button type="submit">Preview email</button>
+        <button type="submit" data-send-quote formaction="/quotes/{{ quote.id }}/send"
+                hx-post="/quotes/{{ quote.id }}/send" hx-include="closest form"
+                style="background:#2563eb;color:#fff;border:none;padding:0.5rem 1rem;border-radius:4px;cursor:pointer;">Send Quote</button>
       </div>
     </form>
   </div>

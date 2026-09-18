@@ -130,11 +130,19 @@ def resolve_sender_client(user_email: str | None):
 
 
 def build_quote_email_body(quote: Quote) -> str:
+    # Graph sends this as contentType=Text. Keep literal characters here;
+    # Jinja escapes the same content when displaying the HTML preview.
+    message = normalize_email_message(quote.email_message)
     return (
         f"Please find attached quote {quote.quote_number} from Allan Edwards, Inc.\n\n"
-        f"If you have any questions, please don't hesitate to contact us.\n\n"
-        f"Thank you,\nAllan Edwards, Inc.\n(918) 583-7184\nwww.allanedwards.com"
+        + (f"{message}\n\n" if message else "")
+        + "If you have any questions, please don't hesitate to contact us.\n\n"
+        "Thank you,\nAllan Edwards, Inc.\n(918) 583-7184\nwww.allanedwards.com"
     )
+
+
+def normalize_email_message(message: str | None) -> str:
+    return (message or "").replace("\r\n", "\n").replace("\r", "\n").strip()
 
 
 def default_quote_subject(quote: Quote) -> str:
@@ -272,6 +280,7 @@ def auto_send_quote(quote: Quote) -> dict | None:
 
     to_email = (quote.contact_email or "").strip()
     subject = default_quote_subject(quote)
+    body_text = build_quote_email_body(quote)
 
     try:
         check_send_gates(quote, to_email)
@@ -303,6 +312,8 @@ def auto_send_quote(quote: Quote) -> dict | None:
         sent_at=now,
         sent_by=None,
         sent_to=to_email,
+        email_body=body_text,
+        email_subject=subject,
     )
     db.session.add_all([claim, version])
     try:
@@ -320,7 +331,7 @@ def auto_send_quote(quote: Quote) -> dict | None:
         client.send_mail(
             to_email=to_email,
             subject=subject,
-            body_text=build_quote_email_body(quote),
+            body_text=body_text,
             attachments=[(filename, pdf_bytes)],
             cc_email=None,
         )
@@ -351,7 +362,7 @@ def auto_send_quote(quote: Quote) -> dict | None:
             client.create_draft(
                 to_email=to_email,
                 subject=subject,
-                body_text=build_quote_email_body(quote),
+                body_text=body_text,
                 attachments=[(filename, pdf_bytes)],
                 cc_email=None,
             )

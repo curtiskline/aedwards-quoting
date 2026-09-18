@@ -685,6 +685,8 @@ def auto_send_evaluation(quote: Quote) -> dict:
     if tier != AUTO_SEND_TIER:
         reasons.append(f"trust ramp is at Tier {tier}: auto-send requires Tier {AUTO_SEND_TIER}")
     reasons.extend(recommendation["reasons"])
+    if (quote.email_message or "").strip():
+        reasons.append("custom email message requires a human send")
 
     statuses: dict[str, str] = {}
     if confidence is not None:

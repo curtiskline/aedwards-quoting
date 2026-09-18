@@ -214,6 +214,7 @@ class Quote(db.Model):
     project_name: Mapped[str | None]
     notes_customer: Mapped[str | None] = mapped_column(Text)
     notes_internal: Mapped[str | None] = mapped_column(Text)
+    email_message: Mapped[str | None] = mapped_column(Text)
     source_email_id: Mapped[str | None]
     sender_email: Mapped[str | None]
     sender_name: Mapped[str | None]
@@ -444,6 +445,10 @@ class QuoteVersion(db.Model):
     sent_at: Mapped[datetime | None]
     sent_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"))
     sent_to: Mapped[str | None]
+    # Exact outgoing text; NULL on historical versions whose email was not retained.
+    email_body: Mapped[str | None] = mapped_column(Text)
+    email_subject: Mapped[str | None] = mapped_column(Text)
+    email_cc: Mapped[str | None] = mapped_column(Text)
 
     quote: Mapped[Quote] = relationship(back_populates="versions")
 

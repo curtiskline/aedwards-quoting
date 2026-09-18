@@ -8,10 +8,146 @@ from decimal import Decimal
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from app import create_app
 from app.config import Config
 from app.extensions import db
 from app.models import AuditLog, Quote, QuoteLineItem, QuoteStatus, QuoteVersion, User
+
+DEFAULT_EMAIL = (
+    "Please find attached quote 126-300 from Allan Edwards, Inc.\n\n"
+    "If you have any questions, please don't hesitate to contact us.\n\n"
+    "Thank you,\nAllan Edwards, Inc.\n(918) 583-7184\nwww.allanedwards.com"
+)
+CUSTOM_MESSAGE = 'Consider the upgraded option — 5% less.\n\n<script>alert("x")</script> & details'
+
+
+@pytest.mark.parametrize("message", [None, "", " \r\n\t", CUSTOM_MESSAGE])
+@patch("allenedwards.outlook.OutlookClient")
+def test_email_message_preview_send_and_snapshot(mock_outlook, db_url, tmp_path, monkeypatch, message):
+    """Preview, actual Graph text and immutable history must all agree."""
+    app = _make_app(db_url, tmp_path)
+    quote_id, user_id = _seed_quote(app)
+    monkeypatch.setenv("EMAIL_DELIVERY_ENABLED", "true")
+    monkeypatch.setenv("ENABLE_OUTLOOK_DRAFTS", "true")
+    monkeypatch.setenv("O365_EMAIL", "sender@example.com")
+    monkeypatch.setenv("O365_PASSWORD", "test")
+    monkeypatch.delenv("SEND_EMAIL_ALLOWLIST", raising=False)
+    fields = {"to_email": "devin@918.software", "subject": "Options for your project", "cc_email": ""}
+    if message is not None:
+        fields["email_message"] = message
+    expected = DEFAULT_EMAIL
+    if message and message.strip():
+        introduction, closing = DEFAULT_EMAIL.split("\n\n", 1)
+        expected = introduction + "\n\n" + message + "\n\n" + closing
+
+    with app.test_client() as client:
+        _login(client, user_id)
+        initial = client.get(f"/quotes/{quote_id}/send-form").get_data(as_text=True)
+        assert 'style="width:100%;margin-top:0.25rem;"></textarea>' in initial
+        preview = client.post(f"/quotes/{quote_id}/send-preview", data=fields)
+        assert preview.status_code == 200
+        from markupsafe import escape
+        assert str(escape(expected)) in preview.get_data(as_text=True)
+        assert '<script>alert("x")</script>' not in preview.get_data(as_text=True)
+        mock_outlook.return_value.send_mail.assert_not_called()
+        response = client.post(f"/quotes/{quote_id}/send", data=fields)
+        assert "Quote Sent" in response.get_data(as_text=True)
+
+    sent = mock_outlook.return_value.send_mail.call_args.kwargs
+    assert sent["body_text"].encode() == expected.encode()
+    assert mock_outlook.return_value.create_draft.call_args.kwargs["body_text"] == expected
+    with app.app_context():
+        version = db.session.query(QuoteVersion).filter_by(quote_id=quote_id).one()
+        assert version.email_body == expected
+        assert version.email_subject == fields["subject"]
+        assert version.email_cc is None
+        db.session.get(Quote, quote_id).email_message = "Later edits must not rewrite history"
+        db.session.commit()
+        db.session.expire_all()
+        assert db.session.get(QuoteVersion, version.id).email_body == expected
+
+
+@patch("allenedwards.outlook.OutlookClient")
+def test_email_message_survives_blocked_send_and_can_be_cleared(mock_outlook, db_url, tmp_path, monkeypatch):
+    app = _make_app(db_url, tmp_path)
+    quote_id, user_id = _seed_quote(app)
+    monkeypatch.setenv("EMAIL_DELIVERY_ENABLED", "false")
+    fields = {"to_email": "devin@918.software", "subject": "Custom subject", "email_message": CUSTOM_MESSAGE}
+    with app.test_client() as client:
+        _login(client, user_id)
+        response = client.post(f"/quotes/{quote_id}/send", data=fields)
+        html = response.get_data(as_text=True)
+        assert "Email delivery is disabled" in html
+        assert "Consider the upgraded option" in html
+        assert 'value="Custom subject"' in html
+        reopened = client.get(f"/quotes/{quote_id}/send-form").get_data(as_text=True)
+        assert "Consider the upgraded option" in reopened
+        fields["email_message"] = ""
+        response = client.post(f"/quotes/{quote_id}/send-preview", data=fields)
+        from markupsafe import escape
+        assert str(escape(DEFAULT_EMAIL)) in response.get_data(as_text=True)
+    with app.app_context():
+        assert db.session.get(Quote, quote_id).email_message is None
+        assert db.session.query(QuoteVersion).count() == 0
+    mock_outlook.assert_not_called()
+
+
+@patch("allenedwards.outlook.OutlookClient")
+def test_email_message_browser_preview_matches_send(mock_outlook, db_url, tmp_path, monkeypatch):
+    """Exercise HTMX swaps and ensure editing invalidates the send preview."""
+    import threading
+
+    from werkzeug.serving import make_server
+
+    playwright = pytest.importorskip("playwright.sync_api")
+    app = _make_app(db_url, tmp_path)
+    quote_id, user_id = _seed_quote(app)
+    monkeypatch.setenv("EMAIL_DELIVERY_ENABLED", "true")
+    monkeypatch.setenv("O365_EMAIL", "sender@example.com")
+    monkeypatch.setenv("O365_PASSWORD", "test")
+    monkeypatch.delenv("SEND_EMAIL_ALLOWLIST", raising=False)
+    with app.test_client() as client:
+        _login(client, user_id)
+        cookie = client.get_cookie("session").value
+    server = make_server("127.0.0.1", 0, app, threaded=True)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with playwright.sync_playwright() as pw:
+            browser = pw.chromium.launch(headless=True)
+            page = browser.new_page()
+            base = f"http://127.0.0.1:{server.server_port}"
+            page.context.add_cookies([{"name": "session", "value": cookie, "url": base}])
+            page.goto(f"{base}/quotes/{quote_id}")
+            page.wait_for_function("typeof htmx !== 'undefined'")
+            page.locator(f"[hx-get='/quotes/{quote_id}/send-form']").click()
+            message = page.locator("textarea[name=email_message]")
+            playwright.expect(message).to_have_value("")
+            message.fill(CUSTOM_MESSAGE)
+            send = page.locator("[data-send-quote]")
+            playwright.expect(send).to_be_disabled()
+            page.locator("input[name=to_email]").fill("devin@918.software")
+            page.get_by_role("button", name="Preview email", exact=True).click()
+            playwright.expect(send).to_be_enabled()
+            preview = page.locator("#email-body-preview").inner_text()
+            assert CUSTOM_MESSAGE in preview
+            assert page.locator("#email-body-preview script").count() == 0
+            message.fill("Second option")
+            playwright.expect(send).to_be_disabled()
+            page.get_by_role("button", name="Preview email", exact=True).click()
+            playwright.expect(send).to_be_enabled()
+            preview = page.locator("#email-body-preview").inner_text()
+            assert "Second option" in preview
+            send.click()
+            playwright.expect(page.get_by_role("heading", name="Quote Sent", exact=True)).to_be_visible()
+            mock_outlook.return_value.send_mail.assert_called_once()
+            assert mock_outlook.return_value.send_mail.call_args.kwargs["body_text"] == preview
+            browser.close()
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
 
 
 def _make_app(db_url, tmp_path):
