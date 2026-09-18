@@ -188,6 +188,42 @@ def _claim(quote):
     return _db.session.query(AutoSendClaim).filter_by(quote_id=quote.id).first()
 
 
+@patch("allenedwards.outlook.OutlookClient")
+def test_custom_email_requires_manual_send(mock_outlook, app, client):
+    _set_tier(2)
+    quote = _eligible_quote()
+    assert auto_send_evaluation(quote)["eligible"] is True
+    quote_id = quote.id
+    preview = client.post(f"/quotes/{quote_id}/send-preview", data={
+        "email_message": "An upgrade is available.", "to_email": "devin@918.software",
+    })
+    assert preview.status_code == 200
+    _db.session.expire_all()
+    quote = _db.session.get(Quote, quote_id)
+    result = maybe_auto_send(quote)
+    assert result["attempted"] is False
+    assert "custom email message requires a human send" in result["reasons"]
+    assert _claim(quote) is None
+    mock_outlook.return_value.send_mail.assert_not_called()
+    response = client.post(f"/quotes/{quote_id}/send", data={"to_email": "devin@918.software"})
+    assert "Quote Sent" in response.get_data(as_text=True)
+    assert "An upgrade is available." in mock_outlook.return_value.send_mail.call_args.kwargs["body_text"]
+
+
+@pytest.mark.parametrize("message", [None, "", " \n\t"])
+@patch("allenedwards.outlook.OutlookClient")
+def test_auto_send_blank_message_preserves_default_and_history(mock_outlook, app, message):
+    _set_tier(2)
+    quote = _eligible_quote()
+    quote.email_message = message
+    _db.session.commit()
+    assert maybe_auto_send(quote)["sent"] is True
+    version = _db.session.query(QuoteVersion).filter_by(quote_id=quote.id).one()
+    sent = mock_outlook.return_value.send_mail.call_args.kwargs
+    assert version.email_body == sent["body_text"]
+    assert version.email_subject == sent["subject"]
+
+
 def _audit(quote, action):
     return (
         _db.session.query(AuditLog).filter_by(quote_id=quote.id, action=action).all()
