@@ -80,7 +80,7 @@ def test_browser_fill_recall_never_prefills_price(editor):  # noqa: F811
             line.locator("[name=spec_fill_weight_lb]").fill("12000")
             page.locator(".line-items-section h2").click()
             playwright.expect(line.locator("[name=description]")).to_have_value(
-                "Geotextile Bag Weight 36in Pipe 12,000 lb Fill — On-site Filling"
+                "Geotextile Bag Weight 36in Pipe 12,000 lb Fill - On-site Filling"
             )
             assert line.locator("[name=unit_price]").input_value() == "349.50"
             assert errors == []

@@ -20,7 +20,7 @@ def generated_text(specs):
     weight_text = f"{weight:,.2f}".rstrip("0").rstrip(".")
     return (
         f"GTB-{diameter.normalize():f}-{weight.normalize():f}-ONSITE",
-        f"Geotextile Bag Weight {diameter:g}in Pipe {weight_text} lb Fill — On-site Filling",
+        f"Geotextile Bag Weight {diameter:g}in Pipe {weight_text} lb Fill - On-site Filling",
     )
 
 

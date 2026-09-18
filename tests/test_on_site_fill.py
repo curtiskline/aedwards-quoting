@@ -67,7 +67,7 @@ def test_manual_fill_generation_edit_and_customer_pdf(editor):
         line = db.session.query(QuoteLineItem).filter_by(quote_id=qid).one()
         lid = line.id
         assert line.part_number == "GTB-36-9000-ONSITE"
-        assert line.description == "Geotextile Bag Weight 36in Pipe 9,000 lb Fill — On-site Filling"
+        assert line.description == "Geotextile Bag Weight 36in Pipe 9,000 lb Fill - On-site Filling"
         assert line.unit_price == Decimal("349.50")
         assert line.line_total == Decimal("6990.00")
         assert line.on_site_label == "Louisiana river crossing"
@@ -326,7 +326,7 @@ def test_converting_empty_bag_generates_fill_text(editor):
     assert response.status_code == 200
     with app.app_context():
         line = db.session.get(QuoteLineItem, lid)
-        assert line.description == "Geotextile Bag Weight 36in Pipe 9,000 lb Fill — On-site Filling"
+        assert line.description == "Geotextile Bag Weight 36in Pipe 9,000 lb Fill - On-site Filling"
         assert line.part_number == "GTB-36-9000-ONSITE"
         assert line.unit_price == Decimal("349.50")
 

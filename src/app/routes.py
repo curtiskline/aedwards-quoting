@@ -97,7 +97,7 @@ main_bp = Blueprint("main", __name__)
 DEFAULT_PRODUCT_TYPES: list[tuple[str, str]] = [
     ("sleeve", "Sleeve"),
     ("bag", "Bag"),
-    ("on_site_fill", "Bag — On-site Fill"),
+    ("on_site_fill", "Bag - On-site Fill"),
     ("girth_weld", "Girth Weld"),
     ("compression", "Compression"),
     ("accessory", "Accessory"),

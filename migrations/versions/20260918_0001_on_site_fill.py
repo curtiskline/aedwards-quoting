@@ -20,7 +20,7 @@ def upgrade():
     op.execute(
         sa.text("""
         INSERT INTO product_type (name, display_label, sort_order, is_active, created_at)
-        SELECT 'on_site_fill', 'Bag — On-site Fill', COALESCE(MAX(sort_order), 0) + 1,
+        SELECT 'on_site_fill', 'Bag - On-site Fill', COALESCE(MAX(sort_order), 0) + 1,
                true, CURRENT_TIMESTAMP FROM product_type
         HAVING NOT EXISTS (SELECT 1 FROM product_type WHERE name = 'on_site_fill')
     """)
