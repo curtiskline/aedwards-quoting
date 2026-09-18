@@ -393,6 +393,7 @@ class ProcessedInboundEmail(TimestampMixin, db.Model):
 
 class QuoteLineItem(db.Model):
     __tablename__ = "quote_line_item"
+    __table_args__ = (db.Index("ix_quote_line_item_fill_location", "on_site_city", "on_site_state"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
     quote_id: Mapped[int] = mapped_column(ForeignKey("quote.id"), nullable=False, index=True)
@@ -404,6 +405,12 @@ class QuoteLineItem(db.Model):
     specs_json: Mapped[dict | None] = mapped_column(db.JSON)
     part_number: Mapped[str | None]
     sort_order: Mapped[int] = mapped_column(default=0, nullable=False)
+    # Structured quote-history seed for location-specific manual fill pricing.
+    on_site_label: Mapped[str | None]
+    on_site_city: Mapped[str | None]
+    on_site_state: Mapped[str | None]
+    on_site_price_source: Mapped[str | None] = mapped_column(Text)
+    on_site_priced_at: Mapped[datetime | None]
 
     quote: Mapped[Quote] = relationship(back_populates="line_items")
 

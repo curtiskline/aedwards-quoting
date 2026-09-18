@@ -56,7 +56,7 @@ from allenedwards.pricing import Quote as PricingQuote
 from allenedwards.pricing import QuoteLineItem as PricingLineItem
 from allenedwards.ship_to import SHIP_TO_KEYS, is_domestic_ship_to, normalize_ship_to
 
-from . import send_service
+from . import on_site_fill, send_service
 from .orders import order_for_quote
 from .confidence import (
     SIGNAL_LABELS,
@@ -97,6 +97,7 @@ main_bp = Blueprint("main", __name__)
 DEFAULT_PRODUCT_TYPES: list[tuple[str, str]] = [
     ("sleeve", "Sleeve"),
     ("bag", "Bag"),
+    ("on_site_fill", "Bag — On-site Fill"),
     ("girth_weld", "Girth Weld"),
     ("compression", "Compression"),
     ("accessory", "Accessory"),
@@ -730,6 +731,8 @@ def _bag_pricing_row_for_diameter(diameter: float | None) -> tuple[str, int] | N
 
 
 def _line_item_pricing_source(item: QuoteLineItem, specs: dict) -> str:
+    if item.product_type == on_site_fill.TYPE:
+        return "Manual on-site fill price"
     if specs.get("price_override"):
         return "Manual price entry"
     if item.product_type == "shipping":
@@ -1144,6 +1147,8 @@ def _line_item_view(item: QuoteLineItem) -> dict:
         "line_total": line_total,
         "part_number": item.part_number,
         "specs": specs,
+        **{key: getattr(item, key) for key in on_site_fill.LOCATION_FIELDS},
+        "fill_history": on_site_fill.history(item.on_site_city, item.on_site_state, item.quote_id) if item.product_type == on_site_fill.TYPE else [],
         "spec_fields": _line_item_spec_fields(item.product_type, specs),
         "pricing_source": _line_item_pricing_source(item, specs),
         "rounding_indicator": _line_item_rounding(item, specs),
@@ -1609,6 +1614,8 @@ def _copy_line_item(item: QuoteLineItem, new_quote_id: int) -> QuoteLineItem:
         specs_json=copy.deepcopy(item.specs_json) if item.specs_json is not None else None,
         part_number=item.part_number,
         sort_order=item.sort_order,
+        **{key: getattr(item, key) for key in on_site_fill.LOCATION_FIELDS},
+        on_site_priced_at=item.on_site_priced_at,
     )
 
 
@@ -1727,7 +1734,14 @@ def quote_duplicate(quote_id: int):
             db.session.flush()
 
             for item in _sorted_line_items(source):
-                db.session.add(_copy_line_item(item, new_quote.id))
+                copied = _copy_line_item(item, new_quote.id)
+                if copied.product_type == on_site_fill.TYPE:
+                    # A new customer/job needs current local sourcing, never an old rate.
+                    copied.unit_price = copied.line_total = 0
+                    copied.on_site_priced_at = None
+                    for key in on_site_fill.LOCATION_FIELDS:
+                        setattr(copied, key, None)
+                db.session.add(copied)
             db.session.flush()
 
             # Ship-to changed with the customer, so refresh auto-calculated freight.
@@ -1932,6 +1946,11 @@ def quote_add_line_item(quote_id: int):
     quote = _get_active_quote_or_404(quote_id)
     _normalize_sort_orders(quote)
     product_type = _resolve_product_type(request.form.get("product_type"), "sleeve")
+    if product_type == on_site_fill.TYPE:
+        try:
+            on_site_fill.validate_form(request.form)
+        except ValueError as exc:
+            return str(exc), 422
     auto_shipping_trigger = request.form.get("auto_shipping_trigger") == "1"
     unit_price = _parse_decimal(request.form.get("unit_price"), Decimal("0"))
     is_manual_no_charge = (
@@ -1965,6 +1984,8 @@ def quote_add_line_item(quote_id: int):
             line_item.quantity = 1
             line_item.unit_price = 0
             line_item.line_total = 0
+    if product_type == on_site_fill.TYPE:
+        on_site_fill.apply_form(line_item, request.form)
     db.session.add(line_item)
     _apply_auto_shipping_line_item(quote)
     _sync_quote_pricing_status(quote)
@@ -2036,7 +2057,16 @@ def quote_update_line_item(quote_id: int, item_id: int):
     prior_unit_price = _quantize_money(Decimal(str(item.unit_price)))
     prior_description = item.description
 
-    item.product_type = _resolve_product_type(request.form.get("product_type"), item.product_type)
+    selected_type = _resolve_product_type(request.form.get("product_type"), item.product_type)
+    if selected_type == on_site_fill.TYPE:
+        try:
+            on_site_fill.validate_form(request.form)
+        except ValueError as exc:
+            return str(exc), 422
+    if selected_type == on_site_fill.TYPE and item.product_type != on_site_fill.TYPE:
+        if not (request.form.get("description") or "").strip():
+            item.description = "New line item"
+    item.product_type = selected_type
     auto_shipping_trigger = request.form.get("auto_shipping_trigger") == "1"
     item.description = (
         request.form.get("description") or item.description
@@ -2206,12 +2236,27 @@ def quote_update_line_item(quote_id: int, item_id: int):
             specs.pop("notes", None)
 
     item.specs_json = specs or None
+    if item.product_type == on_site_fill.TYPE:
+        on_site_fill.apply_form(item, request.form, prior_specs)
+    else:
+        for key in on_site_fill.LOCATION_FIELDS:
+            setattr(item, key, None)
+        item.on_site_priced_at = None
     _apply_auto_shipping_line_item(quote)
     _sync_quote_pricing_status(quote)
 
     db.session.commit()
     _attempt_auto_send(quote)
     return _render_line_items(quote)
+
+
+@main_bp.get("/quotes/<int:quote_id>/on-site-fill-history")
+def on_site_fill_history(quote_id: int):
+    _get_active_quote_or_404(quote_id)
+    return render_template(
+        "quotes/_fill_history.html",
+        fill_history=on_site_fill.history(request.args.get("on_site_city"), request.args.get("on_site_state"), quote_id),
+    )
 
 
 @main_bp.get("/api/product-catalog/search")
