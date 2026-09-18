@@ -22,6 +22,7 @@ from pathlib import Path
 from flask import current_app
 from sqlalchemy.exc import IntegrityError
 
+from . import price_adjustments
 from .confidence import (
     AUTO_SEND_TIER,
     active_trust_tier,
@@ -162,14 +163,14 @@ def quote_line_items_snapshot(quote: Quote) -> list[dict[str, object]]:
     """Return JSON-safe, point-in-time copies of every priced line item."""
     import copy
 
-    return [
+    snapshot = [
         {
             "id": item.id,
             "product_type": item.product_type,
             "description": item.description,
             "quantity": str(item.quantity),
-            "unit_price": str(item.unit_price),
-            "line_total": str(item.line_total),
+            "unit_price": str(price_adjustments.line_prices(quote, item)[0]),
+            "line_total": str(price_adjustments.line_prices(quote, item)[1]),
             # Includes all original dimensions and pricing basis fields, not
             # only the subset currently rendered by the quote editor.
             "specs_json": copy.deepcopy(item.specs_json),
@@ -185,6 +186,29 @@ def quote_line_items_snapshot(quote: Quote) -> list[dict[str, object]]:
         }
         for item in quote.line_items
     ]
+
+    # These records feed downstream order documents: keep final prices only.
+    # Physical specs remain for picking; unadjusted pricing provenance must
+    # not accompany the final customer prices on an adjusted quote.
+    if price_adjustments.percentage(quote) > 0:
+        from allenedwards.line_notes import customer_note
+        for row in snapshot:
+            specs = row["specs_json"] or {}
+            row["specs_json"] = {key: specs[key] for key in (
+                "diameter", "wall_thickness", "grade", "length_ft", "original_qty",
+                "milling", "painting", "pieces_per_pallet", "bags_per_pallet",
+            ) if key in specs}
+            note = customer_note(specs.get("notes"), priced=float(row["unit_price"]) > 0)
+            if note:
+                row["specs_json"]["notes"] = note
+    _, discount = price_adjustments.merchandise_totals(quote)
+    if price_adjustments.percentage(quote) < 0:
+        snapshot.append({"id": None, "product_type": "discount",
+                         "description": price_adjustments.discount_label(quote),
+                         "quantity": "1", "unit_price": str(-discount),
+                         "line_total": str(-discount), "specs_json": {},
+                         "part_number": None, "sort_order": len(snapshot) + 1})
+    return snapshot
 
 
 def archive_sent_quote_pdf(quote: Quote, version_number: int, pdf_bytes: bytes) -> str:
@@ -309,6 +333,7 @@ def auto_send_quote(quote: Quote) -> dict | None:
         pdf_path=archive_path,
         artifact_status="retained",
         line_items_snapshot=snapshot,
+        tax_amount=quote.tax_amount,
         sent_at=now,
         sent_by=None,
         sent_to=to_email,

@@ -95,7 +95,9 @@ def _enrich_quotes(quotes: list[Quote]) -> list[dict]:
             for name, label in SIGNAL_LABELS.items()
         ] if confidence is not None else []
         item_count = len(q.line_items)
-        total = sum(float(li.line_total) for li in q.line_items)
+        from .price_adjustments import merchandise_totals
+        subtotal, discount = merchandise_totals(q)
+        total = float(subtotal - discount) + sum(float(li.line_total) for li in q.line_items if li.product_type == "shipping")
         needs_pricing = any(float(li.unit_price) == 0 for li in q.line_items)
 
         # Time since received

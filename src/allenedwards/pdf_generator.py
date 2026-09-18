@@ -523,6 +523,12 @@ class QuotePDFBuilder:
             ],
         ]
 
+        if self.quote.discount_label:
+            totals_data.insert(1, ["", "", "",
+                Paragraph(self.quote.discount_label + ":", self.styles["normal_small"]),
+                Paragraph(format_currency(-self.quote.discount_amount), self.styles["normal_small"]),
+            ])
+
         # Match column widths with line items table
         col_widths = [
             self.content_width * 0.18,

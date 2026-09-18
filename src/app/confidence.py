@@ -651,13 +651,11 @@ def auto_send_dollar_ceiling() -> float:
 def quote_grand_total(quote: Quote) -> Decimal:
     """Product + shipping + tax. Shipping is a line item, so summing every
     line_total and adding tax_amount matches the editor's grand total."""
-    total = Decimal("0")
-    for item in quote.line_items:
-        if item.product_type == "note":
-            continue
-        total += Decimal(str(item.line_total or 0))
-    total += Decimal(str(quote.tax_amount or 0))
-    return total.quantize(Decimal("0.01"))
+    from .price_adjustments import merchandise_totals
+    subtotal, discount = merchandise_totals(quote)
+    shipping = sum((Decimal(str(item.line_total or 0)) for item in quote.line_items
+                    if item.product_type == "shipping"), Decimal("0"))
+    return (subtotal - discount + shipping + Decimal(str(quote.tax_amount or 0))).quantize(Decimal("0.01"))
 
 
 def auto_send_evaluation(quote: Quote) -> dict:
@@ -685,6 +683,8 @@ def auto_send_evaluation(quote: Quote) -> dict:
     if tier != AUTO_SEND_TIER:
         reasons.append(f"trust ramp is at Tier {tier}: auto-send requires Tier {AUTO_SEND_TIER}")
     reasons.extend(recommendation["reasons"])
+    if quote.price_adjustment_pct:
+        reasons.append("manual price adjustment requires a human send")
     if (quote.email_message or "").strip():
         reasons.append("custom email message requires a human send")
 

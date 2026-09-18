@@ -215,6 +215,8 @@ class Quote(db.Model):
     notes_customer: Mapped[str | None] = mapped_column(Text)
     notes_internal: Mapped[str | None] = mapped_column(Text)
     email_message: Mapped[str | None] = mapped_column(Text)
+    # Explicit per-quote setting; never automatically inherited from a customer.
+    price_adjustment_pct: Mapped[float] = mapped_column(Numeric(5, 2), default=0, server_default="0", nullable=False)
     source_email_id: Mapped[str | None]
     sender_email: Mapped[str | None]
     sender_name: Mapped[str | None]
@@ -445,6 +447,8 @@ class QuoteVersion(db.Model):
     sent_at: Mapped[datetime | None]
     sent_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"))
     sent_to: Mapped[str | None]
+    # Frozen tax, never read back from a later-edited live quote. NULL for legacy sends.
+    tax_amount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
     # Exact outgoing text; NULL on historical versions whose email was not retained.
     email_body: Mapped[str | None] = mapped_column(Text)
     email_subject: Mapped[str | None] = mapped_column(Text)

@@ -56,7 +56,7 @@ from allenedwards.pricing import Quote as PricingQuote
 from allenedwards.pricing import QuoteLineItem as PricingLineItem
 from allenedwards.ship_to import SHIP_TO_KEYS, is_domestic_ship_to, normalize_ship_to
 
-from . import on_site_fill, send_service
+from . import on_site_fill, price_adjustments, send_service
 from .orders import order_for_quote
 from .confidence import (
     SIGNAL_LABELS,
@@ -1156,6 +1156,8 @@ def _line_item_view(item: QuoteLineItem) -> dict:
         "needs_pricing": not no_charge and (unit_price <= 0 or line_total <= 0),
         "note": specs.get("notes"),
         "price_override": bool(specs.get("price_override")),
+        "customer_unit_price": price_adjustments.line_prices(item.quote, item)[0] if item.quote else unit_price,
+        "customer_line_total": price_adjustments.line_prices(item.quote, item)[1] if item.quote else line_total,
         "auto_unit_price": _decimal_from_raw(specs.get("auto_unit_price")),
         "price_stale": bool(specs.get("price_stale")),
         "shipping_breakdown": _shipping_breakdown_for_item(item),
@@ -1166,8 +1168,8 @@ def _quote_totals(quote_or_quotes: Quote | list[Quote]) -> dict:
     if isinstance(quote_or_quotes, list):
         subtotal = Decimal("0.00")
         for quote in quote_or_quotes:
-            for li in quote.line_items:
-                subtotal += Decimal(str(li.line_total))
+            merchandise, discount = price_adjustments.merchandise_totals(quote)
+            subtotal += merchandise - discount + _shipping_amount_for_quote(quote)
         subtotal = _quantize_money(subtotal)
         return {
             "subtotal": subtotal,
@@ -1177,16 +1179,11 @@ def _quote_totals(quote_or_quotes: Quote | list[Quote]) -> dict:
         }
 
     quote = quote_or_quotes
-    subtotal = Decimal("0.00")
-    for item in _sorted_line_items(quote):
-        if item.product_type == "shipping":
-            continue
-        subtotal += Decimal(str(item.line_total))
-    subtotal = _quantize_money(subtotal)
+    subtotal, discount = price_adjustments.merchandise_totals(quote)
     shipping = _shipping_amount_for_quote(quote)
     tax = _tax_amount_for_quote(quote)
-    total = _quantize_money(subtotal + shipping + tax)
-    return {"subtotal": subtotal, "shipping": shipping, "tax": tax, "total": total}
+    total = _quantize_money(subtotal - discount + shipping + tax)
+    return {"subtotal": subtotal, "discount": discount, "shipping": shipping, "tax": tax, "total": total}
 
 
 def _quote_context(quote: Quote) -> dict:
@@ -1651,6 +1648,7 @@ def quote_revise(quote_id: int):
             copy.deepcopy(source.bill_to_json) if source.bill_to_json is not None else None
         ),
         tax_amount=source.tax_amount,
+        price_adjustment_pct=source.price_adjustment_pct,
         replaces_quote_id=source.id,
         revision_number=source.revision_number + 1,
         reviewed_by=user.id if user else None,
@@ -1850,6 +1848,11 @@ def quote_update_status(quote_id: int):
 @main_bp.post("/quotes/<int:quote_id>/totals")
 def quote_update_totals(quote_id: int):
     quote = _get_active_quote_or_404(quote_id)
+    if "price_adjustment_pct" in request.form:
+        try:
+            quote.price_adjustment_pct = price_adjustments.parse_percentage(request.form["price_adjustment_pct"])
+        except ValueError as exc:
+            abort(400, description=str(exc))
     tax_amount = _quantize_money(
         _parse_decimal(request.form.get("tax_amount"), _tax_amount_for_quote(quote))
     )
@@ -2805,6 +2808,7 @@ def _db_quote_to_pricing_quote(quote: Quote) -> PricingQuote:
     for li in line_items:
         if li.product_type == "shipping":
             continue
+        unit_price, line_total = price_adjustments.line_prices(quote, li)
         pricing_items.append(
             PricingLineItem(
                 sort_order=len(pricing_items) + 1,
@@ -2812,8 +2816,8 @@ def _db_quote_to_pricing_quote(quote: Quote) -> PricingQuote:
                 part_number=li.part_number or "",
                 description=li.description,
                 quantity=int(math.ceil(float(li.quantity))),
-                unit_price=Decimal(str(li.unit_price)),
-                total=Decimal(str(li.line_total)),
+                unit_price=unit_price,
+                total=line_total,
                 # Carry the provenance note pricing wrote. The PDF renders only
                 # the customer-facing subset of it (allenedwards.line_notes).
                 notes=dict(li.specs_json or {}).get("notes"),
@@ -2823,7 +2827,8 @@ def _db_quote_to_pricing_quote(quote: Quote) -> PricingQuote:
     shipping_value = _shipping_amount_for_quote(quote)
     shipping_total = shipping_value if shipping_value > 0 else None
     tax_amount = _tax_amount_for_quote(quote)
-    total = _quantize_money(subtotal + (shipping_total or Decimal("0.00")) + tax_amount)
+    _, discount = price_adjustments.merchandise_totals(quote)
+    total = _quantize_money(subtotal - discount + (shipping_total or Decimal("0.00")) + tax_amount)
     ship_to = normalize_ship_to(quote.ship_to_json)
     bill_to = normalize_ship_to(quote.bill_to_json)
     return PricingQuote(
@@ -2842,6 +2847,8 @@ def _db_quote_to_pricing_quote(quote: Quote) -> PricingQuote:
         po_number=quote.po_number,
         project_line=quote.project_name,
         bill_to=bill_to,
+        discount_amount=discount,
+        discount_label=price_adjustments.discount_label(quote) if price_adjustments.percentage(quote) < 0 else None,
     )
 
 
@@ -3022,6 +3029,7 @@ def quote_send(quote_id: int):
         pdf_path=archive_path,
         artifact_status="retained",
         line_items_snapshot=line_items_snapshot,
+        tax_amount=quote.tax_amount,
         sent_at=now,
         sent_by=user.id if user else None,
         sent_to=to_email,
@@ -3036,7 +3044,10 @@ def quote_send(quote_id: int):
         quote_id=quote.id,
         action="sent",
         user_id=user.id if user else None,
-        details={"to": to_email, "cc": cc_email, "subject": subject, "from": send_from},
+        details={"to": to_email, "cc": cc_email, "subject": subject, "from": send_from,
+                 "version_number": version_number,
+                 "price_adjustment_pct": str(price_adjustments.percentage(quote)),
+                 "price_adjustment_amount": str(price_adjustments.adjustment_amount(quote))},
     )
     db.session.add(audit)
     db.session.commit()

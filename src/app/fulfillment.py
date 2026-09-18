@@ -122,7 +122,7 @@ def build_pick_lines(snapshot: list[dict]) -> list[dict]:
     lines: list[dict] = []
     for raw in snapshot or []:
         product_type = str(raw.get("product_type") or "")
-        if product_type == "shipping":
+        if product_type in ("shipping", "discount"):
             continue
         specs = dict(raw.get("specs_json") or {})
         pieces = int(math.ceil(_parse_float(raw.get("quantity")) or 0))
