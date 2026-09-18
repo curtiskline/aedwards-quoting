@@ -132,7 +132,9 @@ def test_all_overridden_markup_save_twice_uses_base_once(setup):
             assert [row.unit_price for row in dto.line_items] == [Decimal("195"), Decimal("6.5")]
             assert dto.total == _quote_totals(quote)["total"] == Decimal("2047")
             assert [
-                row.unit_price for row in quote.line_items if row.product_type != "shipping"
+                row.unit_price
+                for row in sorted(quote.line_items, key=lambda row: row.sort_order)
+                if row.product_type != "shipping"
             ] == [Decimal("150"), Decimal("5")]
     save(client, quote_id, "0")
     with app.app_context():
@@ -195,7 +197,10 @@ def test_manual_send_freezes_adjusted_prices_and_safe_snapshot(mock_outlook, set
     )
     with app.app_context():
         version = db.session.query(QuoteVersion).filter_by(quote_id=quote_id).one()
-        assert [Decimal(row["unit_price"]) for row in version.line_items_snapshot] == [
+        assert [
+            Decimal(row["unit_price"])
+            for row in sorted(version.line_items_snapshot, key=lambda row: row["sort_order"])
+        ] == [
             Decimal("195"),
             Decimal("6.5"),
             Decimal("20"),

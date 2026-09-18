@@ -47,3 +47,25 @@ revision/retain, send-time snapshots, and accepted-order totals after live edits
 `tests/test_auto_send_tier2.py::test_percentage_requires_manual_send` checks both
 signs against an otherwise eligible Tier-2 quote. All external send calls in
 these tests are mocked.
+
+The internal `sent` audit row records version number, applied percentage and
+actual dollar change. This provenance is separate from customer-document data
+and survives later edits to the quote.
+
+Validation on 2026-09-18:
+
+- Full suite: 807 passed, 14 skipped.
+- PostgreSQL: 55 percentage/auto-send tests passed using disposable databases.
+- 13 deliberate mutations failed on assertions: raw internal PDF notes; a
+  positive percentage label; missing discount label; excluding overrides;
+  compounding stored prices; copying the percentage to a new customer; dropping
+  it on revision; bypassing validation (7 values); freezing base prices;
+  dropping audit delta; picking the discount row; omitting frozen tax (both
+  signs); permitting auto-send (both signs). Source files were restored from
+  exact backups after each mutation.
+- Staging 134.122.29.15 applied migrations 0003 and 0004. Synthetic +30% and -5%
+  quotes passed editor/save-twice, real PDF text, snapshot totals and pick-list
+  checks. For $1,000 merchandise + $20 freight + $12 tax, totals were $1,332 and
+  $982 respectively. No email was sent; synthetic quotes were removed.
+- Production was only queried read-only: active tier 1; threshold, dollar ceiling
+  and price tolerance all NULL. No production deployment or configuration change.
