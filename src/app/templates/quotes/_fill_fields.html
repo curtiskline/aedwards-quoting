@@ -1,17 +1,17 @@
+<div class="js-fill-history" {% if not item or item.product_type != 'on_site_fill' %}hidden{% endif %}>
+  {% set fill_history = item.fill_history if item else [] %}
+  {% include 'quotes/_fill_history.html' %}
+</div>
 <fieldset class="js-fill-fields" {% if not item or item.product_type != 'on_site_fill' %}hidden disabled{% endif %}>
   <legend>On-site filling</legend>
-  <div class="line-item-row">
+  <div class="line-item-row fill-location-grid">
     <label>Pipe diameter (in)<input name="spec_diameter" type="number" min="0.001" step="any" required value="{{ item.specs.get('diameter', '') if item else '' }}" /></label>
     <label>Fill weight (lb)<input name="spec_fill_weight_lb" type="number" min="0.001" step="any" required value="{{ item.specs.get('fill_weight_lb', '') if item else '' }}" /></label>
     <label>Job site<input name="on_site_label" required value="{{ (item.on_site_label or '') if item else '' }}" /></label>
     <label>City<input name="on_site_city" required value="{{ (item.on_site_city or '') if item else '' }}" /></label>
     <label>State<input name="on_site_state" required placeholder="LA" value="{{ (item.on_site_state or '') if item else '' }}" /></label>
-    <label>Pricing source / local estimate<input name="on_site_price_source" placeholder="Supplier, phone estimate, labor/logistics notes" value="{{ (item.on_site_price_source or '') if item else '' }}" /></label>
+    <label class="fill-source">Pricing source / local estimate<input name="on_site_price_source" placeholder="Supplier, phone estimate, labor/logistics notes" value="{{ (item.on_site_price_source or '') if item else '' }}" /></label>
   </div>
   <p>Enter the unit price manually from your local estimate. Part number and description are generated when saved; you can edit them.</p>
 </fieldset>
-<div class="js-fill-history" {% if not item or item.product_type != 'on_site_fill' %}hidden{% endif %}>
-  {% set fill_history = item.fill_history if item else [] %}
-  {% include 'quotes/_fill_history.html' %}
-</div>
 <p class="js-fill-error pricing-note-critical" role="alert"></p>

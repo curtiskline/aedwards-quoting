@@ -219,6 +219,10 @@
       .line-item-card.needs-pricing { background: #fff1f2; border-color: #fecdd3; }
       .line-item-form { display: grid; gap: 0.5rem; }
       .line-item-row { display: grid; gap: 0.5rem; }
+      .fill-location-grid { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+      .fill-source { grid-column: 1 / -1; }
+      .js-fill-history { overflow-x: auto; margin-bottom: 0.75rem; }
+      .js-fill-error:empty { display: none; }
       .line-item-row-top {
         grid-template-columns: 140px 200px 1fr;
       }
