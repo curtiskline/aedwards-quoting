@@ -268,6 +268,8 @@ class Quote:
     tax_amount: Decimal
     total: Decimal
     notes: str | None
+    discount_amount: Decimal = Decimal("0.00")
+    discount_label: str | None = None
     po_number: str | None = None
 
     # Signature-block bill-to address (D37). Rendered under the customer name in the

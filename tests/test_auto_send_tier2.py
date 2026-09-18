@@ -945,3 +945,18 @@ def test_monitor_still_creates_draft_when_not_auto_sent(app, tmp_path):
         mock_attempt.return_value = {"attempted": False, "eligible": False, "reasons": []}
         assert monitor.run_once() == 1
     outlook.create_draft.assert_called_once()
+
+
+@pytest.mark.parametrize('percentage', [-5, 30])
+@patch('allenedwards.outlook.OutlookClient')
+def test_percentage_requires_manual_send(mock_outlook, app, percentage):
+    _set_tier(2)
+    quote = _eligible_quote()
+    assert auto_send_evaluation(quote)['eligible'] is True
+    quote.price_adjustment_pct = percentage
+    _db.session.commit()
+    result = maybe_auto_send(quote)
+    assert result['attempted'] is False
+    assert 'manual price adjustment requires a human send' in result['reasons']
+    assert _claim(quote) is None
+    mock_outlook.return_value.send_mail.assert_not_called()

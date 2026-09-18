@@ -215,6 +215,8 @@ class Quote(db.Model):
     notes_customer: Mapped[str | None] = mapped_column(Text)
     notes_internal: Mapped[str | None] = mapped_column(Text)
     email_message: Mapped[str | None] = mapped_column(Text)
+    # Explicit per-quote setting; never automatically inherited from a customer.
+    price_adjustment_pct: Mapped[float] = mapped_column(Numeric(5, 2), default=0, server_default="0", nullable=False)
     source_email_id: Mapped[str | None]
     sender_email: Mapped[str | None]
     sender_name: Mapped[str | None]
