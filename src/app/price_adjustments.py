@@ -3,7 +3,7 @@
 Stored line prices are the editable basis. An explicit percentage applies after manual
 price overrides, using their stored price as its basis. Repeated reads/saves
 never compound the adjustment. Freight and tax are outside either calculation.
-No positive percentage or unadjusted price belongs in a customer projection.
+No adjustment percentage or unadjusted price belongs in a customer projection.
 """
 
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
@@ -36,14 +36,14 @@ def percentage(quote):
 def line_prices(quote, item):
     unit, total = money(item.unit_price), money(item.line_total)
     pct = percentage(quote)
-    if pct > 0 and item.product_type != "shipping":
+    if pct and item.product_type != "shipping":
         unit = money(unit * (1 + pct / 100))
         total = money(unit * Decimal(str(item.quantity)))
     return unit, total
 
 
-def merchandise_totals(quote):
-    subtotal = sum(
+def merchandise_subtotal(quote):
+    return sum(
         (
             line_prices(quote, item)[1]
             for item in quote.line_items
@@ -51,22 +51,13 @@ def merchandise_totals(quote):
         ),
         Decimal("0.00"),
     )
-    pct = percentage(quote)
-    discount = money(subtotal * -pct / 100) if pct < 0 else Decimal("0.00")
-    return subtotal, discount
-
-
-def discount_label(quote):
-    pct = -percentage(quote)
-    label = format(pct, ".2f").rstrip("0").rstrip(".")
-    return f"{label}% volume discount"
 
 
 def adjustment_amount(quote):
     """Internal audit only: difference from the stored merchandise basis."""
-    subtotal, discount = merchandise_totals(quote)
+    subtotal = merchandise_subtotal(quote)
     basis = sum(
         (money(item.line_total) for item in quote.line_items if item.product_type != "shipping"),
         Decimal("0.00"),
     )
-    return subtotal - discount - basis
+    return subtotal - basis

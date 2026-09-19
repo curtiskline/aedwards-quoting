@@ -1168,8 +1168,8 @@ def _quote_totals(quote_or_quotes: Quote | list[Quote]) -> dict:
     if isinstance(quote_or_quotes, list):
         subtotal = Decimal("0.00")
         for quote in quote_or_quotes:
-            merchandise, discount = price_adjustments.merchandise_totals(quote)
-            subtotal += merchandise - discount + _shipping_amount_for_quote(quote)
+            merchandise = price_adjustments.merchandise_subtotal(quote)
+            subtotal += merchandise + _shipping_amount_for_quote(quote)
         subtotal = _quantize_money(subtotal)
         return {
             "subtotal": subtotal,
@@ -1179,11 +1179,11 @@ def _quote_totals(quote_or_quotes: Quote | list[Quote]) -> dict:
         }
 
     quote = quote_or_quotes
-    subtotal, discount = price_adjustments.merchandise_totals(quote)
+    subtotal = price_adjustments.merchandise_subtotal(quote)
     shipping = _shipping_amount_for_quote(quote)
     tax = _tax_amount_for_quote(quote)
-    total = _quantize_money(subtotal - discount + shipping + tax)
-    return {"subtotal": subtotal, "discount": discount, "shipping": shipping, "tax": tax, "total": total}
+    total = _quantize_money(subtotal + shipping + tax)
+    return {"subtotal": subtotal, "shipping": shipping, "tax": tax, "total": total}
 
 
 def _quote_context(quote: Quote) -> dict:
@@ -2827,8 +2827,7 @@ def _db_quote_to_pricing_quote(quote: Quote) -> PricingQuote:
     shipping_value = _shipping_amount_for_quote(quote)
     shipping_total = shipping_value if shipping_value > 0 else None
     tax_amount = _tax_amount_for_quote(quote)
-    _, discount = price_adjustments.merchandise_totals(quote)
-    total = _quantize_money(subtotal - discount + (shipping_total or Decimal("0.00")) + tax_amount)
+    total = _quantize_money(subtotal + (shipping_total or Decimal("0.00")) + tax_amount)
     ship_to = normalize_ship_to(quote.ship_to_json)
     bill_to = normalize_ship_to(quote.bill_to_json)
     return PricingQuote(
@@ -2847,8 +2846,6 @@ def _db_quote_to_pricing_quote(quote: Quote) -> PricingQuote:
         po_number=quote.po_number,
         project_line=quote.project_name,
         bill_to=bill_to,
-        discount_amount=discount,
-        discount_label=price_adjustments.discount_label(quote) if price_adjustments.percentage(quote) < 0 else None,
     )
 
 

@@ -651,11 +651,11 @@ def auto_send_dollar_ceiling() -> float:
 def quote_grand_total(quote: Quote) -> Decimal:
     """Product + shipping + tax. Shipping is a line item, so summing every
     line_total and adding tax_amount matches the editor's grand total."""
-    from .price_adjustments import merchandise_totals
-    subtotal, discount = merchandise_totals(quote)
+    from .price_adjustments import merchandise_subtotal
+    subtotal = merchandise_subtotal(quote)
     shipping = sum((Decimal(str(item.line_total or 0)) for item in quote.line_items
                     if item.product_type == "shipping"), Decimal("0"))
-    return (subtotal - discount + shipping + Decimal(str(quote.tax_amount or 0))).quantize(Decimal("0.01"))
+    return (subtotal + shipping + Decimal(str(quote.tax_amount or 0))).quantize(Decimal("0.01"))
 
 
 def auto_send_evaluation(quote: Quote) -> dict:
