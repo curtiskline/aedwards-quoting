@@ -76,6 +76,7 @@ def apply_form(item, form, prior_specs=None):
         "manual_no_charge",
         "auto_unit_price",
         "price_stale",
+        "carried_price",
         "original_qty",
         "weight_per_ft",
         "price_per_lb",

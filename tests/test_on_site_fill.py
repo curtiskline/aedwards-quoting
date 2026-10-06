@@ -209,7 +209,11 @@ def test_recall_is_normalized_ordered_filtered_and_display_only(editor):
     )
 
 
-def test_duplicate_requires_new_local_price_and_revision_preserves_context(editor):
+def test_duplicate_carries_fill_price_with_confirm_flag_and_revision_preserves_context(editor):
+    # T480 (Chip 10/6): duplicate re-quotes the same job to another bidder, so
+    # the local fill price and job site must carry — blanking them made the
+    # duplicate unusable. The carried_price flag keeps a visible confirm-note
+    # until a human saves the line.
     app, client, qid = editor
     add(editor)
     response = client.post(f"/quotes/{qid}/duplicate", data={"new_customer_name": "Next customer"})
@@ -217,9 +221,25 @@ def test_duplicate_requires_new_local_price_and_revision_preserves_context(edito
     new_id = int(response.location.rsplit("/", 1)[1])
     with app.app_context():
         copied = db.session.query(QuoteLineItem).filter_by(quote_id=new_id).one()
-        assert copied.unit_price == 0 and copied.line_total == 0
-        assert copied.on_site_city is None and copied.on_site_priced_at is None
-        assert copied.quote.status == QuoteStatus.NEEDS_PRICING
+        assert copied.unit_price == Decimal("349.50")
+        assert copied.line_total == Decimal("6990.00")
+        assert copied.on_site_city == "Baton Rouge" and copied.on_site_state == "LA"
+        assert copied.on_site_label == "Louisiana river crossing"
+        assert copied.specs_json.get("carried_price") is True
+        assert copied.quote.status != QuoteStatus.NEEDS_PRICING
+        copied_id = copied.id
+    page = client.get(f"/quotes/{new_id}")
+    assert b"copied from the duplicated quote" in page.data
+    # Saving the line confirms it: the flag and the note clear.
+    response = client.post(
+        f"/quotes/{new_id}/line-items/{copied_id}/update",
+        data=form(),
+    )
+    assert response.status_code == 200
+    with app.app_context():
+        confirmed = db.session.get(QuoteLineItem, copied_id)
+        assert confirmed.specs_json.get("carried_price") is None
+    assert b"copied from the duplicated quote" not in client.get(f"/quotes/{new_id}").data
     response = client.post(f"/quotes/{qid}/revise")
     assert response.status_code == 302
     revision_id = int(response.location.rsplit("/", 1)[1])

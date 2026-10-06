@@ -176,6 +176,71 @@ def test_duplicate_to_existing_customer_copies_line_items(client, app, seeded):
         assert items[0].specs_json == {"diameter": 12}
 
 
+def test_duplicate_quote_with_deal_scoped_pricing_keeps_line_items(client, app, seeded):
+    """Regression for Chip's 2026-10-06 report: duplicating a quote that carries
+    deal-scoped pricing (percentage adjustment, manual price overrides, on-site
+    fill) must still copy every product line item. Only the deal-scoped values
+    reset per D82 — never the products themselves."""
+    with app.app_context():
+        source = _db.session.get(Quote, seeded["quote_id"])
+        source.price_adjustment_pct = 7.5
+        items = sorted(source.line_items, key=lambda li: li.sort_order)
+        items[0].specs_json = {**(items[0].specs_json or {}), "price_override": True}
+        _db.session.add(
+            QuoteLineItem(
+                quote_id=source.id,
+                product_type="on_site_fill",
+                description="Geotextile Bag Weight 12in Pipe 50 lb Fill - On-site Filling",
+                quantity=20,
+                unit_price=18.00,
+                line_total=360.00,
+                specs_json={"diameter": "12", "fill_weight_lb": "50", "price_override": True},
+                part_number="GTB-12-50-ONSITE",
+                sort_order=3,
+                on_site_label="River Crossing",
+                on_site_city="Tulsa",
+                on_site_state="OK",
+                on_site_price_source="manual",
+                on_site_priced_at=datetime.utcnow(),
+            )
+        )
+        _db.session.commit()
+
+    resp = _duplicate(client, seeded["quote_id"], customer_id=seeded["other_customer_id"])
+    assert resp.status_code == 302
+
+    with app.app_context():
+        new = _db.session.query(Quote).filter(Quote.id != seeded["quote_id"]).one()
+        copied = sorted(new.line_items, key=lambda li: li.sort_order)
+        assert [(li.product_type, li.description, float(li.quantity)) for li in copied] == [
+            ("sleeve", "12in sleeve", 10.0),
+            ("bag", "Denso bag", 4.0),
+            ("on_site_fill", "Geotextile Bag Weight 12in Pipe 50 lb Fill - On-site Filling", 20.0),
+        ]
+        # Customer-scoped pricing resets per D82: the invisible per-customer
+        # percentage must not follow the quote to another customer.
+        assert float(new.price_adjustment_pct or 0) == 0
+        # Job-scoped on-site fill data carries (same job, another bidder — K290),
+        # flagged for human confirmation.
+        on_site = copied[2]
+        assert float(on_site.unit_price) == 18.00
+        assert float(on_site.line_total) == 360.00
+        assert on_site.on_site_label == "River Crossing"
+        assert on_site.on_site_city == "Tulsa"
+        assert on_site.on_site_state == "OK"
+        assert on_site.specs_json.get("carried_price") is True
+        # Manual price overrides keep their stored base price on regular items.
+        assert float(copied[0].unit_price) == 25.00
+        assert copied[0].specs_json.get("price_override") is True
+        # The new quote's page still renders with every product on it.
+        page = client.get(f"/quotes/{new.id}")
+        assert page.status_code == 200
+        assert b"12in sleeve" in page.data
+        assert b"Denso bag" in page.data
+        assert b"On-site Filling" in page.data
+        assert b"copied from the duplicated quote" in page.data
+
+
 def test_duplicate_to_new_customer_name(client, app, seeded):
     resp = _duplicate(client, seeded["quote_id"], new_customer_name="Charlie Coatings")
     assert resp.status_code == 302
