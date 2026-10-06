@@ -163,6 +163,12 @@ def test_decode_clean_passes_on_clean_quote(app):
     assert _signal(quote, "decode_clean") == PASS
 
 
+def test_decode_clean_ignores_retired_carried_price_flag(app):
+    quote = _make_quote(_make_customer())
+    _add_line(quote, product_type="on_site_fill", specs={"carried_price": True})
+    assert _signal(quote, "decode_clean") == PASS
+
+
 def test_decode_clean_fails_on_tbd_marker(app):
     quote = _make_quote(_make_customer())
     _add_line(quote, description="Pricing TBD, contact sales", part_number=None)

@@ -220,15 +220,13 @@ def test_duplicate_quote_with_deal_scoped_pricing_keeps_line_items(client, app, 
         # Customer-scoped pricing resets per D82: the invisible per-customer
         # percentage must not follow the quote to another customer.
         assert float(new.price_adjustment_pct or 0) == 0
-        # Job-scoped on-site fill data carries (same job, another bidder — K290),
-        # flagged for human confirmation.
+        # Job-scoped on-site fill data carries (same job, another bidder — K290).
         on_site = copied[2]
         assert float(on_site.unit_price) == 18.00
         assert float(on_site.line_total) == 360.00
         assert on_site.on_site_label == "River Crossing"
         assert on_site.on_site_city == "Tulsa"
         assert on_site.on_site_state == "OK"
-        assert on_site.specs_json.get("carried_price") is True
         # Manual price overrides keep their stored base price on regular items.
         assert float(copied[0].unit_price) == 25.00
         assert copied[0].specs_json.get("price_override") is True
@@ -238,7 +236,7 @@ def test_duplicate_quote_with_deal_scoped_pricing_keeps_line_items(client, app, 
         assert b"12in sleeve" in page.data
         assert b"Denso bag" in page.data
         assert b"On-site Filling" in page.data
-        assert b"copied from the duplicated quote" in page.data
+        assert b"copied from the duplicated quote" not in page.data
 
 
 def test_duplicate_to_new_customer_name(client, app, seeded):

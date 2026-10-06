@@ -1160,7 +1160,6 @@ def _line_item_view(item: QuoteLineItem) -> dict:
         "customer_line_total": price_adjustments.line_prices(item.quote, item)[1] if item.quote else line_total,
         "auto_unit_price": _decimal_from_raw(specs.get("auto_unit_price")),
         "price_stale": bool(specs.get("price_stale")),
-        "carried_price": bool(specs.get("carried_price")),
         "shipping_breakdown": _shipping_breakdown_for_item(item),
     }
 
@@ -1734,12 +1733,6 @@ def quote_duplicate(quote_id: int):
 
             for item in _sorted_line_items(source):
                 copied = _copy_line_item(item, new_quote.id)
-                if copied.product_type == on_site_fill.TYPE and float(copied.unit_price or 0) > 0:
-                    # Duplicate re-quotes the same job to another bidder (K290),
-                    # so the local fill price and job site carry. The flag keeps
-                    # a confirm-this-job note on the line, and holds confidence
-                    # below auto-send, until a human saves the line.
-                    copied.specs_json = {**(copied.specs_json or {}), "carried_price": True}
                 db.session.add(copied)
             db.session.flush()
 
