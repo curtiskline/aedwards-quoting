@@ -7,6 +7,7 @@ from io import BytesIO
 import pytest
 from pypdf import PdfReader
 
+from app.confidence import PASS, compute_quote_confidence
 from app.extensions import db
 from app.models import PricingTable, Quote, QuoteLineItem, QuoteStatus, User
 from app.send_service import quote_line_items_snapshot
@@ -209,11 +210,9 @@ def test_recall_is_normalized_ordered_filtered_and_display_only(editor):
     )
 
 
-def test_duplicate_carries_fill_price_with_confirm_flag_and_revision_preserves_context(editor):
-    # T480 (Chip 10/6): duplicate re-quotes the same job to another bidder, so
-    # the local fill price and job site must carry — blanking them made the
-    # duplicate unusable. The carried_price flag keeps a visible confirm-note
-    # until a human saves the line.
+def test_duplicate_carries_fill_price_without_confirmation_and_revision_preserves_context(editor):
+    # Chip bids the same job to multiple customers: carry the local fill price
+    # and job site without requiring another confirmation or line save.
     app, client, qid = editor
     add(editor)
     response = client.post(f"/quotes/{qid}/duplicate", data={"new_customer_name": "Next customer"})
@@ -225,21 +224,16 @@ def test_duplicate_carries_fill_price_with_confirm_flag_and_revision_preserves_c
         assert copied.line_total == Decimal("6990.00")
         assert copied.on_site_city == "Baton Rouge" and copied.on_site_state == "LA"
         assert copied.on_site_label == "Louisiana river crossing"
-        assert copied.specs_json.get("carried_price") is True
+        source = db.session.query(QuoteLineItem).filter_by(quote_id=qid).one()
+        assert copied.specs_json == source.specs_json
+        assert copied.on_site_price_source == source.on_site_price_source
+        assert copied.on_site_priced_at == source.on_site_priced_at
         assert copied.quote.status != QuoteStatus.NEEDS_PRICING
-        copied_id = copied.id
+        _, components = compute_quote_confidence(copied.quote)
+        assert components["decode_clean"]["status"] == PASS
     page = client.get(f"/quotes/{new_id}")
-    assert b"copied from the duplicated quote" in page.data
-    # Saving the line confirms it: the flag and the note clear.
-    response = client.post(
-        f"/quotes/{new_id}/line-items/{copied_id}/update",
-        data=form(),
-    )
-    assert response.status_code == 200
-    with app.app_context():
-        confirmed = db.session.get(QuoteLineItem, copied_id)
-        assert confirmed.specs_json.get("carried_price") is None
-    assert b"copied from the duplicated quote" not in client.get(f"/quotes/{new_id}").data
+    assert page.status_code == 200
+    assert b"copied from the duplicated quote" not in page.data
     response = client.post(f"/quotes/{qid}/revise")
     assert response.status_code == 302
     revision_id = int(response.location.rsplit("/", 1)[1])

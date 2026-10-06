@@ -60,11 +60,6 @@
                   Manual price override{% if item.auto_unit_price %} — auto price is ${{ '%.2f'|format(item.auto_unit_price) }} (retype it to resume auto pricing){% endif %}
                 </div>
               {% endif %}
-              {% if item.carried_price %}
-                <div class="pricing-note-warn">
-                  Price and job site copied from the duplicated quote. Confirm they fit this job, then save the line.
-                </div>
-              {% endif %}
               {% if item.price_stale %}
                 <div class="pricing-note-critical">
                   Specs changed but the price was not recalculated — fill in every spec field to re-price this line.
