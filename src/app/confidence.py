@@ -133,6 +133,8 @@ def _signal_decode_clean(quote: Quote) -> tuple[str, dict]:
             reasons.append(f"{label}: TBD marker")
         if specs.get("price_stale"):
             reasons.append(f"{label}: price flagged stale")
+        if specs.get("carried_price"):
+            reasons.append(f"{label}: price carried from a duplicated quote, not yet confirmed")
         notes = str(specs.get("notes") or "")
         if "default" in notes.lower():
             reasons.append(f"{label}: defaults applied ({notes})")
