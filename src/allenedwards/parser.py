@@ -795,9 +795,9 @@ def _api_5l_designations(text: str) -> set[str]:
 def _resolve_item_grade(item_data: dict, source_text: str) -> int:
     """Enforce confirmed carrier-to-sleeve mappings over numeric LLM grades.
 
-    Prefer an item's raw spec for mixed-grade requests. If the model drops the
-    carrier designation, a single designation in the source email (including
-    extracted attachments) still controls. Never spread one grade across a
+    A single designation in the source email (including extracted attachments)
+    controls even if the model changes or drops it in the item's raw spec.
+    Use each item's spec for mixed-grade requests. Never spread one grade across a
     mixed-grade RFQ or override an explicitly requested A572 sleeve material.
     """
     model_grade = _parse_int(item_data.get("grade"))
@@ -808,7 +808,7 @@ def _resolve_item_grade(item_data: dict, source_text: str) -> int:
     if len(source_designations) == 1 and len(explicit_source_grades) == 1:
         # The customer supplied the sleeve material separately from the carrier.
         return int(next(iter(explicit_source_grades)))
-    if not designations and len(source_designations) == 1 and not explicit_source_grades:
+    if len(source_designations) == 1 and not explicit_source_grades:
         designations = source_designations
 
     if len(designations) == 1:

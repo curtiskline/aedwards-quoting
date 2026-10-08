@@ -64,8 +64,9 @@ def test_mixed_grade_request_keeps_each_item_mapping(tmp_path):
     assert [item.grade for item in rfq.items] == [50, 65]
 
 
-def test_source_grade_overrides_model_generated_a572_description(tmp_path):
-    rfq = parse_items(tmp_path, [sleeve("A572 GR65 sleeves", 65)], "Carrier pipe: API 5L X52")
+@pytest.mark.parametrize("description", ["A572 GR65 sleeves", "X70 sleeves", "X52 and X70 sleeves"])
+def test_source_grade_overrides_model_generated_description(tmp_path, description):
+    rfq = parse_items(tmp_path, [sleeve(description, 65)], "Carrier pipe: API 5L X52")
     assert rfq.items[0].grade == 50
 
 
