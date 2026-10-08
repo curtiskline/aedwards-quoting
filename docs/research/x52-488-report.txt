@@ -1,0 +1,148 @@
+Task 488: X52 material and quote impact
+Production audit: 2026-10-08, host 157.230.227.28.
+Evidence: x52-488-production-audit.json (original RFQ excerpts, saved specs,
+and immutable sent-version line snapshots).
+
+Customer exposure: 1 confirmed wrong quote reached a customer (KEAR 126-107),
+plus 6 additional GR65 quotes that cannot be ruled out from available evidence.
+Only 2 of those 6 were sent: Kline 126-004 and Sable 126-106. Thus the recorded
+customer-send exposure is 1 confirmed, with up to 2 additional unresolved cases.
+Across sent and unsent records, 4 confirmed affected quotes plus 6 unresolved.
+These counts are an evidence range, not a claim that only four wrong quotes exist.
+
+Ordered Sable work is unaffected
+Sable's actual PO SOC26089652 is against 126-105, not candidate 126-106.
+PO reference: Chip's Aug 28 forwarded Enverus OpenInvoice message, Gmail ID
+1a049e5358f64193, attached Allan Edwards quote 126-105.pdf (PM mailbox evidence;
+also recorded in allanedwards:I157).
+126-105 is inside the GR65 output set, but OUTSIDE the X52 defect set: its
+readable original Aug 25 RFQ expressly requests A572 GR65 on all six source
+specification rows, and contains no X52. For example:
+reg half sole, 24" ID, 318" wit, A572 GR65, 10' long, milled.
+Its saved/sent four sleeve lines also carry GR65. This was legitimately requested
+material. The only Sable work with an actual PO identified here is clean with
+respect to this bug. Production has no app customer_order row for 126-105;
+the off-system PO is why app-only order checks cannot establish no actual order.
+
+Confirmed customer exposure
+126-107 — KEAR Civil Corp — created 2026-08-27 13:41 UTC.
+Customer send: version 2, 2026-08-27 16:21 UTC, alan.menefee@kearcorp.com.
+Version 1 was sent to devin@918.software at 14:21 UTC (internal review).
+Original RFQ: Carbon Steel / ERW - API 5L- X52 grd. - 0.250" wall x 10.75" OD pipe.
+Exact sleeve description in the customer-sent version:
+Half Sole, 10-3/4" ID, 3/8" w/t, A572 GR65, 10' long. Backing Strip Included.
+
+After sending: no customer_order row, no acceptance_event through either quote
+version, no pick_list through an order, and no order_audit_log entry in prod.
+Only creation and the two sends appear in quote audit history. The application
+has no recorded acceptance, fabrication order or shipment. This does not prove
+that no activity occurred outside the application.
+
+Money (same dimensions, quantity and other lines; material grade alone changes):
+Affected line 285: five 10-foot pieces; saved weight 22.30 lb/ft.
+As sent: GR65 $3.25/lb, $724.75/piece, $3,623.75 line total.
+Reconstructed historical GR50 comparison: $3.10/lb, $691.30/piece,
+$3,456.50 line total. Excess quoted: $33.45/piece, $167.25 on the line.
+Whole quote subtotal: $28,023.75 as sent versus $27,856.50 reconstructed.
+The other four lines contribute $24,400.00 and are unaffected. No tax or price
+adjustment was saved. Direction: KEAR was quoted HIGHER by an estimated $167.25;
+this is a quote comparison, not evidence that KEAR paid an invoice.
+
+Historical-rate limitation: $3.10/lb is evidenced by nearby prod quote 126-104
+(created Aug 25, 3/8-inch GR50, saved weight 28.81 lb/ft and $893.11/piece),
+and quote 126-102 (Aug 14, identical 10.75-inch GR50 sleeves at $691.30/piece).
+The database does not retain a versioned pricing table for Aug 27, so the exact
+Aug 27 GR50 rate cannot be independently certified. Rates were later edited.
+Today's GR50 rate is $3.31/lb and today's GR65 rate is $3.48/lb (updated Sep 24):
+today's same-spec comparison is $738.13 versus $776.04 per piece, a $189.55
+GR65 premium for five pieces. Today's GR50 value should not be subtracted from
+the old $724.75 unit price to claim an undercharge; that mixes pricing dates.
+
+Other X52/GR65 findings
+126-128 — Sunbelt Supply — created 2026-09-24 20:03 UTC — IN_REVIEW, never sent.
+Original RFQ explicitly lists 8-, 10- and 16-inch X52 requests. All three saved
+sleeve lines have GR65 (371, 372, 373). No quote versions/sent timestamps.
+126-036 — 918 Software — created 2026-06-29 15:28 UTC — IN_REVIEW, never sent.
+126-037 — 918 Software — created 2026-06-29 16:48 UTC — IN_REVIEW, never sent.
+Both test RFQs say Grade: X52; the affected 8-5/8-inch lines describe A572 GR65.
+These older records lack a saved grade in specs_json; the description provides
+the GR65 evidence. The other sleeve on each quote is GR50. No sent versions.
+
+X52 requests corrected before customer send
+126-129 — Whitco Supply — created/sent Sep 25 — saved and sent grade 50.
+Parsed intake notes explicitly say Grade 52 (API 5L X-52) mapped to A572 GR65
+per conversion rules; sent version 1 instead has GR50. The original RFQ text
+does not contain literal X52, so this finding rests on parsed notes plus the
+sent-version evidence. The mismatch is evidence of correction before sending.
+126-153 — Plains All American Pipeline — created/sent Oct 8 — saved and sent
+grade 50 on both sleeves. Original RFQ explicitly requests X52 carrier pipe.
+These corrections show the intake output has required human review. Plains is
+from today and plausibly prompted Chip's Oct 8 email; that causation is an
+inference, not a fact established by the quote records.
+
+X56/X60 history
+No genuine X56 or X60 carrier designation was found in the accessible original
+RFQs, stored supported attachments, parsed notes or sent snapshots examined.
+Quote 126-109 had a text-search hit for x 60-foot long construction office in
+a scope-of-work PDF; it is a dimension, not X60 pipe, and is excluded.
+There is therefore no observed historical GR50/GR65 behavior for X56/X60 in this
+audited corpus to resolve Chip's pending boundary question.
+
+Coverage and limits
+Confirmed affected: 4 quotes (2 real customer quotes and 2 internal test quotes),
+of which 1 was sent to a real customer with GR65. Unverifiable candidates: 6
+additional quotes have GR65 output and unavailable original source text.
+The six cannot be asserted to be X52 requests, nor ruled out:
+126-004 — Kline Oilfield — Apr 9 — SENT — 2 current GR65 lines;
+          no GR65 sent snapshot is available to establish exactly what went out.
+126-005 — Alaska Integrity Group — Apr 13 — ARCHIVED — 5 current GR65 lines.
+126-012 — ATCO Pipelines — Apr 13 — IN_REVIEW — 7 current GR65 lines.
+126-015 — Enbridge — Apr 13 — IN_REVIEW — 1 current GR65 line.
+126-016 — Kinder Morgan — Apr 13 — IN_REVIEW — 2 current GR65 lines.
+126-106 — Sable Offshore — Aug 25 — SENT — 4 GR65 lines in a sent snapshot.
+The remaining 48 unavailable-source quotes have no current GR65 lines or saved
+GR65 sent snapshots. This is a present-record screen; overwritten historical
+lines without snapshots cannot be recovered from it. Details are in the JSON.
+The six cases are unresolvable from currently available evidence. Scoped recovery
+for the two sent candidates failed: Devin's mailbox contains forwarded 126-105
+PDFs and the Sable PO, but not the original 126-004 or 126-106 RFQs (PM searched
+quote numbers, customers and surrounding threads). Those requests went to AE's
+monitored inbox. 126-106 is a manual copy without a stored source-email ID; the
+similarity to 126-105's lines and notes is insufficient to certify its source.
+
+160 production quote records examined, including soft-deleted records.
+101 unique original Outlook messages read successfully via GET, covering 106
+quote records, plus a focused source/specification recheck of Sable 126-105.
+43 quote records have legacy Gmail IDs or no Graph source ID;
+11 originals returned 404. No source RFQ body is persisted in the quote table:
+quote.email_message is outbound customization, not inbound source text.
+Stored supported attachment text and parsed notes were checked even when the
+original message was unavailable. The unavailable-source list is in the JSON.
+Consequently the report identifies known exposure, not a guarantee that all
+historical exposure has been recovered. No production data was written, deleted
+or replayed; no mail was marked read, sent or moved; nobody was contacted.
+
+Fix policy
+Hard enforcement: GR B/X42/X46/X52 -> 50; X65/X70 -> 65.
+Pending Chip confirmation: X56/X60 retain the model's grade (missing grade
+defaults to 50); disagreements with the prompt's GR65 advice are logged.
+Enforcement reads item specs and source text, including extracted attachments,
+and overrides an incorrect numeric model grade for confirmed designations.
+When the source gives one carrier designation, it also overrides a conflicting
+model-generated designation in the item description.
+Explicitly requested A572 sleeve material remains authoritative; mixed-grade
+RFQs are handled per item. Dimensions such as x 60-foot do not count as grades.
+
+Verification
+Final full local suite: 914 passed, 14 skipped. Ruff and git diff --check pass.
+Negative verification ran after implementation commits, with an exact file
+backup restored after each uniquely targeted mutation. Restoring pre-fix numeric
+decoding caused 92 assertion failures; forcing all grades to 50 caused 29.
+Every one of the 100 new test cases failed under at least one mutation; neither
+run had collection/import errors. The restored implementation passes.
+Deployed to staging 134.122.29.15. All 100 regression cases passed against the
+installed package there. /healthz returned {"status":"ok"}; web service active;
+monitor inactive; ENABLE_MONITOR=false and EMAIL_DELIVERY_ENABLED=false.
+Local parser, staging source parser and installed staging parser share SHA256:
+82ae82e61a886ddc42bbd93b2711452d88d99661701363e40d968da836ccfd37.
+Production promotion belongs to PM; no fix was deployed to production.
