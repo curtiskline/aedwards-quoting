@@ -1,0 +1,1460 @@
+{
+  "queried_at_utc": "2026-10-08T17:51:12.961932+00:00",
+  "host": "157.230.227.28",
+  "database_mode": "SET TRANSACTION READ ONLY; SELECT only; original mail fetched with GET only",
+  "quotes_scanned": 160,
+  "sources_read": 101,
+  "source_unavailable": [
+    {
+      "quote_number": "126-001",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-002",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-003",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-004",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-005",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-006",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-007",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-008",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-009",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-010",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-011",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-012",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-013",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-014",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-015",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-016",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-017",
+      "error": "HTTPStatusError",
+      "status": 404
+    },
+    {
+      "quote_number": "126-018",
+      "error": "HTTPStatusError",
+      "status": 404
+    },
+    {
+      "quote_number": "126-019",
+      "error": "HTTPStatusError",
+      "status": 404
+    },
+    {
+      "quote_number": "126-020",
+      "error": "HTTPStatusError",
+      "status": 404
+    },
+    {
+      "quote_number": "126-022",
+      "error": "HTTPStatusError",
+      "status": 404
+    },
+    {
+      "quote_number": "126-023",
+      "error": "HTTPStatusError",
+      "status": 404
+    },
+    {
+      "quote_number": "126-024",
+      "error": "HTTPStatusError",
+      "status": 404
+    },
+    {
+      "quote_number": "126-025",
+      "error": "HTTPStatusError",
+      "status": 404
+    },
+    {
+      "quote_number": "126-026",
+      "error": "HTTPStatusError",
+      "status": 404
+    },
+    {
+      "quote_number": "126-027",
+      "error": "HTTPStatusError",
+      "status": 404
+    },
+    {
+      "quote_number": "126-028",
+      "error": "HTTPStatusError",
+      "status": 404
+    },
+    {
+      "quote_number": "126-039",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-040",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-063",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-074-R1",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-079",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-081",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-088",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-089",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-097",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-106",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-116",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-121",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-132",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-133",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-144",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-145",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-146",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-147",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-148",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-149",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-150",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-151",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-152",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-154",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-155",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-156",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    },
+    {
+      "quote_number": "126-157",
+      "error": "No Graph source ID (legacy Gmail or manual quote)"
+    }
+  ],
+  "matches": [
+    {
+      "id": 36,
+      "quote_number": "126-036",
+      "customer": "918 Software",
+      "created_at": "2026-06-29 15:28:14.419561",
+      "status": "IN_REVIEW",
+      "deleted_at": null,
+      "subject": "RFQ - Pipeline Sleeve Repair - Test Quote Request",
+      "source_received_at": "2026-06-29T15:03:40Z",
+      "evidence": [
+        {
+          "origin": "original_rfq",
+          "text": "- Grade: X52"
+        }
+      ],
+      "parsed_notes_evidence": [],
+      "lines": [
+        {
+          "id": 109,
+          "product_type": "sleeve",
+          "description": "Half Sole, 8-5/8\" ID, 0.322\" w/t, A572 GR65, 1' long. Backing Strip Included.",
+          "quantity": "4.00",
+          "unit_price": "45.58",
+          "line_total": "182.32",
+          "specs_json": {
+            "weight_per_ft": "15.40",
+            "price_per_lb": "2.96"
+          }
+        },
+        {
+          "id": 110,
+          "product_type": "sleeve",
+          "description": "Half Sole, 6-5/8\" ID, 0.28\" w/t, A572 GR50, 1' long. Backing Strip Included.",
+          "quantity": "6.00",
+          "unit_price": "31.09",
+          "line_total": "186.54",
+          "specs_json": {
+            "weight_per_ft": "10.33",
+            "price_per_lb": "3.01"
+          }
+        }
+      ],
+      "versions": []
+    },
+    {
+      "id": 37,
+      "quote_number": "126-037",
+      "customer": "918 Software",
+      "created_at": "2026-06-29 16:48:37.595614",
+      "status": "IN_REVIEW",
+      "deleted_at": null,
+      "subject": "RFQ - Pipeline Sleeve Repair - Fraction Verification Test",
+      "source_received_at": "2026-06-29T16:44:09Z",
+      "evidence": [
+        {
+          "origin": "original_rfq",
+          "text": "- Grade: X52"
+        }
+      ],
+      "parsed_notes_evidence": [],
+      "lines": [
+        {
+          "id": 111,
+          "product_type": "sleeve",
+          "description": "Half Sole, 8-5/8\" ID, 5/16\" w/t, A572 GR65, 1' long. Backing Strip Included.",
+          "quantity": "4.00",
+          "unit_price": "45.58",
+          "line_total": "182.32",
+          "specs_json": {
+            "weight_per_ft": "15.40",
+            "price_per_lb": "2.96"
+          }
+        },
+        {
+          "id": 112,
+          "product_type": "sleeve",
+          "description": "Half Sole, 6-5/8\" ID, 9/32\" w/t, A572 GR50, 0.8' long. Backing Strip Included.",
+          "quantity": "6.00",
+          "unit_price": "25.90",
+          "line_total": "155.40",
+          "specs_json": {
+            "weight_per_ft": "10.33",
+            "price_per_lb": "3.01"
+          }
+        }
+      ],
+      "versions": []
+    },
+    {
+      "id": 116,
+      "quote_number": "126-107",
+      "customer": "KEAR Civil Corp",
+      "created_at": "2026-08-27 13:41:13.917547",
+      "status": "SENT",
+      "deleted_at": null,
+      "subject": "FW: chip - Quote needed - Steel Half Sole Sleeves - KEAR Job 1346-99-0022 ",
+      "source_received_at": "2026-08-27T13:37:16Z",
+      "evidence": [
+        {
+          "origin": "original_rfq",
+          "text": "Carbon Steel / ERW - API 5L- X52 grd. - 0.250\" wall x 10.75\" OD pipe."
+        }
+      ],
+      "parsed_notes_evidence": [
+        "Customer requests submittal/approval documents for both steel half sole sleeves and composite Time Warp Wrap System. MTRs required. Pipeline: Carbon Steel ERW API 5L X52, 0.250\" wall x 10.75\" OD, Jet A Fuel service, MOP 650 psi, Operating Pressure 460 psi. Job site in Phoenix, AZ (Swissport Fuel AFFC 10in Transfer Line)."
+      ],
+      "lines": [
+        {
+          "id": 290,
+          "product_type": "sleeve",
+          "description": "Supervisor cost Per Day",
+          "quantity": "1.00",
+          "unit_price": "1950.00",
+          "line_total": "1950.00",
+          "specs_json": {}
+        },
+        {
+          "id": 287,
+          "product_type": "accessory",
+          "description": "10' ft. - 0.375\" x 4\" w - Flat Bar - broke in the center longitudinally to fit contour of pipe",
+          "quantity": "10.00",
+          "unit_price": "145.00",
+          "line_total": "1450.00",
+          "specs_json": {
+            "notes": "Pricing TBD, contact sales",
+            "milling": false,
+            "painting": false,
+            "price_override": true,
+            "part_number_override": null
+          }
+        },
+        {
+          "id": 285,
+          "product_type": "sleeve",
+          "description": "Half Sole, 10-3/4\" ID, 3/8\" w/t, A572 GR65, 10' long. Backing Strip Included.",
+          "quantity": "5.00",
+          "unit_price": "724.75",
+          "line_total": "3623.75",
+          "specs_json": {
+            "diameter": "10.75",
+            "wall_thickness": "0.375",
+            "grade": "65",
+            "length_ft": "10.0",
+            "milling": false,
+            "painting": false,
+            "weight_per_ft": "22.30",
+            "price_per_lb": "3.25",
+            "notes": "Priced as 1 bundle (5 pcs / 50 ft)"
+          }
+        },
+        {
+          "id": 288,
+          "product_type": "composite",
+          "description": "Carbon Fiber (15 ft per roll) Resin Isolation Layer included",
+          "quantity": "20.00",
+          "unit_price": "750.00",
+          "line_total": "15000.00",
+          "specs_json": {
+            "part_number_override": "TimeWarp",
+            "milling": false,
+            "painting": false,
+            "price_override": true
+          }
+        },
+        {
+          "id": 289,
+          "product_type": "service",
+          "description": "(1) Certified Trainer for the application of the Time Warp Wrap System",
+          "quantity": "1.00",
+          "unit_price": "6000.00",
+          "line_total": "6000.00",
+          "specs_json": {
+            "notes": "Pricing TBD, contact sales",
+            "part_number_override": "Kickoff Training",
+            "milling": false,
+            "painting": false,
+            "price_override": true
+          }
+        }
+      ],
+      "versions": [
+        {
+          "version_number": 1,
+          "sent_at": "2026-08-27 14:21:29.879813",
+          "sent_to": "devin@918.software",
+          "line_items_snapshot": [
+            {
+              "id": 290,
+              "product_type": "sleeve",
+              "description": "Supervisor cost Per Day",
+              "quantity": "1.00",
+              "unit_price": "1950.00",
+              "line_total": "1950.00",
+              "specs_json": {},
+              "part_number": null,
+              "sort_order": 5
+            },
+            {
+              "id": 285,
+              "product_type": "sleeve",
+              "description": "Half Sole, 10-3/4\" ID, 3/8\" w/t, A572 GR65, 10' long. Backing Strip Included.",
+              "quantity": "5.00",
+              "unit_price": "724.75",
+              "line_total": "3623.75",
+              "specs_json": {
+                "diameter": "10.75",
+                "wall_thickness": "0.375",
+                "grade": "65",
+                "length_ft": "10.0",
+                "milling": false,
+                "painting": false,
+                "weight_per_ft": "22.30",
+                "price_per_lb": "3.25",
+                "notes": "Priced as 1 bundle (5 pcs / 50 ft)"
+              },
+              "part_number": "S-10.34-38-65-10",
+              "sort_order": 1
+            },
+            {
+              "id": 287,
+              "product_type": "accessory",
+              "description": "10' ft. - 0.375\" x 4\" w - Flat Bar - broke in the center longitudinally to fit contour of pipe",
+              "quantity": "10.00",
+              "unit_price": "145.00",
+              "line_total": "1450.00",
+              "specs_json": {
+                "notes": "Pricing TBD, contact sales",
+                "milling": false,
+                "painting": false,
+                "price_override": true,
+                "part_number_override": null
+              },
+              "part_number": null,
+              "sort_order": 2
+            },
+            {
+              "id": 288,
+              "product_type": "composite",
+              "description": "Carbon Fiber (15 ft per roll) Resin Isolation Layer included",
+              "quantity": "20.00",
+              "unit_price": "750.00",
+              "line_total": "15000.00",
+              "specs_json": {
+                "part_number_override": "TimeWarp",
+                "milling": false,
+                "painting": false,
+                "price_override": true
+              },
+              "part_number": "TimeWarp",
+              "sort_order": 3
+            },
+            {
+              "id": 289,
+              "product_type": "service",
+              "description": "(1) Certified Trainer for the application of the Time Warp Wrap System",
+              "quantity": "1.00",
+              "unit_price": "6000.00",
+              "line_total": "6000.00",
+              "specs_json": {
+                "notes": "Pricing TBD, contact sales",
+                "part_number_override": "Kickoff Training",
+                "milling": false,
+                "painting": false,
+                "price_override": true
+              },
+              "part_number": "Kickoff Training",
+              "sort_order": 4
+            }
+          ]
+        },
+        {
+          "version_number": 2,
+          "sent_at": "2026-08-27 16:21:18.312056",
+          "sent_to": "alan.menefee@kearcorp.com",
+          "line_items_snapshot": [
+            {
+              "id": 290,
+              "product_type": "sleeve",
+              "description": "Supervisor cost Per Day",
+              "quantity": "1.00",
+              "unit_price": "1950.00",
+              "line_total": "1950.00",
+              "specs_json": {},
+              "part_number": null,
+              "sort_order": 5
+            },
+            {
+              "id": 285,
+              "product_type": "sleeve",
+              "description": "Half Sole, 10-3/4\" ID, 3/8\" w/t, A572 GR65, 10' long. Backing Strip Included.",
+              "quantity": "5.00",
+              "unit_price": "724.75",
+              "line_total": "3623.75",
+              "specs_json": {
+                "diameter": "10.75",
+                "wall_thickness": "0.375",
+                "grade": "65",
+                "length_ft": "10.0",
+                "milling": false,
+                "painting": false,
+                "weight_per_ft": "22.30",
+                "price_per_lb": "3.25",
+                "notes": "Priced as 1 bundle (5 pcs / 50 ft)"
+              },
+              "part_number": "S-10.34-38-65-10",
+              "sort_order": 1
+            },
+            {
+              "id": 287,
+              "product_type": "accessory",
+              "description": "10' ft. - 0.375\" x 4\" w - Flat Bar - broke in the center longitudinally to fit contour of pipe",
+              "quantity": "10.00",
+              "unit_price": "145.00",
+              "line_total": "1450.00",
+              "specs_json": {
+                "notes": "Pricing TBD, contact sales",
+                "milling": false,
+                "painting": false,
+                "price_override": true,
+                "part_number_override": null
+              },
+              "part_number": null,
+              "sort_order": 2
+            },
+            {
+              "id": 288,
+              "product_type": "composite",
+              "description": "Carbon Fiber (15 ft per roll) Resin Isolation Layer included",
+              "quantity": "20.00",
+              "unit_price": "750.00",
+              "line_total": "15000.00",
+              "specs_json": {
+                "part_number_override": "TimeWarp",
+                "milling": false,
+                "painting": false,
+                "price_override": true
+              },
+              "part_number": "TimeWarp",
+              "sort_order": 3
+            },
+            {
+              "id": 289,
+              "product_type": "service",
+              "description": "(1) Certified Trainer for the application of the Time Warp Wrap System",
+              "quantity": "1.00",
+              "unit_price": "6000.00",
+              "line_total": "6000.00",
+              "specs_json": {
+                "notes": "Pricing TBD, contact sales",
+                "part_number_override": "Kickoff Training",
+                "milling": false,
+                "painting": false,
+                "price_override": true
+              },
+              "part_number": "Kickoff Training",
+              "sort_order": 4
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 126,
+      "quote_number": "126-109",
+      "customer": "U.S. Pipeline",
+      "created_at": "2026-09-01 22:23:43.178038",
+      "status": "IN_REVIEW",
+      "deleted_at": null,
+      "subject": "FW: 2026-047 Boardwalk Texas Gateway Pipeline Construction - Sandbags RFQ",
+      "source_received_at": "2026-09-01T22:19:09Z",
+      "evidence": [
+        {
+          "origin": "16361-BWP-PL-99-SW-CN-001_20260811_Exh-A-SOW_Rev.1.pdf",
+          "text": "3.1. Furnish, erect, and maintain one (1) 36-foot wide x 60-foot long construction office (triple wide"
+        }
+      ],
+      "parsed_notes_evidence": [],
+      "lines": [
+        {
+          "id": 305,
+          "product_type": "bag",
+          "description": "Geotextile Bag, GTW 30-36, 36\" pipe",
+          "quantity": "30.00",
+          "unit_price": "139.50",
+          "line_total": "4185.00",
+          "specs_json": {
+            "diameter": "36.0",
+            "notes": "1 pcs rounded to 1 pallet (30 pcs)"
+          }
+        },
+        {
+          "id": 306,
+          "product_type": "bag",
+          "description": "Geotextile Bag, GTW 42-48, 42\" pipe",
+          "quantity": "21.00",
+          "unit_price": "192.85",
+          "line_total": "4049.85",
+          "specs_json": {
+            "diameter": "42.0",
+            "notes": "1 pcs rounded to 1 pallet (21 pcs)"
+          }
+        }
+      ],
+      "versions": []
+    },
+    {
+      "id": 150,
+      "quote_number": "126-128",
+      "customer": "Sunbelt Supply",
+      "created_at": "2026-09-24 20:03:18.909316",
+      "status": "IN_REVIEW",
+      "deleted_at": null,
+      "subject": "FW: Website Message Received",
+      "source_received_at": "2026-09-24T19:58:25Z",
+      "evidence": [
+        {
+          "origin": "original_rfq",
+          "text": "8\u201d \u2013 standard wall thickness X52"
+        },
+        {
+          "origin": "original_rfq",
+          "text": "10\u201d - standard wall thickness X52"
+        },
+        {
+          "origin": "original_rfq",
+          "text": "16\u201d - standard wall thickness X52"
+        }
+      ],
+      "parsed_notes_evidence": [],
+      "lines": [
+        {
+          "id": 371,
+          "product_type": "sleeve",
+          "description": "Half Sole, 8-5/8\" ID, 1/4\" w/t, A572 GR65, 10' long. Backing Strip Included.",
+          "quantity": "5.00",
+          "unit_price": "597.93",
+          "line_total": "2989.65",
+          "specs_json": {
+            "diameter": "8.625",
+            "wall_thickness": "0.25",
+            "grade": "65",
+            "length_ft": "10.0",
+            "milling": false,
+            "painting": false,
+            "weight_per_ft": "11.86",
+            "price_per_lb": "4.62",
+            "notes": "Priced as 1 bundle (5 pcs / 50 ft)",
+            "auto_unit_price": "547.93",
+            "part_number_override": "S-8.58-38-50-10"
+          }
+        },
+        {
+          "id": 373,
+          "product_type": "sleeve",
+          "description": "Half Sole, 16\" ID, 1/4\" w/t, A572 GR65, 10' long (Milled). Backing Strip Included.",
+          "quantity": "5.00",
+          "unit_price": "1053.00",
+          "line_total": "5265.00",
+          "specs_json": {
+            "diameter": "16.0",
+            "wall_thickness": "0.25",
+            "grade": "65",
+            "length_ft": "10.0",
+            "milling": true,
+            "painting": false,
+            "weight_per_ft": "21.71",
+            "price_per_lb": "4.62",
+            "notes": "Priced as 1 bundle (5 pcs / 50 ft)",
+            "auto_unit_price": "1053.00"
+          }
+        },
+        {
+          "id": 372,
+          "product_type": "sleeve",
+          "description": "Half Sole, 10-3/4\" ID, 1/4\" w/t, A572 GR65, 10' long (Milled). Backing Strip Included.",
+          "quantity": "5.00",
+          "unit_price": "729.14",
+          "line_total": "3645.70",
+          "specs_json": {
+            "diameter": "10.75",
+            "wall_thickness": "0.25",
+            "grade": "65",
+            "length_ft": "10.0",
+            "milling": true,
+            "painting": false,
+            "weight_per_ft": "14.70",
+            "price_per_lb": "4.62",
+            "notes": "Priced as 1 bundle (5 pcs / 50 ft)",
+            "auto_unit_price": "729.14"
+          }
+        }
+      ],
+      "versions": []
+    },
+    {
+      "id": 151,
+      "quote_number": "126-129",
+      "customer": "Whitco Supply",
+      "created_at": "2026-09-25 21:35:19.767282",
+      "status": "SENT",
+      "deleted_at": null,
+      "subject": "FW: Checking in",
+      "source_received_at": "2026-09-25T21:30:55Z",
+      "evidence": [],
+      "parsed_notes_evidence": [
+        "Forwarded by John Galt (Allan Edwards internal). Original request from Kyle Boudreaux at Whitco Supply. Grade 52 (API 5L X-52) mapped to A572 GR65 per conversion rules."
+      ],
+      "lines": [
+        {
+          "id": 375,
+          "product_type": "sleeve",
+          "description": "Half Sole, 16\" ID, 3/8\" w/t, A572 GR50, 10' long. Backing Strip Included.",
+          "quantity": "5.00",
+          "unit_price": "1086.34",
+          "line_total": "5431.70",
+          "specs_json": {
+            "diameter": "16.0",
+            "wall_thickness": "0.375",
+            "grade": "50",
+            "length_ft": "10.0",
+            "milling": false,
+            "painting": false,
+            "weight_per_ft": "32.82",
+            "price_per_lb": "3.31",
+            "notes": "Priced as 1 bundle (5 pcs / 50 ft)",
+            "part_number_override": "S-16-38-50-10",
+            "auto_unit_price": "1086.34"
+          }
+        }
+      ],
+      "versions": [
+        {
+          "version_number": 1,
+          "sent_at": "2026-09-25 21:39:22.966200",
+          "sent_to": "kyle@whitcosupply.com",
+          "line_items_snapshot": [
+            {
+              "id": 375,
+              "product_type": "sleeve",
+              "description": "Half Sole, 16\" ID, 3/8\" w/t, A572 GR50, 10' long. Backing Strip Included.",
+              "quantity": "5.00",
+              "unit_price": "1086.34",
+              "line_total": "5431.70",
+              "specs_json": {
+                "diameter": "16.0",
+                "wall_thickness": "0.375",
+                "grade": "50",
+                "length_ft": "10.0",
+                "milling": false,
+                "painting": false,
+                "weight_per_ft": "32.82",
+                "price_per_lb": "3.31",
+                "notes": "Priced as 1 bundle (5 pcs / 50 ft)",
+                "part_number_override": "S-16-38-50-10",
+                "auto_unit_price": "1086.34"
+              },
+              "part_number": "S-16-38-50-10",
+              "sort_order": 1
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 179,
+      "quote_number": "126-153",
+      "customer": "Plains All American Pipeline",
+      "created_at": "2026-10-08 17:06:13.593569",
+      "status": "SENT",
+      "deleted_at": null,
+      "subject": "Fw: Quote for 8\" full encirclement sleeves",
+      "source_received_at": "2026-10-08T17:05:42Z",
+      "evidence": [
+        {
+          "origin": "original_rfq",
+          "text": "I need a quote and availabilty for 100\u2019 of 8\u201d full encirclement sleeves please. This will be going on 8.625\u201d .322WT X52 pipe. Thanks."
+        }
+      ],
+      "parsed_notes_evidence": [
+        "Customer needs quote and availability. Carrier pipe: 8.625\" OD, 0.322\" WT, API 5L X52."
+      ],
+      "lines": [
+        {
+          "id": 468,
+          "product_type": "sleeve",
+          "description": "Half Sole, 8-5/8\" ID, 5/16\" w/t, A572 GR50, 10' long. Backing Strip Included.",
+          "quantity": "10.00",
+          "unit_price": "573.31",
+          "line_total": "5733.10",
+          "specs_json": {
+            "diameter": "8.625",
+            "wall_thickness": ".3125",
+            "grade": "50",
+            "length_ft": "10.0",
+            "milling": false,
+            "painting": false,
+            "weight_per_ft": "14.93",
+            "price_per_lb": "3.84",
+            "auto_unit_price": "573.31"
+          }
+        },
+        {
+          "id": 487,
+          "product_type": "sleeve",
+          "description": "Half Sole, 8-5/8\" ID, 3/8\" w/t, A572 GR50, 10' long. Backing Strip Included.",
+          "quantity": "10.00",
+          "unit_price": "597.12",
+          "line_total": "5971.20",
+          "specs_json": {
+            "length_ft": "10.0",
+            "milling": false,
+            "painting": false,
+            "diameter": "8.625",
+            "grade": "50",
+            "wall_thickness": ".375",
+            "auto_unit_price": "597.12",
+            "weight_per_ft": "18.04",
+            "price_per_lb": "3.31"
+          }
+        },
+        {
+          "id": 489,
+          "product_type": "shipping",
+          "description": "Auto-calculated shipping & handling",
+          "quantity": "548.00",
+          "unit_price": "4.90",
+          "line_total": "2685.20",
+          "specs_json": {
+            "manual_override": true,
+            "auto_calculated_shipping": false,
+            "milling": false,
+            "painting": false,
+            "price_override": true
+          }
+        }
+      ],
+      "versions": [
+        {
+          "version_number": 1,
+          "sent_at": "2026-10-08 17:42:37.196250",
+          "sent_to": "Paul.Remmers@plains.com",
+          "line_items_snapshot": [
+            {
+              "id": 468,
+              "product_type": "sleeve",
+              "description": "Half Sole, 8-5/8\" ID, 5/16\" w/t, A572 GR50, 10' long. Backing Strip Included.",
+              "quantity": "10.00",
+              "unit_price": "573.31",
+              "line_total": "5733.10",
+              "specs_json": {
+                "diameter": "8.625",
+                "wall_thickness": ".3125",
+                "grade": "50",
+                "length_ft": "10.0",
+                "milling": false,
+                "painting": false,
+                "weight_per_ft": "14.93",
+                "price_per_lb": "3.84",
+                "auto_unit_price": "573.31"
+              },
+              "part_number": "S-8.58-516-50-10",
+              "sort_order": 1
+            },
+            {
+              "id": 487,
+              "product_type": "sleeve",
+              "description": "Half Sole, 8-5/8\" ID, 3/8\" w/t, A572 GR50, 10' long. Backing Strip Included.",
+              "quantity": "10.00",
+              "unit_price": "597.12",
+              "line_total": "5971.20",
+              "specs_json": {
+                "length_ft": "10.0",
+                "milling": false,
+                "painting": false,
+                "diameter": "8.625",
+                "grade": "50",
+                "wall_thickness": ".375",
+                "auto_unit_price": "597.12",
+                "weight_per_ft": "18.04",
+                "price_per_lb": "3.31"
+              },
+              "part_number": "S-8.58-38-50-10",
+              "sort_order": 2
+            },
+            {
+              "id": 489,
+              "product_type": "shipping",
+              "description": "Auto-calculated shipping & handling",
+              "quantity": "548.00",
+              "unit_price": "4.90",
+              "line_total": "2685.20",
+              "specs_json": {
+                "manual_override": true,
+                "auto_calculated_shipping": false,
+                "milling": false,
+                "painting": false,
+                "price_override": true
+              },
+              "part_number": null,
+              "sort_order": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "audit_notes": [
+    "Five rate-limited original-message reads were retried sequentially and succeeded. None mentioned X52/X56/X60.",
+    "126-109 is a false positive: construction-office dimension x 60-foot, not a carrier grade. Excluded from material-impact findings."
+  ],
+  "unverifiable_gr65_quotes": [
+    {
+      "id": 4,
+      "quote_number": "126-004",
+      "created_at": "2026-04-09 22:48:31.213289",
+      "status": "SENT",
+      "deleted_at": null,
+      "customer": "Kline Oilfield",
+      "current_gr65_lines": [
+        {
+          "id": 24,
+          "description": "Oversleeve, 27.25\" ID, 5/8\" w/t, A572 GR65, 40.0' long",
+          "specs_json": {
+            "weight_per_ft": "93.12",
+            "price_per_lb": "2.62"
+          }
+        },
+        {
+          "id": 25,
+          "description": "Oversleeve, 37.25\" ID, 5/8\" w/t, A572 GR65, 40.0' long",
+          "specs_json": {
+            "weight_per_ft": "126.53",
+            "price_per_lb": "2.62"
+          }
+        }
+      ],
+      "sent_gr65_versions": [],
+      "sent_versions": [
+        {
+          "version_number": 1,
+          "sent_at": "2026-04-13 17:24:49.128990",
+          "sent_to": "curtis@klinemail.com"
+        },
+        {
+          "version_number": 2,
+          "sent_at": "2026-04-13 17:28:10.111582",
+          "sent_to": "curtis@klinemail.com"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "quote_number": "126-005",
+      "created_at": "2026-04-13 16:24:31.892023",
+      "status": "ARCHIVED",
+      "deleted_at": null,
+      "customer": "Alaska Integrity Group",
+      "current_gr65_lines": [
+        {
+          "id": 27,
+          "description": "reg half sole, 10-3/4\" ID, 3/8\" w/t, A572 GR65, 10' long (Milled). Backing Strip Included.",
+          "specs_json": {
+            "weight_per_ft": "22.30",
+            "price_per_lb": "2.75"
+          }
+        },
+        {
+          "id": 28,
+          "description": "reg half sole, 12-3/4\" ID, 1/4\" w/t, A572 GR65, 10' long (Milled). Backing Strip Included.",
+          "specs_json": {
+            "weight_per_ft": "17.37",
+            "price_per_lb": "3.11"
+          }
+        },
+        {
+          "id": 29,
+          "description": "reg half sole, 12-3/4\" ID, 1/2\" w/t, A572 GR65, 10' long (Milled). Backing Strip Included.",
+          "specs_json": {
+            "weight_per_ft": "35.41",
+            "price_per_lb": "2.69"
+          }
+        },
+        {
+          "id": 30,
+          "description": "reg half sole, 16\" ID, 1/2\" w/t, A572 GR65, 10' long (Milled). Backing Strip Included.",
+          "specs_json": {
+            "weight_per_ft": "44.10",
+            "price_per_lb": "2.69"
+          }
+        },
+        {
+          "id": 31,
+          "description": "reg half sole, 20\" ID, 3/8\" w/t, A572 GR65, 10' long (Milled). Backing Strip Included.",
+          "specs_json": {
+            "weight_per_ft": "40.84",
+            "price_per_lb": "2.75"
+          }
+        }
+      ],
+      "sent_gr65_versions": [],
+      "sent_versions": []
+    },
+    {
+      "id": 12,
+      "quote_number": "126-012",
+      "created_at": "2026-04-13 16:51:08.862244",
+      "status": "IN_REVIEW",
+      "deleted_at": null,
+      "customer": "ATCO Pipelines",
+      "current_gr65_lines": [
+        {
+          "id": 34,
+          "description": "Half Sole, 3.5\" ID, 1/4\" w/t, A572 GR65, 40' long. Backing Strip Included.",
+          "specs_json": {
+            "weight_per_ft": "5.01",
+            "price_per_lb": "3.11"
+          }
+        },
+        {
+          "id": 35,
+          "description": "Half Sole, 4-1/2\" ID, 1/4\" w/t, A572 GR65, 40' long. Backing Strip Included.",
+          "specs_json": {
+            "weight_per_ft": "6.35",
+            "price_per_lb": "3.11"
+          }
+        },
+        {
+          "id": 36,
+          "description": "Half Sole, 6-5/8\" ID, 3/8\" w/t, A572 GR65, 40' long. Backing Strip Included.",
+          "specs_json": {
+            "weight_per_ft": "14.03",
+            "price_per_lb": "2.75"
+          }
+        },
+        {
+          "id": 37,
+          "description": "Half Sole, 8-5/8\" ID, 3/8\" w/t, A572 GR65, 40' long. Backing Strip Included.",
+          "specs_json": {
+            "weight_per_ft": "18.04",
+            "price_per_lb": "2.75"
+          }
+        },
+        {
+          "id": 38,
+          "description": "Half Sole, 10-3/4\" ID, 3/8\" w/t, A572 GR65, 40' long. Backing Strip Included.",
+          "specs_json": {
+            "weight_per_ft": "22.30",
+            "price_per_lb": "2.75"
+          }
+        },
+        {
+          "id": 39,
+          "description": "Half Sole, 12-3/4\" ID, 3/8\" w/t, A572 GR65, 40' long. Backing Strip Included.",
+          "specs_json": {
+            "weight_per_ft": "26.31",
+            "price_per_lb": "2.75"
+          }
+        },
+        {
+          "id": 40,
+          "description": "Half Sole, 16\" ID, 3/8\" w/t, A572 GR65, 40' long. Backing Strip Included.",
+          "specs_json": {
+            "weight_per_ft": "32.82",
+            "price_per_lb": "2.75"
+          }
+        }
+      ],
+      "sent_gr65_versions": [],
+      "sent_versions": []
+    },
+    {
+      "id": 15,
+      "quote_number": "126-015",
+      "created_at": "2026-04-13 16:51:55.227004",
+      "status": "IN_REVIEW",
+      "deleted_at": null,
+      "customer": "Enbridge",
+      "current_gr65_lines": [
+        {
+          "id": 42,
+          "description": "Half Sole, 10-3/4\" ID, 5/16\" w/t, A572 GR65, 10' long (Milled). Backing Strip Included.",
+          "specs_json": {
+            "weight_per_ft": "18.48",
+            "price_per_lb": "2.96"
+          }
+        }
+      ],
+      "sent_gr65_versions": [],
+      "sent_versions": []
+    },
+    {
+      "id": 16,
+      "quote_number": "126-016",
+      "created_at": "2026-04-13 16:52:07.090963",
+      "status": "IN_REVIEW",
+      "deleted_at": null,
+      "customer": "Kinder Morgan",
+      "current_gr65_lines": [
+        {
+          "id": 44,
+          "description": "Half Sole, 18\" ID, 3/8\" w/t, A572 GR65, 40' long. Backing Strip Included.",
+          "specs_json": {
+            "weight_per_ft": "36.83",
+            "price_per_lb": "2.75"
+          }
+        },
+        {
+          "id": 45,
+          "description": "Oversleeve, 18.75\" ID, 3/8\" w/t, A572 GR65, 20.0' long",
+          "specs_json": {
+            "weight_per_ft": "38.33",
+            "price_per_lb": "2.75"
+          }
+        }
+      ],
+      "sent_gr65_versions": [],
+      "sent_versions": []
+    },
+    {
+      "id": 115,
+      "quote_number": "126-106",
+      "created_at": "2026-08-25 20:13:09.858916",
+      "status": "SENT",
+      "deleted_at": null,
+      "customer": "Sable Offshore",
+      "current_gr65_lines": [
+        {
+          "id": 280,
+          "description": "Half Sole, 24\" ID, 3/8\" w/t, A572 GR65, 10' long (Milled, Painted). Backing Strip Included.",
+          "specs_json": {
+            "diameter": "24.0",
+            "wall_thickness": "0.375",
+            "grade": "65",
+            "length_ft": "10.0",
+            "milling": true,
+            "painting": true,
+            "weight_per_ft": "48.86",
+            "price_per_lb": "3.25",
+            "notes": "Priced as 1 bundle (5 pcs / 50 ft)",
+            "auto_unit_price": "1682.95",
+            "price_override": true
+          }
+        },
+        {
+          "id": 281,
+          "description": "Half Sole, 24-3/4\" ID, 3/8\" w/t, A572 GR65, 10' long (Milled). Backing Strip Included.",
+          "specs_json": {
+            "diameter": "24.75",
+            "wall_thickness": "0.375",
+            "grade": "65",
+            "length_ft": "10.0",
+            "milling": true,
+            "painting": true,
+            "weight_per_ft": "50.36",
+            "price_per_lb": "3.25",
+            "auto_unit_price": "1731.70",
+            "price_override": true
+          }
+        },
+        {
+          "id": 282,
+          "description": "Half Sole, 30\" ID, 3/8\" w/t, A572 GR65, 10' long (Milled). Backing Strip Included.",
+          "specs_json": {
+            "diameter": "30.0",
+            "wall_thickness": "0.375",
+            "grade": "65",
+            "length_ft": "10.0",
+            "milling": true,
+            "painting": true,
+            "weight_per_ft": "60.88",
+            "price_per_lb": "3.25",
+            "auto_unit_price": "2073.60",
+            "price_override": true
+          }
+        },
+        {
+          "id": 283,
+          "description": "Half Sole, 30-3/4\" ID, 3/8\" w/t, A572 GR65, 10' long (Milled). Backing Strip Included.",
+          "specs_json": {
+            "diameter": "30.75",
+            "wall_thickness": "0.375",
+            "grade": "65",
+            "length_ft": "10.0",
+            "milling": true,
+            "painting": true,
+            "weight_per_ft": "62.39",
+            "price_per_lb": "3.25",
+            "auto_unit_price": "2122.68",
+            "price_override": true
+          }
+        }
+      ],
+      "sent_gr65_versions": [
+        {
+          "version_number": 1,
+          "sent_at": "2026-08-25 20:16:14.521862",
+          "sent_to": "rgomez@sableoffshore.com",
+          "line_items_snapshot": [
+            {
+              "id": 280,
+              "product_type": "sleeve",
+              "description": "Half Sole, 24\" ID, 3/8\" w/t, A572 GR65, 10' long (Milled, Painted). Backing Strip Included.",
+              "quantity": "25.00",
+              "unit_price": "1582.95",
+              "line_total": "39573.75",
+              "specs_json": {
+                "diameter": "24.0",
+                "wall_thickness": "0.375",
+                "grade": "65",
+                "length_ft": "10.0",
+                "milling": true,
+                "painting": true,
+                "weight_per_ft": "48.86",
+                "price_per_lb": "3.25",
+                "notes": "Priced as 1 bundle (5 pcs / 50 ft)",
+                "auto_unit_price": "1682.95",
+                "price_override": true
+              },
+              "part_number": "S-24-38-65-M-P-10",
+              "sort_order": 1
+            },
+            {
+              "id": 281,
+              "product_type": "sleeve",
+              "description": "Half Sole, 24-3/4\" ID, 3/8\" w/t, A572 GR65, 10' long (Milled). Backing Strip Included.",
+              "quantity": "10.00",
+              "unit_price": "1631.71",
+              "line_total": "16317.10",
+              "specs_json": {
+                "diameter": "24.75",
+                "wall_thickness": "0.375",
+                "grade": "65",
+                "length_ft": "10.0",
+                "milling": true,
+                "painting": true,
+                "weight_per_ft": "50.36",
+                "price_per_lb": "3.25",
+                "auto_unit_price": "1731.70",
+                "price_override": true
+              },
+              "part_number": "S-24.75-38-65-M-P-10",
+              "sort_order": 2
+            },
+            {
+              "id": 282,
+              "product_type": "sleeve",
+              "description": "Half Sole, 30\" ID, 3/8\" w/t, A572 GR65, 10' long (Milled). Backing Strip Included.",
+              "quantity": "25.00",
+              "unit_price": "1973.60",
+              "line_total": "49340.00",
+              "specs_json": {
+                "diameter": "30.0",
+                "wall_thickness": "0.375",
+                "grade": "65",
+                "length_ft": "10.0",
+                "milling": true,
+                "painting": true,
+                "weight_per_ft": "60.88",
+                "price_per_lb": "3.25",
+                "auto_unit_price": "2073.60",
+                "price_override": true
+              },
+              "part_number": "S-30-38-65-M-P-10",
+              "sort_order": 3
+            },
+            {
+              "id": 283,
+              "product_type": "sleeve",
+              "description": "Half Sole, 30-3/4\" ID, 3/8\" w/t, A572 GR65, 10' long (Milled). Backing Strip Included.",
+              "quantity": "10.00",
+              "unit_price": "2022.68",
+              "line_total": "20226.80",
+              "specs_json": {
+                "diameter": "30.75",
+                "wall_thickness": "0.375",
+                "grade": "65",
+                "length_ft": "10.0",
+                "milling": true,
+                "painting": true,
+                "weight_per_ft": "62.39",
+                "price_per_lb": "3.25",
+                "auto_unit_price": "2122.68",
+                "price_override": true
+              },
+              "part_number": "S-30.75-38-65-M-P-10",
+              "sort_order": 4
+            },
+            {
+              "id": 284,
+              "product_type": "shipping",
+              "description": "shipping & handling",
+              "quantity": "1.00",
+              "unit_price": "9360.00",
+              "line_total": "9360.00",
+              "specs_json": {
+                "manual_override": true,
+                "auto_calculated_shipping": false,
+                "milling": false,
+                "painting": false,
+                "price_override": true
+              },
+              "part_number": null,
+              "sort_order": 5
+            }
+          ]
+        }
+      ],
+      "sent_versions": [
+        {
+          "version_number": 1,
+          "sent_at": "2026-08-25 20:16:14.521862",
+          "sent_to": "rgomez@sableoffshore.com"
+        }
+      ]
+    }
+  ],
+  "confirmed_x52_gr65_quotes": [
+    "126-036",
+    "126-037",
+    "126-107",
+    "126-128"
+  ],
+  "x56_x60_carrier_matches": [],
+  "sable_126_105_order_crosscheck": {
+    "id": 114,
+    "quote_number": "126-105",
+    "lines": [
+      {
+        "id": 274,
+        "description": "Half Sole, 24\" ID, 3/8\" w/t, A572 GR65, 10' long (Milled, Painted). Backing Strip Included.",
+        "specs_json": {
+          "diameter": "24.0",
+          "wall_thickness": "0.375",
+          "grade": "65",
+          "length_ft": "10.0",
+          "milling": true,
+          "painting": true,
+          "weight_per_ft": "48.86",
+          "price_per_lb": "3.25",
+          "notes": "Priced as 1 bundle (5 pcs / 50 ft)",
+          "auto_unit_price": "1682.95",
+          "price_override": true
+        }
+      },
+      {
+        "id": 275,
+        "description": "Half Sole, 24-3/4\" ID, 3/8\" w/t, A572 GR65, 10' long (Milled). Backing Strip Included.",
+        "specs_json": {
+          "diameter": "24.75",
+          "wall_thickness": "0.375",
+          "grade": "65",
+          "length_ft": "10.0",
+          "milling": true,
+          "painting": true,
+          "weight_per_ft": "50.36",
+          "price_per_lb": "3.25",
+          "auto_unit_price": "1731.70",
+          "price_override": true
+        }
+      },
+      {
+        "id": 276,
+        "description": "Half Sole, 30\" ID, 3/8\" w/t, A572 GR65, 10' long (Milled). Backing Strip Included.",
+        "specs_json": {
+          "diameter": "30.0",
+          "wall_thickness": "0.375",
+          "grade": "65",
+          "length_ft": "10.0",
+          "milling": true,
+          "painting": true,
+          "weight_per_ft": "60.88",
+          "price_per_lb": "3.25",
+          "auto_unit_price": "2073.60",
+          "price_override": true
+        }
+      },
+      {
+        "id": 277,
+        "description": "Half Sole, 30-3/4\" ID, 3/8\" w/t, A572 GR65, 10' long (Milled). Backing Strip Included.",
+        "specs_json": {
+          "diameter": "30.75",
+          "wall_thickness": "0.375",
+          "grade": "65",
+          "length_ft": "10.0",
+          "milling": true,
+          "painting": true,
+          "weight_per_ft": "62.39",
+          "price_per_lb": "3.25",
+          "auto_unit_price": "2122.68",
+          "price_override": true
+        }
+      },
+      {
+        "id": 279,
+        "description": "shipping & handling",
+        "specs_json": {
+          "manual_override": true,
+          "auto_calculated_shipping": false,
+          "milling": false,
+          "painting": false,
+          "price_override": true
+        }
+      }
+    ],
+    "orders": [],
+    "source_received_at": "2026-08-25T19:13:56Z",
+    "grade_source_lines": [
+      "reg half sole, 24\" ID, 112\" wit, A572 GR65,10' long, milled.",
+      "ovsz. half sole, 25\" ID, 112\" wit, A572 GR65, 10' long, milled.",
+      "reg half sole, 24\" ID, 318\" wit, A572 GR65, 10' long, milled.",
+      "ovsz. half sole, 24-314\" ID, 318\" wit, A572 GR65, 10' long, milled.",
+      "reg half sole, 30\" ID, 318\" wit, A572 GR65, 10' long, milled.",
+      "ovsz half sole, 30-314\" ID, 318\" wit, A572 GR65, 10' Iona. Milled"
+    ],
+    "po_reference": {
+      "number": "SOC26089652",
+      "quote_number": "126-105",
+      "gmail_message_id": "1a049e5358f64193",
+      "evidence_source": "PM mailbox and allanedwards:I157; not directly readable through this agent Gmail credentials"
+    },
+    "finding": "GR65 explicitly requested; ordered Sable work is outside X52 defect set"
+  },
+  "unverifiable_recovery": "PM found no original 126-004 or 126-106 RFQs in Devin mailbox after scoped quote/customer/thread searches. Six cases remain unresolvable from available evidence."
+}
