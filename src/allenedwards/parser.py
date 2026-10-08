@@ -3,6 +3,7 @@
 import csv
 import email
 import html as _html_entities
+import logging
 import re
 from dataclasses import dataclass, field
 from email.message import Message
@@ -30,6 +31,18 @@ from .units import (
 STANDARD_PIECE_LENGTH_FT = {"sleeve": 10.0, "girth_weld": 6.0}
 
 QUOTE_NUMBER_PATTERN = re.compile(r"\b(?:QUO|SO|INV)-\d+-\d+\b", re.IGNORECASE)
+
+logger = logging.getLogger(__name__)
+API_5L_GRADE_PATTERN = re.compile(
+    r"\bX\s*[-–—]?\s*(42|46|52|56|60|65|70)\b"
+    r"(?!\s*[- ]?\s*(?:foot|feet|ft|inch|inches|mm|long)\b|[\"”′'])"
+    r"|\bAPI\s*5\s*L\s*[-–—]?\s*(?:GR(?:ADE)?\.?\s*)?B\b",
+    re.IGNORECASE,
+)
+API_5L_A572_GRADES = {"B": 50, "42": 50, "46": 50, "52": 50, "65": 65, "70": 65}
+# These two mappings remain advisory until Chip confirms the boundary.
+API_5L_PENDING_GRADES = {"56", "60"}
+A572_GRADE_PATTERN = re.compile(r"\bA572\s*(?:GR(?:ADE)?\.?\s*)?(50|65)\b", re.IGNORECASE)
 
 # Wording that designates an actual delivery destination. An address only becomes a
 # ship-to when the RFQ text says where the material is going; a bare signature block
@@ -225,8 +238,8 @@ For diameter, convert common sizes:
 
 For grade, extract just the number: "A572 GR50" -> "50", "Gr.65" -> "65"
 API 5L grades must be mapped to A572 equivalents:
-- API 5L GR B, X-42, X-46 -> grade "50" (A572 GR50)
-- API 5L X-52, X-56, X-60, X-65, X-70 -> grade "65" (A572 GR65)
+- API 5L GR B, X-42, X-46, X-52 -> grade "50" (A572 GR50)
+- API 5L X-56, X-60, X-65, X-70 -> grade "65" (A572 GR65)
 If no grade is specified at all, default to "50" (A572 GR50 is the most common).
 
 IMPORTANT: grade and length_ft must ALWAYS be provided for each item — never return null.
@@ -775,7 +788,44 @@ def _resolve_item_dimensions(
     return diameter, wall_thickness, length_ft, notes
 
 
-def _parse_items(items_data: list) -> list[ParsedItem]:
+def _api_5l_designations(text: str) -> set[str]:
+    return {match.group(1) or "B" for match in API_5L_GRADE_PATTERN.finditer(text)}
+
+
+def _resolve_item_grade(item_data: dict, source_text: str) -> int:
+    """Enforce confirmed carrier-to-sleeve mappings over numeric LLM grades.
+
+    Prefer an item's raw spec for mixed-grade requests. If the model drops the
+    carrier designation, a single designation in the source email (including
+    extracted attachments) still controls. Never spread one grade across a
+    mixed-grade RFQ or override an explicitly requested A572 sleeve material.
+    """
+    model_grade = _parse_int(item_data.get("grade"))
+    item_text = " ".join(str(item_data.get(key) or "") for key in ("description", "notes", "grade"))
+    designations = _api_5l_designations(item_text)
+    source_designations = _api_5l_designations(source_text)
+    explicit_source_grades = set(A572_GRADE_PATTERN.findall(source_text))
+    if len(source_designations) == 1 and len(explicit_source_grades) == 1:
+        # The customer supplied the sleeve material separately from the carrier.
+        return int(next(iter(explicit_source_grades)))
+    if not designations and len(source_designations) == 1 and not explicit_source_grades:
+        designations = source_designations
+
+    if len(designations) == 1:
+        designation = next(iter(designations))
+        if designation in API_5L_PENDING_GRADES:
+            if model_grade != 65:
+                logger.warning(
+                    "API 5L X-%s: model grade %s differs from advisory A572 GR65; "
+                    "retaining model grade pending material confirmation",
+                    designation, model_grade,
+                )
+            return model_grade if model_grade is not None else 50
+        return API_5L_A572_GRADES[designation]
+    return model_grade if model_grade is not None else 50
+
+
+def _parse_items(items_data: list, *, source_text: str = "") -> list[ParsedItem]:
     """Parse item data from LLM response into ParsedItem objects."""
     items = []
     for item_data in items_data:
@@ -793,7 +843,7 @@ def _parse_items(items_data: list) -> list[ParsedItem]:
             description=item_data.get("description", ""),
             diameter=diameter,
             wall_thickness=wall_thickness,
-            grade=_parse_int(item_data.get("grade")),
+            grade=_resolve_item_grade(item_data, source_text),
             length_ft=length_ft,
             milling=bool(item_data.get("milling", False)),
             painting=bool(item_data.get("painting", False)),
@@ -1228,7 +1278,7 @@ in the "quotes" array."""
                 body=body,
                 source=quote_data.get("ship_to_source"),
             )
-            items = _parse_items(quote_data.get("items", []))
+            items = _parse_items(quote_data.get("items", []), source_text=f"{subject}\n{body}")
             raw_po = quote_data.get("po_number")
             po_number = _resolve_po_number(raw_po, body)
             quote_notes = quote_data.get("notes")
@@ -1267,7 +1317,7 @@ in the "quotes" array."""
             body=body,
             source=result.get("ship_to_source"),
         )
-        items = _parse_items(result.get("items", []))
+        items = _parse_items(result.get("items", []), source_text=f"{subject}\n{body}")
         raw_po = result.get("po_number")
         po_number = _resolve_po_number(raw_po, body)
 
