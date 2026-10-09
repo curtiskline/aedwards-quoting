@@ -21,6 +21,23 @@ ANTHROPIC_API_KEY=<your-anthropic-api-key>
 LLM_PROVIDER=claude
 ```
 
+### CLI on PATH (agents / worktrees)
+
+The bare `allenedwards` command advertised by `axon discover` comes from
+`scripts/allenedwards`, a launcher that runs the CLI of whatever checkout you
+are standing in (main checkout or a spawned worktree) using that checkout's
+venv. Install it once:
+
+```bash
+ln -sf /home/devin/src/2026/allanedwards/scripts/allenedwards ~/.local/bin/allenedwards
+```
+
+Inside a worktree, prefer the bare command (or `scripts/allenedwards`) over
+`venv/bin/allenedwards`: worktree venvs are cloned from the main checkout, so
+their console script still imports the main checkout's code. The launcher sets
+`PYTHONPATH` to the current checkout's `src/` so your worktree edits are what
+actually runs.
+
 Run the monitor once to test:
 
 ```bash

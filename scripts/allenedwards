@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Launcher for the allenedwards CLI that works from any checkout, including
+# spawned agent worktrees where nothing has put the console script on PATH.
+#
+# Install once (puts the advertised bare command on PATH for every agent):
+#   ln -sf /home/devin/src/2026/allanedwards/scripts/allenedwards ~/.local/bin/allenedwards
+#
+# Root resolution order matters: the checkout the CALLER is standing in wins
+# over the checkout this script lives in. Worktree venvs are cloned from the
+# main checkout, so their editable install (.pth) still points at the main
+# checkout's src/ — only an explicit PYTHONPATH entry for the caller's
+# checkout makes a worktree agent exercise its own edits. PYTHONPATH entries
+# precede .pth site-packages additions on sys.path, so the override is safe.
+set -euo pipefail
+
+# Checkout this script physically lives in (through any symlink), as fallback.
+script_root=$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)
+
+# Prefer the checkout the caller is inside, if it is an allenedwards checkout.
+root=$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || true)
+if [[ -z "$root" || ! -d "$root/src/allenedwards" ]]; then
+    root="$script_root"
+fi
+
+# Prefer the caller's checkout venv (worktrees get a cloned one), then the
+# launcher checkout's venv, then whatever python3 is around.
+if [[ -x "$root/venv/bin/python" ]]; then
+    py="$root/venv/bin/python"
+elif [[ -x "$script_root/venv/bin/python" ]]; then
+    py="$script_root/venv/bin/python"
+else
+    py=python3
+fi
+
+# Test hook: report what was resolved without importing anything.
+if [[ "${ALLENEDWARDS_LAUNCHER_PRINT_ROOT:-}" == "1" ]]; then
+    echo "root=$root"
+    echo "python=$py"
+    exit 0
+fi
+
+exec env PYTHONPATH="$root/src${PYTHONPATH:+:$PYTHONPATH}" "$py" -m allenedwards.cli "$@"
