@@ -110,6 +110,30 @@ def quote_has_tbd_items(quote: Quote) -> bool:
     return False
 
 
+def quote_pricing_block_reasons(quote: Quote) -> list[str]:
+    """Per-line, human-actionable reasons the needs-pricing gate is holding.
+
+    Rendered verbatim in the editor's NEEDS PRICING banner so the person
+    fixing the quote can see WHICH line blocks it and what to change
+    (Chip-reported: quote 126-159 was fully priced but a leftover 'TBD'
+    part number kept it unsendable with no visible cause).
+    """
+    reasons: list[str] = []
+    for item in quote.line_items:
+        if item.product_type == "note":
+            continue
+        label = (item.description or item.part_number or item.product_type).strip()
+        if not line_item_is_manual_no_charge(item) and (
+            Decimal(str(item.unit_price)) <= 0 or Decimal(str(item.line_total)) <= 0
+        ):
+            reasons.append(f"“{label}” has no price — set a unit price or mark it no charge.")
+        if "tbd" in str(item.part_number or "").lower():
+            reasons.append(f"“{label}” has “{item.part_number}” as its part number — replace or clear it.")
+        if "tbd" in str(item.description or "").lower():
+            reasons.append(f"“{label}” still says TBD in its description — reword it.")
+    return reasons
+
+
 # ---------------------------------------------------------------------------
 # Component signals. Each returns (status, detail).
 # ---------------------------------------------------------------------------

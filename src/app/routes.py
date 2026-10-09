@@ -68,6 +68,7 @@ from .confidence import (
     line_item_is_manual_no_charge,
     quote_has_tbd_items,
     quote_has_unpriced_items,
+    quote_pricing_block_reasons,
     quote_recommendation,
     sync_quote_confidence,
 )
@@ -1228,6 +1229,7 @@ def _quote_context(quote: Quote) -> dict:
         "shipping_amount": totals["shipping"],
         "tax_amount": totals["tax"],
         "quote_needs_pricing": _quote_needs_pricing(quote),
+        "pricing_block_reasons": quote_pricing_block_reasons(quote),
         "revision_chain": _revision_chain(quote),
         "recommendation": quote_recommendation(quote),
         "confidence_signal_rows": _confidence_signal_rows(quote),
@@ -1491,17 +1493,43 @@ def _quote_needs_pricing(quote: Quote) -> bool:
     )
 
 
+def _clear_stale_tbd_part_numbers(quote: Quote) -> bool:
+    """Drop the engine's 'TBD' part-number placeholder from lines a human has
+    since priced.
+
+    The engine writes part_number='TBD' on lines it cannot price
+    (pricing._tbd_line_item). Like the 'Pricing TBD, contact sales' note
+    (126-107), the placeholder is stale once the line has a real price — but
+    unlike the note it also trips the needs-pricing gate, leaving a fully
+    priced quote permanently unsendable (Chip, quote 126-159). A part number
+    the user typed themselves is recorded in specs part_number_override and
+    is kept, even if it says TBD.
+    """
+    changed = False
+    for item in quote.line_items:
+        if str(item.part_number or "").strip().lower() != "tbd":
+            continue
+        specs = dict(item.specs_json or {})
+        if str(specs.get("part_number_override") or "").strip().lower() == "tbd":
+            continue
+        if Decimal(str(item.unit_price)) > 0 or _line_item_is_manual_no_charge(item):
+            item.part_number = None
+            changed = True
+    return changed
+
+
 def _sync_quote_pricing_status(quote: Quote) -> bool:
     """Sync pricing-driven status, then recompute the quote's confidence row.
 
     Returns whether the stored confidence changed, so read-only callers
     (the detail view) know they need to commit.
     """
+    cleared = _clear_stale_tbd_part_numbers(quote)
     if _quote_has_unpriced_items(quote) or _quote_has_tbd_items(quote):
         quote.status = QuoteStatus.NEEDS_PRICING
     elif quote.status == QuoteStatus.NEEDS_PRICING:
         quote.status = QuoteStatus.IN_REVIEW
-    return sync_quote_confidence(quote)
+    return sync_quote_confidence(quote) or cleared
 
 
 def _attempt_auto_send(quote: Quote) -> None:
@@ -2889,10 +2917,12 @@ def quote_send_form(quote_id: int):
     """Return the send confirmation form as an HTMX partial."""
     quote = _get_active_quote_or_404(quote_id)
     if _quote_needs_pricing(quote):
+        reasons = quote_pricing_block_reasons(quote)
+        detail = f" {' '.join(reasons)}" if reasons else ""
         return render_template(
             "quotes/_send_result.html",
             success=False,
-            error="This quote needs pricing before it can be sent.",
+            error=f"This quote needs pricing before it can be sent.{detail}",
             quote=quote,
         )
     return _render_send_form(quote)
