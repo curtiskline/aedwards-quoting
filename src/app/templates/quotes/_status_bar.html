@@ -2,6 +2,13 @@
   {% if quote_needs_pricing %}
     <div role="alert" style="width:100%;margin-bottom:0.75rem;padding:0.75rem 1rem;border:2px solid #b91c1c;background:#fef2f2;color:#991b1b;font-weight:700;">
       NEEDS PRICING — Preview only. This quote cannot be sent to a customer.
+      {% if pricing_block_reasons %}
+      <ul style="margin:0.5rem 0 0;padding-left:1.25rem;font-weight:500;">
+        {% for reason in pricing_block_reasons %}
+        <li>{{ reason }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
     </div>
   {% endif %}
   {% if quote_order %}
