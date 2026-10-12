@@ -27,8 +27,10 @@ from .confidence import (
     AUTO_SEND_TIER,
     active_trust_tier,
     auto_send_evaluation,
+    quote_has_current_ready_override,
     quote_has_tbd_items,
     quote_has_unpriced_items,
+    quote_structural_block_reasons,
 )
 from .extensions import db
 from .models import AuditLog, AutoSendClaim, Quote, QuoteStatus, QuoteVersion
@@ -50,12 +52,20 @@ class SendBlocked(Exception):
 # ---------------------------------------------------------------------------
 
 
-def quote_needs_pricing(quote: Quote) -> bool:
-    """Whether a quote is unsafe to send to a customer (routes' rule)."""
-    return (
+def quote_needs_pricing(quote: Quote, *, allow_ready_override: bool = False) -> bool:
+    """Whether pricing flags block this send path.
+
+    Only the deliberate human-send route opts into a current Mark Ready
+    approval.  Tier-2 auto-send keeps treating every parser/pricing flag as a
+    hard stop, regardless of the quote's READY status.
+    """
+    flags_present = (
         quote.status == QuoteStatus.NEEDS_PRICING
         or quote_has_unpriced_items(quote)
         or quote_has_tbd_items(quote)
+    )
+    return flags_present and not (
+        allow_ready_override and quote_has_current_ready_override(quote)
     )
 
 
@@ -66,8 +76,14 @@ def ensure_delivery_enabled() -> None:
         raise SendBlocked("Email delivery is disabled in this environment.")
 
 
-def ensure_quote_priced(quote: Quote) -> None:
-    if quote_needs_pricing(quote):
+def ensure_quote_structurally_valid(quote: Quote) -> None:
+    reasons = quote_structural_block_reasons(quote)
+    if reasons:
+        raise SendBlocked(" ".join(reasons))
+
+
+def ensure_quote_priced(quote: Quote, *, allow_ready_override: bool = False) -> None:
+    if quote_needs_pricing(quote, allow_ready_override=allow_ready_override):
         raise SendBlocked("This quote needs pricing before it can be sent.")
 
 
@@ -86,6 +102,9 @@ def ensure_recipient_allowed(to_email: str) -> None:
 def check_send_gates(quote: Quote, to_email: str) -> None:
     """All gates in the human route's order. Raises SendBlocked on refusal."""
     ensure_delivery_enabled()
+    ensure_quote_structurally_valid(quote)
+    # This helper serves the unattended Tier-2 path.  A human override never
+    # promotes a flagged quote into automatic eligibility.
     ensure_quote_priced(quote)
     if not to_email:
         raise SendBlocked("Recipient email is required.")

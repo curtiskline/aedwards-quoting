@@ -211,6 +211,13 @@ class Quote(db.Model):
     )
     reviewed_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"))
     review_started_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    # A Mark Ready click is a human approval of the exact customer-facing
+    # quote content represented by ready_override_fingerprint.  Parser and
+    # pricing warnings may be overridden only while that fingerprint still
+    # matches; substantive edits invalidate the approval.
+    ready_override_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    ready_override_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"))
+    ready_override_fingerprint: Mapped[str | None]
     project_name: Mapped[str | None]
     notes_customer: Mapped[str | None] = mapped_column(Text)
     notes_internal: Mapped[str | None] = mapped_column(Text)
@@ -239,6 +246,7 @@ class Quote(db.Model):
 
     customer: Mapped[Customer] = relationship(back_populates="quotes")
     reviewer: Mapped[User | None] = relationship(foreign_keys=[reviewed_by])
+    ready_override_user: Mapped[User | None] = relationship(foreign_keys=[ready_override_by])
     line_items: Mapped[list["QuoteLineItem"]] = relationship(
         back_populates="quote", cascade="all, delete-orphan"
     )

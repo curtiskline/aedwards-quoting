@@ -747,12 +747,12 @@ def test_auto_sent_quote_labeled_in_queue(mock_outlook, app, client):
 
 
 # ---------------------------------------------------------------------------
-# Web triggers: POST recomputes attempt auto-send; GET never sends
+# Web triggers: editing recomputes may auto-send; explicit review actions never send
 # ---------------------------------------------------------------------------
 
 
 @patch("allenedwards.outlook.OutlookClient")
-def test_post_recompute_route_triggers_auto_send(mock_outlook, app, client):
+def test_mark_ready_is_not_an_auto_send_trigger(mock_outlook, app, client):
     mock_client = _mock_client()
     mock_outlook.return_value = mock_client
     quote = _eligible_quote()
@@ -762,8 +762,9 @@ def test_post_recompute_route_triggers_auto_send(mock_outlook, app, client):
     resp = client.post(f"/quotes/{quote_id}/status", data={"status": "ready"})
 
     assert resp.status_code == 200
-    mock_client.send_mail.assert_called_once()
-    assert _db.session.get(Quote, quote_id).status == QuoteStatus.SENT
+    mock_client.send_mail.assert_not_called()
+    assert _db.session.get(Quote, quote_id).status == QuoteStatus.READY
+    assert _claim(quote) is None
 
 
 @patch("allenedwards.outlook.OutlookClient")
