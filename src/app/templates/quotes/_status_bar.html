@@ -10,6 +10,15 @@
       </ul>
       {% endif %}
     </div>
+  {% elif ready_override_active and pricing_block_reasons %}
+    <div role="status" style="width:100%;margin-bottom:0.75rem;padding:0.75rem 1rem;border:1px solid #d97706;background:#fffbeb;color:#92400e;font-weight:600;">
+      READY BY HUMAN REVIEW{% if ready_override_user %} — {{ ready_override_user.name }}{% endif %} approved this exact quote despite pricing/parser warnings. Editing customer-visible quote content requires Mark Ready again.
+      <ul style="margin:0.5rem 0 0;padding-left:1.25rem;font-weight:500;">
+        {% for reason in pricing_block_reasons %}
+        <li>{{ reason }}</li>
+        {% endfor %}
+      </ul>
+    </div>
   {% endif %}
   {% if quote_order %}
     <div role="status" style="width:100%;margin-bottom:0.75rem;padding:0.75rem 1rem;background:#f0fdf4;color:#166534;font-weight:600;border:1px solid #86efac;">

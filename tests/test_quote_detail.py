@@ -2,13 +2,20 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
-
 import pytest
 
 from app import create_app
 from app.extensions import db as _db
-from app.models import Contact, Customer, Quote, QuoteAttachment, QuoteLineItem, QuoteStatus, ShipToAddress, User
+from app.models import (
+    Contact,
+    Customer,
+    Quote,
+    QuoteAttachment,
+    QuoteLineItem,
+    QuoteStatus,
+    ShipToAddress,
+    User,
+)
 
 
 @pytest.fixture()
@@ -221,7 +228,7 @@ def test_update_status(client, quote_with_items, app):
         assert q.status == QuoteStatus.READY
 
 
-def test_update_status_keeps_needs_pricing_when_any_line_item_is_unpriced(client, app):
+def test_update_status_records_human_override_for_unpriced_line(client, app):
     with app.app_context():
         q = Quote(
             quote_number="QU-2026-9003",
@@ -248,7 +255,10 @@ def test_update_status_keeps_needs_pricing_when_any_line_item_is_unpriced(client
     assert resp.status_code == 200
     with app.app_context():
         q = _db.session.get(Quote, quote_id)
-        assert q.status == QuoteStatus.NEEDS_PRICING
+        assert q.status == QuoteStatus.READY
+        assert q.ready_override_at is not None
+        assert q.ready_override_by is not None
+        assert q.ready_override_fingerprint
 
 
 def test_detail_does_not_promote_needs_pricing_quote_to_in_review(client, app):

@@ -16,6 +16,8 @@ CP-2c — keep them here, in one place, and do not duplicate them elsewhere.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 from datetime import datetime, timedelta
 from decimal import Decimal
@@ -131,6 +133,73 @@ def quote_pricing_block_reasons(quote: Quote) -> list[str]:
             reasons.append(f"“{label}” has “{item.part_number}” as its part number — replace or clear it.")
         if "tbd" in str(item.description or "").lower():
             reasons.append(f"“{label}” still says TBD in its description — reword it.")
+    return reasons
+
+
+def quote_ready_fingerprint(quote: Quote) -> str:
+    """Hash the customer-facing content covered by a Mark Ready approval.
+
+    Internal notes and optional send-message prose are deliberately excluded:
+    neither changes the generated quote.  Ordering and every rendered line
+    field are included, so add/edit/delete/reorder operations all invalidate
+    an older approval deterministically, including after a reload.
+    """
+    payload = {
+        "quote_number": quote.quote_number,
+        "customer_id": quote.customer_id,
+        "customer_name_raw": quote.customer_name_raw,
+        "contact_name": quote.contact_name,
+        "contact_email": quote.contact_email,
+        "contact_phone": quote.contact_phone,
+        "project_name": quote.project_name,
+        "notes_customer": quote.notes_customer,
+        "po_number": quote.po_number,
+        "ship_to_json": quote.ship_to_json,
+        "bill_to_json": quote.bill_to_json,
+        "tax_amount": quote.tax_amount,
+        "price_adjustment_pct": quote.price_adjustment_pct,
+        "line_items": [
+            {
+                "id": item.id,
+                "product_type": item.product_type,
+                "part_number": item.part_number,
+                "description": item.description,
+                "quantity": item.quantity,
+                "unit_price": item.unit_price,
+                "line_total": item.line_total,
+                "specs_json": item.specs_json,
+                "sort_order": item.sort_order,
+                "on_site_label": item.on_site_label,
+                "on_site_city": item.on_site_city,
+                "on_site_state": item.on_site_state,
+                "on_site_price_source": item.on_site_price_source,
+                "on_site_priced_at": item.on_site_priced_at,
+            }
+            for item in sorted(quote.line_items, key=lambda row: (row.sort_order, row.id or 0))
+        ],
+    }
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+
+
+def quote_has_current_ready_override(quote: Quote) -> bool:
+    """Whether a READY quote has human approval for its current content."""
+    return bool(
+        quote.status == QuoteStatus.READY
+        and quote.ready_override_at is not None
+        and quote.ready_override_by is not None
+        and quote.ready_override_fingerprint
+        and quote.ready_override_fingerprint == quote_ready_fingerprint(quote)
+    )
+
+
+def quote_structural_block_reasons(quote: Quote) -> list[str]:
+    """Hard quote-shape failures that Mark Ready must never override."""
+    reasons: list[str] = []
+    if not (quote.quote_number or "").strip():
+        reasons.append("A quote number is required.")
+    if not any(item.product_type not in {"note", "shipping"} for item in quote.line_items):
+        reasons.append("Add at least one customer quote line before marking ready.")
     return reasons
 
 

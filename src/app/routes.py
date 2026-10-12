@@ -18,7 +18,6 @@ from flask import (
     Blueprint,
     Response,
     abort,
-    current_app,
     flash,
     jsonify,
     make_response,
@@ -57,7 +56,6 @@ from allenedwards.pricing import QuoteLineItem as PricingLineItem
 from allenedwards.ship_to import SHIP_TO_KEYS, is_domestic_ship_to, normalize_ship_to
 
 from . import on_site_fill, price_adjustments, send_service
-from .orders import order_for_quote
 from .confidence import (
     SIGNAL_LABELS,
     active_trust_tier,
@@ -66,10 +64,13 @@ from .confidence import (
     get_trust_ramp_config,
     line_item_has_tbd_marker,
     line_item_is_manual_no_charge,
+    quote_has_current_ready_override,
     quote_has_tbd_items,
     quote_has_unpriced_items,
     quote_pricing_block_reasons,
+    quote_ready_fingerprint,
     quote_recommendation,
+    quote_structural_block_reasons,
     sync_quote_confidence,
 )
 from .extensions import db
@@ -91,6 +92,7 @@ from .models import (
     ShipToAddress,
     User,
 )
+from .orders import order_for_quote
 from .quote_numbers import generate_quote_number
 
 main_bp = Blueprint("main", __name__)
@@ -1223,6 +1225,10 @@ def _quote_context(quote: Quote) -> dict:
         "product_type_choices": _product_type_choices(),
         "totals": totals,
         "review_user": db.session.get(User, quote.reviewed_by) if quote.reviewed_by else None,
+        "ready_override_active": quote_has_current_ready_override(quote),
+        "ready_override_user": (
+            db.session.get(User, quote.ready_override_by) if quote.ready_override_by else None
+        ),
         "shipping_breakdown": shipping_breakdown,
         "shipping_manual_override": shipping_manual_override,
         "shipping_mode_note": shipping_mode_note,
@@ -1486,11 +1492,41 @@ _line_item_has_tbd_marker = line_item_has_tbd_marker
 
 def _quote_needs_pricing(quote: Quote) -> bool:
     """Return whether a quote is unsafe to send to a customer."""
-    return (
+    pricing_flags_present = (
         quote.status == QuoteStatus.NEEDS_PRICING
         or _quote_has_unpriced_items(quote)
         or _quote_has_tbd_items(quote)
     )
+    return pricing_flags_present and not quote_has_current_ready_override(quote)
+
+
+def _clear_ready_override(quote: Quote, reason: str, user: User | None = None) -> bool:
+    """Withdraw an active approval and retain who/why in the quote audit."""
+    if not (
+        quote.ready_override_at
+        or quote.ready_override_by
+        or quote.ready_override_fingerprint
+    ):
+        return False
+    db.session.add(
+        AuditLog(
+            quote_id=quote.id,
+            action="ready_override_revoked",
+            user_id=user.id if user else None,
+            details={
+                "reason": reason,
+                "approved_by": quote.ready_override_by,
+                "approved_at": (
+                    quote.ready_override_at.isoformat() if quote.ready_override_at else None
+                ),
+                "fingerprint": quote.ready_override_fingerprint,
+            },
+        )
+    )
+    quote.ready_override_at = None
+    quote.ready_override_by = None
+    quote.ready_override_fingerprint = None
+    return True
 
 
 def _clear_stale_tbd_part_numbers(quote: Quote) -> bool:
@@ -1518,18 +1554,49 @@ def _clear_stale_tbd_part_numbers(quote: Quote) -> bool:
     return changed
 
 
+def _invalidate_stale_ready_override(quote: Quote) -> bool:
+    """Revoke approval if it no longer describes the current quote content."""
+    if (
+        quote.status in {QuoteStatus.SENT, QuoteStatus.REPLACED}
+        or not quote.ready_override_fingerprint
+        or quote.ready_override_fingerprint == quote_ready_fingerprint(quote)
+    ):
+        return False
+    changed = _clear_ready_override(quote, "customer-facing quote content changed")
+    if quote.status == QuoteStatus.READY:
+        quote.status = QuoteStatus.IN_REVIEW
+        changed = True
+    return changed
+
+
+# Statuses that record a completed lifecycle event: the quote was sent,
+# superseded by a revision, or archived.  Pricing-completeness flags describe
+# live-edit readiness only — an unusual quote sent under an explicit Mark
+# Ready approval still carries unpriced/TBD flags, and letting the sync
+# rewrite its status would demote SENT to NEEDS_PRICING on the next page
+# view, erasing the record that it was sent.
+_LIFECYCLE_LOCKED_STATUSES = frozenset(
+    {QuoteStatus.SENT, QuoteStatus.REPLACED, QuoteStatus.ARCHIVED}
+)
+
+
 def _sync_quote_pricing_status(quote: Quote) -> bool:
     """Sync pricing-driven status, then recompute the quote's confidence row.
 
     Returns whether the stored confidence changed, so read-only callers
     (the detail view) know they need to commit.
     """
-    cleared = _clear_stale_tbd_part_numbers(quote)
-    if _quote_has_unpriced_items(quote) or _quote_has_tbd_items(quote):
+    if quote.status in _LIFECYCLE_LOCKED_STATUSES:
+        return sync_quote_confidence(quote)
+    changed = _clear_stale_tbd_part_numbers(quote)
+    changed = _invalidate_stale_ready_override(quote) or changed
+
+    has_pricing_flags = _quote_has_unpriced_items(quote) or _quote_has_tbd_items(quote)
+    if has_pricing_flags and not quote_has_current_ready_override(quote):
         quote.status = QuoteStatus.NEEDS_PRICING
     elif quote.status == QuoteStatus.NEEDS_PRICING:
         quote.status = QuoteStatus.IN_REVIEW
-    return sync_quote_confidence(quote) or cleared
+    return sync_quote_confidence(quote) or changed
 
 
 def _attempt_auto_send(quote: Quote) -> None:
@@ -1806,6 +1873,7 @@ def quote_update_meta(quote_id: int):
     quote.project_name = (request.form.get("project_name") or "").strip() or None
     quote.notes_customer = (request.form.get("notes_customer") or "").strip() or None
     quote.notes_internal = (request.form.get("notes_internal") or "").strip() or None
+    _sync_quote_pricing_status(quote)
     db.session.commit()
     return _render_quote_fields(quote)
 
@@ -1815,7 +1883,7 @@ def quote_update_customer(quote_id: int):
     quote = _get_active_quote_or_404(quote_id)
     _update_quote_customer_from_request(quote)
     _apply_auto_shipping_line_item(quote)
-    sync_quote_confidence(quote)
+    _sync_quote_pricing_status(quote)
     db.session.commit()
     _attempt_auto_send(quote)
     return _render_customer_info(quote)
@@ -1836,7 +1904,7 @@ def quote_confirm_ship_to(quote_id: int):
 
     address.human_confirmed = True
     _apply_auto_shipping_line_item(quote)
-    sync_quote_confidence(quote)
+    _sync_quote_pricing_status(quote)
     db.session.commit()
     _attempt_auto_send(quote)
     return _render_customer_info(quote)
@@ -1854,8 +1922,34 @@ def quote_update_status(quote_id: int):
     }
     if raw_status not in status_map:
         abort(400, description="Invalid status")
-    quote.status = status_map[raw_status]
-    _sync_quote_pricing_status(quote)
+    if raw_status == "ready" and quote.status in {QuoteStatus.SENT, QuoteStatus.REPLACED}:
+        abort(409, description="A sent or replaced quote cannot be marked ready.")
+
+    if raw_status == "ready":
+        _clear_stale_tbd_part_numbers(quote)
+        structural_reasons = quote_structural_block_reasons(quote)
+        if structural_reasons:
+            abort(422, description=" ".join(structural_reasons))
+        quote.status = QuoteStatus.READY
+        quote.ready_override_at = datetime.utcnow()
+        quote.ready_override_by = user.id if user else None
+        quote.ready_override_fingerprint = quote_ready_fingerprint(quote)
+        db.session.add(
+            AuditLog(
+                quote_id=quote.id,
+                action="ready_override_approved",
+                user_id=user.id if user else None,
+                details={
+                    "fingerprint": quote.ready_override_fingerprint,
+                    "pricing_block_reasons": quote_pricing_block_reasons(quote),
+                },
+            )
+        )
+        sync_quote_confidence(quote)
+    else:
+        _clear_ready_override(quote, f"status changed to {raw_status}", user)
+        quote.status = status_map[raw_status]
+        _sync_quote_pricing_status(quote)
     if quote.status == QuoteStatus.IN_REVIEW and user is not None:
         quote.reviewed_by = user.id
         quote.review_started_at = datetime.utcnow()
@@ -1863,7 +1957,9 @@ def quote_update_status(quote_id: int):
         quote.reviewed_by = None
         quote.review_started_at = None
     db.session.commit()
-    _attempt_auto_send(quote)
+    # Mark Ready is a review decision, never an instruction to email anyone.
+    if raw_status != "ready":
+        _attempt_auto_send(quote)
     return _render_status_bar(quote)
 
 
@@ -2371,6 +2467,7 @@ def quote_move_line_item(quote_id: int, item_id: int):
             items[idx].sort_order,
         )
     _apply_auto_shipping_line_item(quote)
+    _sync_quote_pricing_status(quote)
     db.session.commit()
     return _render_line_items(quote)
 
@@ -2916,6 +3013,16 @@ def quote_preview_pdf(quote_id: int):
 def quote_send_form(quote_id: int):
     """Return the send confirmation form as an HTMX partial."""
     quote = _get_active_quote_or_404(quote_id)
+    if _invalidate_stale_ready_override(quote):
+        db.session.commit()
+    structural_reasons = quote_structural_block_reasons(quote)
+    if structural_reasons:
+        return render_template(
+            "quotes/_send_result.html",
+            success=False,
+            error=" ".join(structural_reasons),
+            quote=quote,
+        )
     if _quote_needs_pricing(quote):
         reasons = quote_pricing_block_reasons(quote)
         detail = f" {' '.join(reasons)}" if reasons else ""
@@ -2956,6 +3063,9 @@ def quote_send(quote_id: int):
     quote = _get_active_quote_or_404(quote_id)
     user = _current_user()
 
+    if _invalidate_stale_ready_override(quote):
+        db.session.commit()
+
     # Retain prose even on delivery failure, and exclude this quote from any
     # later automatic attempt. Older callers that omit the field keep the draft.
     if "email_message" in request.form:
@@ -2969,7 +3079,8 @@ def quote_send(quote_id: int):
     # same enforcement the auto-send path runs.
     try:
         send_service.ensure_delivery_enabled()
-        send_service.ensure_quote_priced(quote)
+        send_service.ensure_quote_structurally_valid(quote)
+        send_service.ensure_quote_priced(quote, allow_ready_override=True)
     except send_service.SendBlocked as exc:
         return _blocked(exc.message)
 

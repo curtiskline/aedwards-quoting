@@ -124,7 +124,7 @@ def test_send_form_opens_once_stale_tbd_placeholder_is_cleared(client, app):
     assert b"needs pricing" not in resp.data.lower()
 
 
-def test_explicitly_typed_tbd_part_number_is_kept_and_still_blocks(client, app):
+def test_explicitly_typed_tbd_part_number_is_kept_but_human_can_override(client, app):
     with app.app_context():
         quote_id, (item_id,) = _make_quote(
             [
@@ -136,15 +136,17 @@ def test_explicitly_typed_tbd_part_number_is_kept_and_still_blocks(client, app):
             ]
         )
 
-    _mark_ready(client, quote_id)
+    resp = _mark_ready(client, quote_id)
 
     with app.app_context():
         quote = _db.session.get(Quote, quote_id)
-        assert quote.status == QuoteStatus.NEEDS_PRICING
+        assert quote.status == QuoteStatus.READY
+        assert quote.ready_override_at is not None
         assert _db.session.get(QuoteLineItem, item_id).part_number == "TBD"
+    assert b"READY BY HUMAN REVIEW" in resp.data
 
 
-def test_unpriced_tbd_line_still_blocks_mark_ready(client, app):
+def test_unpriced_tbd_line_is_preserved_and_human_can_override(client, app):
     with app.app_context():
         quote_id, (item_id,) = _make_quote([{"part_number": "TBD", "unit_price": 0}])
 
@@ -152,13 +154,13 @@ def test_unpriced_tbd_line_still_blocks_mark_ready(client, app):
 
     with app.app_context():
         quote = _db.session.get(Quote, quote_id)
-        assert quote.status == QuoteStatus.NEEDS_PRICING
+        assert quote.status == QuoteStatus.READY
         # The placeholder on a genuinely unpriced line is not stale — keep it.
         assert _db.session.get(QuoteLineItem, item_id).part_number == "TBD"
-    assert b"NEEDS PRICING" in resp.data
+    assert b"READY BY HUMAN REVIEW" in resp.data
 
 
-def test_needs_pricing_banner_names_the_blocking_lines(client, app):
+def test_human_override_banner_preserves_the_warning_reasons(client, app):
     with app.app_context():
         quote_id, _ = _make_quote(
             [
