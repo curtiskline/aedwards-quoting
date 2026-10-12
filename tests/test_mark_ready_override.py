@@ -8,6 +8,7 @@ closed.  The approval is bound to a deterministic customer-content hash.
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -240,6 +241,110 @@ def test_ready_override_cannot_make_flagged_quote_auto_send(
         assert any("All lines priced" in reason for reason in result["reasons"])
         assert quote.status == QuoteStatus.READY
     mock_outlook.return_value.send_mail.assert_not_called()
+
+
+@patch("allenedwards.outlook.OutlookClient")
+def test_sent_override_quote_survives_detail_reload(mock_outlook, client, app, monkeypatch):
+    """T502 review regression: a detail GET after sending must not let the
+    still-present pricing flags demote SENT back to NEEDS_PRICING, and the
+    immutable send record must come through the reload untouched."""
+    with app.app_context():
+        quote_id, item_id = _unusual_quote()
+    _mark_ready(client, quote_id)
+
+    monkeypatch.setenv("EMAIL_DELIVERY_ENABLED", "true")
+    monkeypatch.setenv("O365_EMAIL", "sender@example.com")
+    monkeypatch.setenv("O365_PASSWORD", "test")
+    monkeypatch.setenv("ENABLE_OUTLOOK_DRAFTS", "false")
+    monkeypatch.delenv("SEND_EMAIL_ALLOWLIST", raising=False)
+    sent = client.post(
+        f"/quotes/{quote_id}/send",
+        data={"to_email": "pat@example.com", "subject": "Approved unusual quote"},
+    )
+    assert b"Quote Sent" in sent.data
+
+    with app.app_context():
+        quote = db.session.get(Quote, quote_id)
+        assert quote.status == QuoteStatus.SENT
+        version = quote.versions[0]
+        before = (
+            version.version_number,
+            version.pdf_path,
+            version.artifact_status,
+            version.line_items_snapshot,
+            version.sent_at,
+            version.sent_to,
+        )
+        assert version.artifact_status == "retained"
+        assert Path(version.pdf_path).exists()
+
+    detail = client.get(f"/quotes/{quote_id}")
+    assert detail.status_code == 200
+
+    with app.app_context():
+        quote = db.session.get(Quote, quote_id)
+        assert quote.status == QuoteStatus.SENT
+        # The send record is immutable: same single version, same artifact.
+        assert len(quote.versions) == 1
+        version = quote.versions[0]
+        assert (
+            version.version_number,
+            version.pdf_path,
+            version.artifact_status,
+            version.line_items_snapshot,
+            version.sent_at,
+            version.sent_to,
+        ) == before
+        assert Path(version.pdf_path).exists()
+        # The live line the customer was quoted is not rewritten by a view.
+        item = db.session.get(QuoteLineItem, item_id)
+        assert item.part_number == "TBD"
+        # No revocation audit fired from a read-only page view.
+        assert (
+            db.session.query(AuditLog)
+            .filter_by(quote_id=quote_id, action="ready_override_revoked")
+            .count()
+            == 0
+        )
+
+
+@pytest.mark.parametrize(
+    "lifecycle_status",
+    [QuoteStatus.SENT, QuoteStatus.REPLACED, QuoteStatus.ARCHIVED],
+)
+def test_lifecycle_status_not_demoted_by_detail_reload(client, app, lifecycle_status):
+    """Pricing flags never rewrite a lifecycle state, approval or not."""
+    with app.app_context():
+        quote_id, _ = _unusual_quote()
+        quote = db.session.get(Quote, quote_id)
+        quote.status = lifecycle_status
+        db.session.commit()
+
+    assert client.get(f"/quotes/{quote_id}").status_code == 200
+    with app.app_context():
+        assert db.session.get(Quote, quote_id).status == lifecycle_status
+
+
+def test_archiving_unusual_quote_sticks(client, app):
+    """The explicit archive action must not bounce back to NEEDS_PRICING."""
+    with app.app_context():
+        quote_id, _ = _unusual_quote()
+    _mark_ready(client, quote_id)
+
+    response = client.post(f"/quotes/{quote_id}/status", data={"status": "archived"})
+    assert response.status_code == 200
+    with app.app_context():
+        quote = db.session.get(Quote, quote_id)
+        assert quote.status == QuoteStatus.ARCHIVED
+        # Archiving withdraws the approval; it must not survive into a
+        # later unarchive of possibly-changed content.
+        assert not quote_has_current_ready_override(quote)
+        assert quote.ready_override_at is None
+
+    # A later reload keeps it archived.
+    assert client.get(f"/quotes/{quote_id}").status_code == 200
+    with app.app_context():
+        assert db.session.get(Quote, quote_id).status == QuoteStatus.ARCHIVED
 
 
 @pytest.mark.parametrize("terminal_status", [QuoteStatus.SENT, QuoteStatus.REPLACED])

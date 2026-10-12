@@ -1569,12 +1569,25 @@ def _invalidate_stale_ready_override(quote: Quote) -> bool:
     return changed
 
 
+# Statuses that record a completed lifecycle event: the quote was sent,
+# superseded by a revision, or archived.  Pricing-completeness flags describe
+# live-edit readiness only — an unusual quote sent under an explicit Mark
+# Ready approval still carries unpriced/TBD flags, and letting the sync
+# rewrite its status would demote SENT to NEEDS_PRICING on the next page
+# view, erasing the record that it was sent.
+_LIFECYCLE_LOCKED_STATUSES = frozenset(
+    {QuoteStatus.SENT, QuoteStatus.REPLACED, QuoteStatus.ARCHIVED}
+)
+
+
 def _sync_quote_pricing_status(quote: Quote) -> bool:
     """Sync pricing-driven status, then recompute the quote's confidence row.
 
     Returns whether the stored confidence changed, so read-only callers
     (the detail view) know they need to commit.
     """
+    if quote.status in _LIFECYCLE_LOCKED_STATUSES:
+        return sync_quote_confidence(quote)
     changed = _clear_stale_tbd_part_numbers(quote)
     changed = _invalidate_stale_ready_override(quote) or changed
 
