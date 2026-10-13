@@ -184,10 +184,10 @@ def reparse_quote(
     of a human editing workflow (same rule as revise/duplicate).
     """
     from allenedwards.db_writer import (
+        _bill_to_dict,
         _create_customer_from_rfq,
         _ensure_contact,
         _match_customer,
-        _bill_to_dict,
         _notes_internal_with_bill_to,
         _ship_to_dict,
         build_db_line_item,

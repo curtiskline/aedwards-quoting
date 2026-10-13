@@ -55,7 +55,8 @@ from allenedwards.pricing import Quote as PricingQuote
 from allenedwards.pricing import QuoteLineItem as PricingLineItem
 from allenedwards.ship_to import SHIP_TO_KEYS, is_domestic_ship_to, normalize_ship_to
 
-from . import on_site_fill, price_adjustments, reparse as reparse_service, send_service
+from . import on_site_fill, price_adjustments, send_service
+from . import reparse as reparse_service
 from .confidence import (
     SIGNAL_LABELS,
     active_trust_tier,

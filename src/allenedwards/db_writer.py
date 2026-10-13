@@ -7,15 +7,12 @@ instances) into the Flask/SQLAlchemy database (app.models.Quote ORM rows).
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import asdict
-from decimal import Decimal
+from difflib import SequenceMatcher
 
-from flask import Flask
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
-
-import re
-from difflib import SequenceMatcher
 
 from app.confidence import sync_quote_confidence
 from app.extensions import db
@@ -24,13 +21,22 @@ from app.models import (
     Contact,
     Customer,
     ProcessedInboundEmail,
-    Quote as DBQuote,
-    QuoteAttachment as DBQuoteAttachment,
-    QuoteLineItem as DBQuoteLineItem,
-    QuoteSourceSnapshot as DBQuoteSourceSnapshot,
     QuoteStatus,
     ShipToAddress,
 )
+from app.models import (
+    Quote as DBQuote,
+)
+from app.models import (
+    QuoteAttachment as DBQuoteAttachment,
+)
+from app.models import (
+    QuoteLineItem as DBQuoteLineItem,
+)
+from app.models import (
+    QuoteSourceSnapshot as DBQuoteSourceSnapshot,
+)
+
 from .email_provider import EmailMessage
 from .outlook import OutlookAttachment
 from .parser import ParsedRFQ

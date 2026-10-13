@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 
+from allenedwards.providers.mock import MockProvider
 from app import create_app
 from app.extensions import db
 from app.models import (
@@ -28,8 +29,6 @@ from app.reparse import (
     reparse_quote,
     source_panel_context,
 )
-from allenedwards.providers.mock import MockProvider
-
 
 REPARSE_RESPONSE = {
     "customer_name": "Troy Companies",
