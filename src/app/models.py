@@ -256,6 +256,9 @@ class Quote(db.Model):
     source_snapshot: Mapped["QuoteSourceSnapshot | None"] = relationship(
         back_populates="quote", uselist=False
     )
+    reparse_attempts: Mapped[list["QuoteReparseAttempt"]] = relationship(
+        back_populates="quote", order_by="QuoteReparseAttempt.id"
+    )
     replaces: Mapped["Quote | None"] = relationship(
         foreign_keys=[replaces_quote_id], remote_side=[id], back_populates="replaced_by"
     )
@@ -483,6 +486,41 @@ class QuoteSourceSnapshot(TimestampMixin, db.Model):
 def _reject_source_snapshot_mutation(*_args) -> None:
     """Keep the original customer request immutable through the ORM."""
     raise ValueError("quote source snapshots are immutable")
+
+
+class QuoteReparseAttempt(TimestampMixin, db.Model):
+    """One operator-triggered re-parse of a quote's inbound source text (T495).
+
+    Append-only provenance: the original QuoteSourceSnapshot is never touched.
+    Each attempt records the exact text handed to the parser (the stored
+    original or an operator-corrected version), whether the operator edited it,
+    and either the parser's interpretation or the error that stopped it. The
+    latest successful attempt therefore describes the quote's current parsed
+    content; the snapshot keeps describing what the customer originally sent.
+    """
+
+    __tablename__ = "quote_reparse_attempt"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    quote_id: Mapped[int] = mapped_column(
+        ForeignKey("quote.id"), nullable=False, index=True
+    )
+    input_text: Mapped[str] = mapped_column(Text, nullable=False)
+    input_edited: Mapped[bool] = mapped_column(default=False, nullable=False)
+    succeeded: Mapped[bool] = mapped_column(default=False, nullable=False)
+    parsed_rfq_json: Mapped[dict | None] = mapped_column(db.JSON, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"), nullable=True)
+
+    quote: Mapped[Quote] = relationship(back_populates="reparse_attempts")
+    created_by_user: Mapped["User | None"] = relationship()
+
+
+@event.listens_for(QuoteReparseAttempt, "before_update")
+@event.listens_for(QuoteReparseAttempt, "before_delete")
+def _reject_reparse_attempt_mutation(*_args) -> None:
+    """Keep the re-parse audit trail append-only through the ORM."""
+    raise ValueError("quote re-parse attempts are immutable")
 
 
 class QuoteVersion(db.Model):

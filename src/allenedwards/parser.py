@@ -1230,11 +1230,29 @@ def parse_rfq_multi(eml_path: Path, provider: LLMProvider) -> list[ParsedRFQ]:
         For single-quote emails, returns a list with one element.
     """
     msg, body = extract_email_text(eml_path)
+    return parse_rfq_text(
+        body,
+        provider,
+        from_header=msg.get("From", ""),
+        subject=msg.get("Subject", ""),
+        message_id=msg.get("Message-ID"),
+    )
 
-    # Build prompt with email context
-    from_header = msg.get("From", "")
-    subject = msg.get("Subject", "")
 
+def parse_rfq_text(
+    body: str,
+    provider: LLMProvider,
+    *,
+    from_header: str = "",
+    subject: str = "",
+    message_id: str | None = None,
+) -> list[ParsedRFQ]:
+    """Parse already-extracted RFQ text (body plus any inlined attachment text).
+
+    This is the text-level core of parse_rfq_multi. The operator re-parse flow
+    calls it directly with stored (possibly operator-corrected) source text, so
+    no .eml reconstruction is needed for a retry.
+    """
     prompt = f"""Parse this RFQ email and extract the structured quote request information.
 
 From: {from_header}
@@ -1258,7 +1276,6 @@ in the "quotes" array."""
     urgency = result.get("urgency", "normal")
     general_notes = result.get("notes")
     confidence = float(result.get("confidence", 0.0))
-    message_id = msg.get("Message-ID")
     quote_number = _resolve_quote_number(result.get("quote_number"), subject, body)
     customer_name, contact_name, contact_email = _apply_header_contact_fallback(
         customer_name=customer_name,
