@@ -237,16 +237,43 @@ check "Certbot nginx merge replaces send timeout exactly once" \
 check "Certbot nginx merge removes stale timeout values" \
   bash -c "! grep -Eq 'proxy_(read|send)_timeout (60|75)s;' '${CERTBOT_MERGED}'"
 
-AMBIGUOUS_SITE="${WORK}/ambiguous-certbot-site"
-printf '        proxy_http_version 1.1;\n        proxy_http_version 1.1;\n' > "${AMBIGUOUS_SITE}"
+MULTI_PROXY_SITE="${WORK}/multi-proxy-certbot-site"
+MULTI_PROXY_MERGED="${WORK}/multi-proxy-certbot-site.merged"
+cat > "${MULTI_PROXY_SITE}" <<'EOF'
+server {
+    server_name legacy.example.com;
+    location / {
+        proxy_http_version 1.1;
+    }
+    ssl_certificate /etc/letsencrypt/live/legacy/fullchain.pem;
+}
+server {
+    server_name canonical.example.com;
+    location / {
+        proxy_http_version 1.1;
+    }
+    ssl_certificate /etc/letsencrypt/live/canonical/fullchain.pem;
+}
+EOF
+bash "${REPO_ROOT}/deploy/merge_nginx_timeouts.sh" \
+  "${MULTI_PROXY_SITE}" "${MULTI_PROXY_MERGED}"
+check "Certbot nginx merge updates every proxied TLS server read timeout" \
+  bash -c "[[ \$(grep -c 'proxy_read_timeout 180s;' '${MULTI_PROXY_MERGED}') -eq 2 ]]"
+check "Certbot nginx merge updates every proxied TLS server send timeout" \
+  bash -c "[[ \$(grep -c 'proxy_send_timeout 180s;' '${MULTI_PROXY_MERGED}') -eq 2 ]]"
+check "Certbot nginx merge preserves every certificate" \
+  bash -c "[[ \$(grep -c 'ssl_certificate /etc/letsencrypt/live/' '${MULTI_PROXY_MERGED}') -eq 2 ]]"
+
+NO_PROXY_SITE="${WORK}/no-proxy-certbot-site"
+printf 'ssl_certificate /etc/letsencrypt/live/canonical/fullchain.pem;\n' > "${NO_PROXY_SITE}"
 if bash "${REPO_ROOT}/deploy/merge_nginx_timeouts.sh" \
-    "${AMBIGUOUS_SITE}" "${WORK}/ambiguous-output" > /dev/null 2>&1; then
-  AMBIGUOUS_RC=0
+    "${NO_PROXY_SITE}" "${WORK}/no-proxy-output" > /dev/null 2>&1; then
+  NO_PROXY_RC=0
 else
-  AMBIGUOUS_RC=$?
+  NO_PROXY_RC=$?
 fi
-check "Certbot nginx merge fails closed on multiple proxy locations" \
-  test "${AMBIGUOUS_RC}" -ne 0
+check "Certbot nginx merge fails closed with no proxy location" \
+  test "${NO_PROXY_RC}" -ne 0
 
 # ----------------------------------------------------- deploy.sh (monitor)
 
