@@ -37,6 +37,7 @@ DOTENV_FILE="${ROOT_DIR}/.env"
 SERVICE_FILE="${ROOT_DIR}/deploy/aedwards-web.service"
 NGINX_FILE="${ROOT_DIR}/deploy/nginx-aedwards-web.conf"
 MERGE_ENV_FILE="${ROOT_DIR}/deploy/merge_env.sh"
+MERGE_NGINX_TIMEOUTS_FILE="${ROOT_DIR}/deploy/merge_nginx_timeouts.sh"
 
 # Known host map (docs/runbooks/postgres-cutover.md). Anything else is "unknown"
 # and deploys with a loud warning; --env only cross-checks, it cannot re-label.
@@ -253,6 +254,7 @@ tar \
 
 scp "${SSH_OPTS[@]}" "${SRC_TARBALL}" "${SSH_USER}@${HOST}:/tmp/aedwards-src.tgz"
 scp "${SSH_OPTS[@]}" "${MERGE_ENV_FILE}" "${SSH_USER}@${HOST}:/tmp/aedwards-merge-env.sh"
+scp "${SSH_OPTS[@]}" "${MERGE_NGINX_TIMEOUTS_FILE}" "${SSH_USER}@${HOST}:/tmp/aedwards-merge-nginx-timeouts.sh"
 scp "${SSH_OPTS[@]}" "${SERVICE_FILE}" "${SSH_USER}@${HOST}:/tmp/${SERVICE_NAME}.service"
 scp "${SSH_OPTS[@]}" "${RENDERED_NGINX_FILE}" "${SSH_USER}@${HOST}:/tmp/${SERVICE_NAME}.nginx"
 scp "${SSH_OPTS[@]}" "${ENV_FILE}" "${SSH_USER}@${HOST}:/tmp/aedwards-web.env"
@@ -321,8 +323,19 @@ fi
 
 sudo install -m 600 -o "${APP_USER}" -g "${APP_USER}" /tmp/aedwards-merged.env "${APP_DIR}/.env"
 sudo install -m 644 /tmp/${SERVICE_NAME}.service /etc/systemd/system/${SERVICE_NAME}.service
+NGINX_BACKUP=""
 if grep -q ssl_certificate /etc/nginx/sites-enabled/${SERVICE_NAME} 2>/dev/null; then
-  echo "Skipping nginx config — certbot SSL config already in place"
+  # Certbot augments the live site with certificate and redirect directives.
+  # Preserve those directives while still rolling out proxy settings from the
+  # version-controlled deployment. A full template replacement would remove
+  # TLS; skipping the file entirely would leave stale proxy timeouts.
+  NGINX_SITE="$(readlink -f /etc/nginx/sites-enabled/${SERVICE_NAME})"
+  NGINX_BACKUP="/tmp/${SERVICE_NAME}.nginx.pre-deploy"
+  sudo cp "${NGINX_SITE}" "${NGINX_BACKUP}"
+  sudo bash /tmp/aedwards-merge-nginx-timeouts.sh \
+    "${NGINX_SITE}" "/tmp/${SERVICE_NAME}.nginx.certbot-merged"
+  sudo install -m 644 "/tmp/${SERVICE_NAME}.nginx.certbot-merged" "${NGINX_SITE}"
+  echo "Updated proxy timeouts in Certbot-managed nginx config"
 else
   sudo install -m 644 /tmp/${SERVICE_NAME}.nginx /etc/nginx/sites-available/${SERVICE_NAME}
   sudo ln -sf /etc/nginx/sites-available/${SERVICE_NAME} /etc/nginx/sites-enabled/${SERVICE_NAME}
@@ -335,7 +348,14 @@ sudo -u "${APP_USER}" bash -c "set -a; source ${APP_DIR}/.env; set +a; cd ${APP_
 sudo systemctl daemon-reload
 sudo systemctl enable "${SERVICE_NAME}"
 sudo systemctl restart "${SERVICE_NAME}"
-sudo nginx -t
+if ! sudo nginx -t; then
+  if [[ -n "${NGINX_BACKUP}" ]]; then
+    echo "nginx validation failed; restoring the pre-deploy Certbot config" >&2
+    sudo install -m 644 "${NGINX_BACKUP}" "${NGINX_SITE}"
+    sudo nginx -t
+  fi
+  exit 1
+fi
 sudo systemctl enable nginx
 sudo systemctl restart nginx
 sudo systemctl --no-pager status "${SERVICE_NAME}" || true
