@@ -118,6 +118,7 @@ FAKE_REPO="${WORK}/repo"
 mkdir -p "${FAKE_REPO}/deploy"
 cp "${REPO_ROOT}/deploy/deploy_web.sh" "${REPO_ROOT}/deploy/deploy.sh" \
    "${REPO_ROOT}/deploy/merge_env.sh" \
+   "${REPO_ROOT}/deploy/merge_nginx_timeouts.sh" \
    "${REPO_ROOT}/deploy/aedwards-web.service" \
    "${REPO_ROOT}/deploy/aedwards-monitor.service" \
    "${REPO_ROOT}/deploy/nginx-aedwards-web.conf" "${FAKE_REPO}/deploy/"
@@ -206,6 +207,46 @@ run_deploy --env prod 134.122.29.15
 check "--env prod against staging IP aborts" test "${DEPLOY_RC}" -ne 0
 check "abort message names the mismatch" grep -q 'ABORT: --env prod' "${WORK}/deploy-stderr"
 check "mismatch abort makes no ssh/scp calls" test ! -s "${CALL_LOG}"
+
+# 9b. Certbot-managed nginx sites retain all TLS material while stale timeout
+#     values are replaced exactly once. This is the path used on both current
+#     staging and production hosts.
+CERTBOT_SITE="${WORK}/certbot-site"
+CERTBOT_MERGED="${WORK}/certbot-site.merged"
+cat > "${CERTBOT_SITE}" <<'EOF'
+server {
+    server_name staging.quotes.vectorforgeinteractive.com;
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_http_version 1.1;
+        proxy_read_timeout 60s;
+        proxy_send_timeout 75s;
+    }
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/staging/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/staging/privkey.pem; # managed by Certbot
+}
+EOF
+bash "${REPO_ROOT}/deploy/merge_nginx_timeouts.sh" "${CERTBOT_SITE}" "${CERTBOT_MERGED}"
+check "Certbot nginx merge preserves certificate directives" \
+  grep -q 'ssl_certificate /etc/letsencrypt/live/staging/fullchain.pem' "${CERTBOT_MERGED}"
+check "Certbot nginx merge replaces read timeout exactly once" \
+  bash -c "[[ \$(grep -c 'proxy_read_timeout 180s;' '${CERTBOT_MERGED}') -eq 1 ]]"
+check "Certbot nginx merge replaces send timeout exactly once" \
+  bash -c "[[ \$(grep -c 'proxy_send_timeout 180s;' '${CERTBOT_MERGED}') -eq 1 ]]"
+check "Certbot nginx merge removes stale timeout values" \
+  bash -c "! grep -Eq 'proxy_(read|send)_timeout (60|75)s;' '${CERTBOT_MERGED}'"
+
+AMBIGUOUS_SITE="${WORK}/ambiguous-certbot-site"
+printf '        proxy_http_version 1.1;\n        proxy_http_version 1.1;\n' > "${AMBIGUOUS_SITE}"
+if bash "${REPO_ROOT}/deploy/merge_nginx_timeouts.sh" \
+    "${AMBIGUOUS_SITE}" "${WORK}/ambiguous-output" > /dev/null 2>&1; then
+  AMBIGUOUS_RC=0
+else
+  AMBIGUOUS_RC=$?
+fi
+check "Certbot nginx merge fails closed on multiple proxy locations" \
+  test "${AMBIGUOUS_RC}" -ne 0
 
 # ----------------------------------------------------- deploy.sh (monitor)
 
