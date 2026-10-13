@@ -11,11 +11,14 @@ from __future__ import annotations
 
 import logging
 from dataclasses import asdict, dataclass
+from datetime import datetime
 from email.message import EmailMessage as MimeEmailMessage
 
 from .extensions import db
 from .models import (
     AuditLog,
+    FailedIntake,
+    ProcessedInboundEmail,
     Quote,
     QuoteReparseAttempt,
     QuoteStatus,
@@ -40,6 +43,8 @@ class ReparseOutcome:
     # Plain-language outcome shown to the operator on the quote page.
     message: str
     item_count: int = 0
+    # Set when the attempt created a new quote (failed-intake retry, T505).
+    quote_id: int | None = None
 
 
 def quote_allows_reparse(quote: Quote) -> bool:
@@ -315,3 +320,215 @@ def reparse_quote(
             "only the first one was put on this quote."
         )
     return ReparseOutcome(ok=True, message=message, item_count=len(material_lines))
+
+
+# --- Failed-intake retry (T505) -------------------------------------------
+#
+# A FailedIntake is an email that never became a quote, so a retry cannot
+# rewrite anything in place: a successful one creates a brand-new quote through
+# the same db_writer path intake uses, complete with its own immutable
+# QuoteSourceSnapshot. Attempts are recorded on the same append-only
+# quote_reparse_attempt table, keyed by failed_intake_id.
+
+
+class _IntakeSourceMessage:
+    """Duck-typed stand-in for the provider message write_quote_to_db expects.
+
+    Rebuilt from the fields FailedIntake persisted at quarantine time; only the
+    attributes db_writer actually reads are provided.
+    """
+
+    def __init__(self, intake: FailedIntake):
+        self.id = intake.source_email_id
+        self.sender_name = intake.sender_name
+        self.sender_email = intake.sender_email
+        self.subject = intake.subject
+        self.body_content = intake.original_body or intake.normalized_body_text or ""
+        self.body_content_type = intake.original_body_content_type or "text"
+
+
+def failed_intake_allows_reparse(intake: FailedIntake) -> bool:
+    """Whether this quarantined email's text can still be retried into a quote.
+
+    Rows from before T505 (and rare capture failures) stored no body text, so
+    there is nothing to retry from; resolved rows are done — retrying one again
+    (stale tab, double submit) would create duplicate quotes.
+    """
+    return intake.resolved_at is None and intake.normalized_body_text is not None
+
+
+def failed_intake_panel_context(intake: FailedIntake) -> dict:
+    """Template context for the failed-intake retry panel."""
+    attempts = intake.reparse_attempts
+    last_attempt = attempts[-1] if attempts else None
+    # Prefill with the text of the last attempt so corrections survive a
+    # failed try; otherwise show the stored normalized body.
+    input_text = (
+        last_attempt.input_text if last_attempt else (intake.normalized_body_text or "")
+    )
+    return {
+        "input_text": input_text,
+        "last_attempt": last_attempt,
+        "last_attempt_user": (
+            db.session.get(User, last_attempt.created_by)
+            if last_attempt and last_attempt.created_by
+            else None
+        ),
+        "allows_reparse": failed_intake_allows_reparse(intake),
+    }
+
+
+def _record_intake_attempt(
+    intake: FailedIntake,
+    input_text: str,
+    input_edited: bool,
+    user: User | None,
+    *,
+    succeeded: bool,
+    quote_id: int | None = None,
+    parsed_rfq_json: dict | None = None,
+    error: str | None = None,
+) -> None:
+    db.session.add(
+        QuoteReparseAttempt(
+            quote_id=quote_id,
+            failed_intake_id=intake.id,
+            input_text=input_text,
+            input_edited=input_edited,
+            succeeded=succeeded,
+            parsed_rfq_json=parsed_rfq_json,
+            error=error,
+            created_by=user.id if user else None,
+        )
+    )
+
+
+def reparse_failed_intake(
+    intake: FailedIntake,
+    input_text: str,
+    user: User | None,
+    provider=None,
+) -> ReparseOutcome:
+    """Parse ``input_text`` and, on success, create a new quote from it.
+
+    The new quote is written through the same db_writer path intake uses, so it
+    gets its own QuoteSourceSnapshot (original provider body from the intake
+    row, normalized text = exactly what was parsed here) and a message-level
+    idempotency claim, which stops the monitor from ever re-processing the same
+    email into a second quote. The intake row is marked resolved on success and
+    left outstanding on failure. Never auto-sends.
+    """
+    from allenedwards.db_writer import write_quote_to_db
+    from allenedwards.parser import parse_rfq_text
+    from allenedwards.pricing import generate_quote
+
+    from .quote_numbers import generate_quote_number
+
+    if not failed_intake_allows_reparse(intake):
+        return ReparseOutcome(
+            ok=False,
+            message=(
+                "This email cannot be retried: it was already handled, or it "
+                "arrived before the system started keeping the email text."
+            ),
+        )
+
+    original_text = (intake.normalized_body_text or "").strip()
+    input_edited = input_text.strip() != original_text
+
+    if provider is None:
+        from allenedwards.cli import get_provider, load_environment
+
+        load_environment()
+        provider = get_provider()
+
+    from_header = (
+        f"{intake.sender_name} <{intake.sender_email}>"
+        if intake.sender_name and intake.sender_email
+        else (intake.sender_email or "")
+    )
+
+    try:
+        rfqs = parse_rfq_text(
+            input_text,
+            provider,
+            from_header=from_header,
+            subject=intake.subject or "",
+        )
+        rfqs = [rfq for rfq in rfqs if rfq.items]
+        if not rfqs:
+            raise ValueError("no line items could be read from the text")
+        rfq = rfqs[0]
+        quote_number = generate_quote_number()
+        priced = generate_quote(rfq, quote_number)
+    except Exception as error:
+        db.session.rollback()
+        logger.exception("Retry parse failed for failed intake %s", intake.id)
+        _record_intake_attempt(
+            intake, input_text, input_edited, user,
+            succeeded=False, error=f"{type(error).__name__}: {error}",
+        )
+        db.session.commit()
+        return ReparseOutcome(
+            ok=False,
+            message=(
+                "The system could not read any quote items from this text. "
+                "No quote was made. You can fix the text and try again."
+            ),
+        )
+
+    quote = write_quote_to_db(
+        _IntakeSourceMessage(intake),
+        rfq,
+        priced,
+        quote_number,
+        attachments=None,
+        source_body_text=input_text,
+        claim_source_email=False,
+        commit=False,
+    )
+
+    # Claim the source email if intake never managed to (transient failures
+    # leave no claim), so a later monitor retry cannot create a second quote.
+    if intake.source_email_id and not db.session.query(
+        ProcessedInboundEmail.query.filter_by(
+            source_email_id=intake.source_email_id
+        ).exists()
+    ).scalar():
+        db.session.add(ProcessedInboundEmail(source_email_id=intake.source_email_id))
+
+    parsed_rfq_json = asdict(rfq)
+    parsed_rfq_json.pop("raw_body", None)
+    _record_intake_attempt(
+        intake, input_text, input_edited, user,
+        succeeded=True, quote_id=quote.id, parsed_rfq_json=parsed_rfq_json,
+    )
+    db.session.add(
+        AuditLog(
+            quote_id=quote.id,
+            action="created_from_failed_intake",
+            user_id=user.id if user else None,
+            details={
+                "failed_intake_id": intake.id,
+                "input_edited": input_edited,
+                "item_count": len([li for li in priced.line_items if not li.is_note]),
+                "rfqs_in_text": len(rfqs),
+            },
+        )
+    )
+    intake.resolved_at = datetime.utcnow()
+    db.session.commit()
+
+    material_count = len([li for li in priced.line_items if not li.is_note])
+    message = (
+        f"Done. Quote {quote.quote_number} was created with "
+        f"{material_count} item{'s' if material_count != 1 else ''}."
+    )
+    if len(rfqs) > 1:
+        message += (
+            f" The text looked like {len(rfqs)} separate quote requests; "
+            "only the first one was turned into a quote."
+        )
+    return ReparseOutcome(
+        ok=True, message=message, item_count=material_count, quote_id=quote.id
+    )

@@ -508,6 +508,24 @@ class InboxMonitor:
 
             received_at = _received_at_or_now(getattr(msg, "received_datetime", None))
             detail = str(error) or repr(error)
+            # Persist the inbound body alongside the failure (T505) so the
+            # email can be corrected and retried from the app. Normalization
+            # re-runs the same deterministic step intake uses; if it raises,
+            # the quarantine row is still written, just without a retry body.
+            original_body = getattr(msg, "body_content", None)
+            original_body_content_type = getattr(msg, "body_content_type", None)
+            normalized_body_text = None
+            try:
+                normalized_body_text = _normalize_body(
+                    original_body,
+                    getattr(msg, "body_preview", None),
+                    original_body_content_type,
+                )
+            except Exception:
+                logger.exception(
+                    "Could not normalize body for quarantined message %s",
+                    getattr(msg, "id", None),
+                )
             record = FailedIntake(
                 received_at=received_at,
                 source_email_id=getattr(msg, "id", None),
@@ -518,6 +536,9 @@ class InboxMonitor:
                 error_type=type(error).__name__,
                 error_detail=detail[:2000],
                 acknowledged=acknowledged,
+                original_body=original_body,
+                original_body_content_type=original_body_content_type,
+                normalized_body_text=normalized_body_text,
             )
             with self._flask_app.app_context():
                 db.session.add(record)

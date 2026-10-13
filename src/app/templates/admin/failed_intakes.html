@@ -52,6 +52,13 @@
               {% endif %}
             </td>
             <td>
+              <a href="{{ url_for('admin.failed_intake_detail', intake_id=intake.id) }}">
+                {%- if not intake.resolved_at and intake.normalized_body_text -%}
+                  Fix &amp; retry
+                {%- else -%}
+                  View
+                {%- endif -%}
+              </a>
               {% if not intake.resolved_at %}
                 <form method="post" action="{{ url_for('admin.resolve_failed_intake', intake_id=intake.id) }}">
                   <button type="submit">Mark handled</button>
