@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from flask import Blueprint, flash, redirect, render_template, request, url_for
+from flask import Blueprint, abort, flash, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 from sqlalchemy import desc
 
 from datetime import datetime
 
+from . import reparse as reparse_service
 from .extensions import db
 from .models import FailedIntake, RejectedEmail, User
 
@@ -117,6 +118,52 @@ def failed_intakes():
         show_resolved=show_resolved,
         outstanding_count=outstanding_count,
     )
+
+
+@admin_bp.get("/failed-intakes/<int:intake_id>")
+@login_required
+def failed_intake_detail(intake_id: int):
+    """One quarantined email, with its stored text and the retry panel (T505)."""
+    intake = db.session.get(FailedIntake, intake_id)
+    if not intake:
+        flash("Failed-intake record not found.", "error")
+        return redirect(url_for("admin.failed_intakes"))
+    return render_template(
+        "admin/failed_intake_detail.html",
+        intake=intake,
+        retry_panel=reparse_service.failed_intake_panel_context(intake),
+    )
+
+
+@admin_bp.post("/failed-intakes/<int:intake_id>/reparse")
+@login_required
+def reparse_failed_intake(intake_id: int):
+    """Parse the (possibly corrected) stored email text into a NEW quote.
+
+    Mirrors the T495 quote re-parse route: a retry that is no longer allowed
+    (already handled, or no stored text) is a 409 so a double-click or stale
+    tab cannot create duplicate quotes. Never auto-sends.
+    """
+    intake = db.session.get(FailedIntake, intake_id)
+    if not intake:
+        abort(404)
+    if not reparse_service.failed_intake_allows_reparse(intake):
+        abort(
+            409,
+            description=(
+                "This email cannot be retried: it was already handled, or it "
+                "arrived before the system started keeping the email text."
+            ),
+        )
+    input_text = (request.form.get("input_text") or "").strip()
+    if not input_text:
+        flash("The email text box is empty, so there is nothing to read.", "error")
+        return redirect(url_for("admin.failed_intake_detail", intake_id=intake.id))
+    outcome = reparse_service.reparse_failed_intake(intake, input_text, current_user)
+    flash(outcome.message, "success" if outcome.ok else "error")
+    if outcome.ok and outcome.quote_id:
+        return redirect(f"/quotes/{outcome.quote_id}")
+    return redirect(url_for("admin.failed_intake_detail", intake_id=intake.id))
 
 
 @admin_bp.post("/failed-intakes/<int:intake_id>/resolve")

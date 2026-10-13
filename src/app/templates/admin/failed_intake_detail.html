@@ -1,0 +1,62 @@
+{% extends "layout.html" %}
+{% block title %}Failed Intake{% endblock %}
+{% block body %}
+  <p><a href="{{ url_for('admin.failed_intakes') }}">&larr; Back to failed intakes</a></p>
+  <h1>Failed Intake</h1>
+  <p style="margin:0.25rem 0;">
+    From {{ intake.sender_name or intake.sender_email or "unknown sender" }}
+    {% if intake.sender_email and intake.sender_name %} (<code>{{ intake.sender_email }}</code>){% endif %}
+    {% if intake.subject %} — subject: “{{ intake.subject }}”{% endif %}
+  </p>
+  <p style="margin:0.25rem 0;">
+    Received {{ intake.received_at.strftime('%b %d, %Y %H:%M') }} UTC.
+    Failed at: <strong>{{ intake.failure_stage }}</strong>
+    {% if intake.error_type %} ({{ intake.error_type }}){% endif %}
+  </p>
+  {% if intake.error_detail %}
+    <pre style="max-height:8rem;overflow:auto;background:#f9fafb;padding:0.5rem;white-space:pre-wrap;">{{ intake.error_detail }}</pre>
+  {% endif %}
+
+  {% if intake.resolved_at %}
+    <p style="color:#166534;font-weight:600;">
+      This email was already handled on {{ intake.resolved_at.strftime('%b %d, %Y %H:%M') }} UTC.
+    </p>
+  {% endif %}
+
+  <section aria-label="Email text">
+    <h2>Email Text</h2>
+    {% if retry_panel.last_attempt %}
+    <p style="margin:0 0 0.75rem;{% if not retry_panel.last_attempt.succeeded %}color:#991b1b;font-weight:600;{% else %}color:#166534;{% endif %}">
+      Last try: {{ retry_panel.last_attempt.created_at.strftime("%b %d, %Y %H:%M") }} UTC
+      {%- if retry_panel.last_attempt_user %} by {{ retry_panel.last_attempt_user.name }}{% endif %}
+      — {% if retry_panel.last_attempt.succeeded %}worked{% else %}did not work (no quote was made){% endif %}.
+    </p>
+    {% endif %}
+    {% if retry_panel.allows_reparse %}
+    <p style="margin:0.25rem 0 0.75rem;color:#4b5563;">
+      This box shows the text of the email the system could not turn into a quote.
+      If something in it looks wrong, fix the text below, then press
+      <strong>Try Making a Quote</strong>. If it works, a new quote is created and
+      this email is marked handled. Note: text from attached files is not shown
+      here — if the items were in an attachment, type or paste them into the box.
+    </p>
+    <form method="post" action="{{ url_for('admin.reparse_failed_intake', intake_id=intake.id) }}"
+          onsubmit="var b=document.getElementById('retry-button'); b.disabled=true; b.textContent='Reading the text… this can take a minute. Please wait.'; return true;">
+      <textarea name="input_text" rows="14" style="width:100%;font-family:monospace;font-size:0.85rem;"
+                aria-label="Email text the system reads">{{ retry_panel.input_text }}</textarea>
+      <div style="margin-top:0.5rem;">
+        <button type="submit" id="retry-button">Try Making a Quote</button>
+      </div>
+    </form>
+    {% elif intake.normalized_body_text %}
+    <pre style="width:100%;max-height:20rem;overflow:auto;background:#f9fafb;padding:0.75rem;white-space:pre-wrap;">{{ retry_panel.input_text }}</pre>
+    <p style="color:#4b5563;">This email was already handled, so it cannot be retried.</p>
+    {% else %}
+    <p style="color:#4b5563;">
+      No email text was stored for this one (it arrived before the system started
+      keeping the text), so it cannot be retried here. Find the original email in
+      the inbox and handle it by hand.
+    </p>
+    {% endif %}
+  </section>
+{% endblock %}

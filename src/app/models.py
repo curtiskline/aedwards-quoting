@@ -497,13 +497,27 @@ class QuoteReparseAttempt(TimestampMixin, db.Model):
     and either the parser's interpretation or the error that stopped it. The
     latest successful attempt therefore describes the quote's current parsed
     content; the snapshot keeps describing what the customer originally sent.
+
+    T505: an attempt can instead belong to a FailedIntake (a quarantined email
+    that never produced a quote). Those rows set ``failed_intake_id``; a
+    successful one also sets ``quote_id`` to the quote it created. At least one
+    of the two parents is always set (enforced by a CHECK constraint).
     """
 
     __tablename__ = "quote_reparse_attempt"
+    __table_args__ = (
+        db.CheckConstraint(
+            "quote_id IS NOT NULL OR failed_intake_id IS NOT NULL",
+            name="ck_reparse_attempt_has_parent",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    quote_id: Mapped[int] = mapped_column(
-        ForeignKey("quote.id"), nullable=False, index=True
+    quote_id: Mapped[int | None] = mapped_column(
+        ForeignKey("quote.id"), nullable=True, index=True
+    )
+    failed_intake_id: Mapped[int | None] = mapped_column(
+        ForeignKey("failed_intake.id"), nullable=True, index=True
     )
     input_text: Mapped[str] = mapped_column(Text, nullable=False)
     input_edited: Mapped[bool] = mapped_column(default=False, nullable=False)
@@ -512,7 +526,10 @@ class QuoteReparseAttempt(TimestampMixin, db.Model):
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[int | None] = mapped_column(ForeignKey("user.id"), nullable=True)
 
-    quote: Mapped[Quote] = relationship(back_populates="reparse_attempts")
+    quote: Mapped["Quote | None"] = relationship(back_populates="reparse_attempts")
+    failed_intake: Mapped["FailedIntake | None"] = relationship(
+        back_populates="reparse_attempts"
+    )
     created_by_user: Mapped["User | None"] = relationship()
 
 
@@ -1107,7 +1124,20 @@ class FailedIntake(db.Model):
     # Set when a human marks the intake as handled, so it drops off the
     # outstanding list without deleting the audit trail.
     resolved_at: Mapped[datetime | None] = mapped_column(nullable=True, index=True)
+    # Inbound body, mirroring QuoteSourceSnapshot (T505): the provider payload
+    # and the normalized text the parser would have read. Stored at quarantine
+    # time so a hard-crash parse can be corrected and retried from the app.
+    # Nullable because rows predating T505 (and rare capture failures) have no
+    # body — those stay visible but cannot be retried.
+    original_body: Mapped[str | None] = mapped_column(Text, nullable=True)
+    original_body_content_type: Mapped[str | None] = mapped_column(nullable=True)
+    normalized_body_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
+
+    reparse_attempts: Mapped[list["QuoteReparseAttempt"]] = relationship(
+        back_populates="failed_intake",
+        order_by="QuoteReparseAttempt.id",
+    )
 
 
 class AuditLog(TimestampMixin, db.Model):
