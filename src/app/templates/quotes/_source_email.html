@@ -1,0 +1,40 @@
+{% if source_panel %}
+<section class="quote-editor-section" id="editor-source-email" aria-label="Original email">
+  {% if source_panel.low_confidence %}
+  <div role="alert" style="width:100%;margin-bottom:0.75rem;padding:0.75rem 1rem;border:2px solid #d97706;background:#fffbeb;color:#92400e;font-weight:700;">
+    The system was not sure it read this email correctly.
+    <span style="font-weight:500;">Check every item and quantity on this quote against the email text below.</span>
+  </div>
+  {% endif %}
+  <h2>Original Email</h2>
+  <p style="margin:0.25rem 0;">
+    From {{ quote.sender_name or quote.sender_email or "unknown sender" }}
+    {% if quote.subject %} — subject: “{{ quote.subject }}”{% endif %}
+  </p>
+  <p style="margin:0.25rem 0 0.75rem;color:#4b5563;">
+    This box shows exactly what the system read to build this quote, including text
+    pulled out of any attached files. If the system got something wrong, fix the text
+    below and press <strong>Read Email Again</strong>.
+  </p>
+  {% if source_panel.last_attempt %}
+  <p style="margin:0 0 0.75rem;{% if not source_panel.last_attempt.succeeded %}color:#991b1b;font-weight:600;{% else %}color:#166534;{% endif %}">
+    Last re-read: {{ source_panel.last_attempt.created_at.strftime("%b %d, %Y %H:%M") }} UTC
+    {%- if source_panel.last_attempt_user %} by {{ source_panel.last_attempt_user.name }}{% endif %}
+    — {% if source_panel.last_attempt.succeeded %}worked{% else %}did not work (nothing on the quote was changed){% endif %}.
+  </p>
+  {% endif %}
+  {% if source_panel.allows_reparse %}
+  <form method="post" action="/quotes/{{ quote.id }}/reparse" id="reparse-form"
+        onsubmit="if (!confirm('Read the email again?\n\nThis will REPLACE every item, price, customer detail, and address on this quote with what the system reads from the text below. Any changes you made to this quote by hand will be LOST.\n\nIt takes up to a minute.')) return false; var b=document.getElementById('reparse-button'); b.disabled=true; b.textContent='Reading the email again… this can take a minute. Please wait.'; return true;">
+    <textarea name="input_text" rows="14" style="width:100%;font-family:monospace;font-size:0.85rem;"
+              aria-label="Email text the system reads">{{ source_panel.input_text }}</textarea>
+    <div style="margin-top:0.5rem;">
+      <button type="submit" id="reparse-button">Read Email Again</button>
+    </div>
+  </form>
+  {% else %}
+  <pre style="width:100%;max-height:20rem;overflow:auto;background:#f9fafb;padding:0.75rem;white-space:pre-wrap;">{{ source_panel.input_text }}</pre>
+  <p style="color:#4b5563;">This quote was already sent, replaced, or archived, so it can no longer be rebuilt from the email.</p>
+  {% endif %}
+</section>
+{% endif %}

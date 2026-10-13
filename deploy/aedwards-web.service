@@ -8,7 +8,9 @@ User=aedwards
 Group=aedwards
 WorkingDirectory=/opt/aedwards/src
 EnvironmentFile=/opt/aedwards/.env
-ExecStart=/opt/aedwards/venv/bin/gunicorn --workers 3 --bind 127.0.0.1:8000 'app.wsgi:app'
+# --timeout 180: the operator re-parse route (T495) holds the request through
+# an LLM parse; gunicorn's default 30s would kill the worker mid-parse.
+ExecStart=/opt/aedwards/venv/bin/gunicorn --workers 3 --timeout 180 --bind 127.0.0.1:8000 'app.wsgi:app'
 Restart=always
 RestartSec=5
 

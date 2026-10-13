@@ -56,6 +56,7 @@ from allenedwards.pricing import QuoteLineItem as PricingLineItem
 from allenedwards.ship_to import SHIP_TO_KEYS, is_domestic_ship_to, normalize_ship_to
 
 from . import on_site_fill, price_adjustments, send_service
+from . import reparse as reparse_service
 from .confidence import (
     SIGNAL_LABELS,
     active_trust_tier,
@@ -1241,6 +1242,7 @@ def _quote_context(quote: Quote) -> dict:
         "confidence_signal_rows": _confidence_signal_rows(quote),
         "auto_send_claim": send_service.get_auto_send_claim(quote),
         "quote_order": order_for_quote(quote),
+        "source_panel": reparse_service.source_panel_context(quote),
     }
 
 
@@ -1783,6 +1785,34 @@ def quote_revise(quote_id: int):
     )
     db.session.commit()
     return redirect(f"/quotes/{new_quote.id}")
+
+
+@main_bp.post("/quotes/<int:quote_id>/reparse")
+@login_required
+def quote_reparse(quote_id: int):
+    """Re-run the RFQ parser on this quote's (possibly corrected) source text.
+
+    Rewrites the quote in place from the fresh interpretation; the original
+    source snapshot is untouched and the attempt is recorded append-only.
+    Deliberately no _attempt_auto_send here — like revise/duplicate, a
+    re-parse starts a human review of the result, never a send.
+    """
+    quote = _get_active_quote_or_404(quote_id)
+    if not reparse_service.quote_allows_reparse(quote):
+        abort(
+            409,
+            description=(
+                "This quote cannot be re-read from its email "
+                "(it was sent, replaced, archived, or was not created from an email)."
+            ),
+        )
+    input_text = (request.form.get("input_text") or "").strip()
+    if not input_text:
+        flash("The email text box is empty, so there is nothing to read.", "error")
+        return redirect(f"/quotes/{quote.id}")
+    outcome = reparse_service.reparse_quote(quote, input_text, _current_user())
+    flash(outcome.message, "success" if outcome.ok else "error")
+    return redirect(f"/quotes/{quote.id}")
 
 
 @main_bp.post("/quotes/<int:quote_id>/duplicate")

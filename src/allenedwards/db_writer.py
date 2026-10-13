@@ -7,15 +7,12 @@ instances) into the Flask/SQLAlchemy database (app.models.Quote ORM rows).
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import asdict
-from decimal import Decimal
+from difflib import SequenceMatcher
 
-from flask import Flask
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
-
-import re
-from difflib import SequenceMatcher
 
 from app.confidence import sync_quote_confidence
 from app.extensions import db
@@ -24,13 +21,22 @@ from app.models import (
     Contact,
     Customer,
     ProcessedInboundEmail,
-    Quote as DBQuote,
-    QuoteAttachment as DBQuoteAttachment,
-    QuoteLineItem as DBQuoteLineItem,
-    QuoteSourceSnapshot as DBQuoteSourceSnapshot,
     QuoteStatus,
     ShipToAddress,
 )
+from app.models import (
+    Quote as DBQuote,
+)
+from app.models import (
+    QuoteAttachment as DBQuoteAttachment,
+)
+from app.models import (
+    QuoteLineItem as DBQuoteLineItem,
+)
+from app.models import (
+    QuoteSourceSnapshot as DBQuoteSourceSnapshot,
+)
+
 from .email_provider import EmailMessage
 from .outlook import OutlookAttachment
 from .parser import ParsedRFQ
@@ -323,6 +329,46 @@ def _notes_internal_with_bill_to(rfq: ParsedRFQ) -> str | None:
     return "\n".join(sections) or None
 
 
+def build_db_line_item(quote_id: int, li) -> DBQuoteLineItem:
+    """Map one priced pricing.QuoteLineItem onto an ORM line-item row.
+
+    Shared by intake and the operator re-parse flow so both write identical
+    rows from a priced quote.
+    """
+    specs = {}
+    # Persist the specs the line was actually priced from. Without these the
+    # quote editor renders blank spec fields, so a reviewer editing one spec
+    # saves form defaults over the real dimensions and the price silently
+    # keeps its original basis (quote 126-086).
+    for spec_key in ("diameter", "wall_thickness", "grade", "length_ft"):
+        spec_value = getattr(li, spec_key, None)
+        if spec_value is not None:
+            specs[spec_key] = str(spec_value)
+    if li.product_type in ("sleeve", "oversleeve"):
+        specs["milling"] = bool(li.milling)
+        specs["painting"] = bool(li.painting)
+    if li.weight_per_ft is not None:
+        specs["weight_per_ft"] = str(li.weight_per_ft)
+    if li.price_per_lb is not None:
+        specs["price_per_lb"] = str(li.price_per_lb)
+    if li.notes:
+        specs["notes"] = li.notes
+
+    return DBQuoteLineItem(
+        quote_id=quote_id,
+        product_type=li.product_type,
+        description=li.description,
+        quantity=float(li.quantity),
+        unit_price=float(li.unit_price),
+        line_total=float(li.total),
+        specs_json=specs or None,
+        # Single identifier now. Fold the legacy catalog-match SKU into
+        # part_number when pricing did not generate one of its own.
+        part_number=(li.part_number or li.sku or None),
+        sort_order=li.sort_order,
+    )
+
+
 def write_quote_to_db(
     msg: EmailMessage,
     rfq: ParsedRFQ,
@@ -430,40 +476,7 @@ def write_quote_to_db(
     for li in priced_quote.line_items:
         if li.is_note:
             continue  # skip note-only rows
-
-        specs = {}
-        # Persist the specs the line was actually priced from. Without these the
-        # quote editor renders blank spec fields, so a reviewer editing one spec
-        # saves form defaults over the real dimensions and the price silently
-        # keeps its original basis (quote 126-086).
-        for spec_key in ("diameter", "wall_thickness", "grade", "length_ft"):
-            spec_value = getattr(li, spec_key, None)
-            if spec_value is not None:
-                specs[spec_key] = str(spec_value)
-        if li.product_type in ("sleeve", "oversleeve"):
-            specs["milling"] = bool(li.milling)
-            specs["painting"] = bool(li.painting)
-        if li.weight_per_ft is not None:
-            specs["weight_per_ft"] = str(li.weight_per_ft)
-        if li.price_per_lb is not None:
-            specs["price_per_lb"] = str(li.price_per_lb)
-        if li.notes:
-            specs["notes"] = li.notes
-
-        db_line = DBQuoteLineItem(
-            quote_id=db_quote.id,
-            product_type=li.product_type,
-            description=li.description,
-            quantity=float(li.quantity),
-            unit_price=float(li.unit_price),
-            line_total=float(li.total),
-            specs_json=specs or None,
-            # Single identifier now. Fold the legacy catalog-match SKU into
-            # part_number when pricing did not generate one of its own.
-            part_number=(li.part_number or li.sku or None),
-            sort_order=li.sort_order,
-        )
-        db.session.add(db_line)
+        db.session.add(build_db_line_item(db_quote.id, li))
 
     audit = AuditLog(
         quote_id=db_quote.id,
