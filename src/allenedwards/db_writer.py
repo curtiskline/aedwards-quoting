@@ -27,6 +27,7 @@ from app.models import (
     Quote as DBQuote,
     QuoteAttachment as DBQuoteAttachment,
     QuoteLineItem as DBQuoteLineItem,
+    QuoteSourceSnapshot as DBQuoteSourceSnapshot,
     QuoteStatus,
     ShipToAddress,
 )
@@ -329,6 +330,7 @@ def write_quote_to_db(
     quote_number: str,
     attachments: list[OutlookAttachment] | None = None,
     *,
+    source_body_text: str | None = None,
     claim_source_email: bool = False,
     commit: bool = True,
 ) -> DBQuote:
@@ -391,6 +393,24 @@ def write_quote_to_db(
     )
     db.session.add(db_quote)
     db.session.flush()  # get db_quote.id
+
+    parsed_rfq_json = asdict(rfq)
+    # raw_body is parser input rather than extracted interpretation. It can
+    # also contain text extracted from attachments, so keep the authoritative
+    # provider body and normalized message body in their dedicated columns.
+    parsed_rfq_json.pop("raw_body", None)
+    db.session.add(
+        DBQuoteSourceSnapshot(
+            quote_id=db_quote.id,
+            original_body=msg.body_content or "",
+            original_body_content_type=msg.body_content_type or "text",
+            normalized_body_text=(
+                source_body_text if source_body_text is not None else msg.body_content or ""
+            ),
+            parsed_rfq_json=parsed_rfq_json,
+            parser_schema_version=1,
+        )
+    )
 
     for attachment in attachments or []:
         content_bytes = attachment.content_bytes or b""

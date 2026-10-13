@@ -286,7 +286,12 @@ class InboxMonitor:
             from .db_writer import InboundEmailAlreadyProcessed
 
             try:
-                auto_sent_numbers = self._write_to_db(msg, quotes, attachments)
+                auto_sent_numbers = self._write_to_db(
+                    msg,
+                    quotes,
+                    attachments,
+                    source_body_text=body_text,
+                )
             except InboundEmailAlreadyProcessed:
                 logger.warning("Skipping replayed message %s with an existing DB claim", msg.id)
                 self._finalize_message(msg.id)
@@ -343,6 +348,8 @@ class InboxMonitor:
         msg: EmailMessage,
         quotes: list[tuple[ParsedRFQ, Quote, str]],
         attachments: list[OutlookAttachment],
+        *,
+        source_body_text: str | None = None,
     ) -> set[str]:
         """Atomically claim one message and write all of its quotes.
 
@@ -366,6 +373,7 @@ class InboxMonitor:
                             quote,
                             quote_number,
                             attachments=attachments,
+                            source_body_text=source_body_text,
                             claim_source_email=index == 0 and bool(msg.id),
                             commit=False,
                         )

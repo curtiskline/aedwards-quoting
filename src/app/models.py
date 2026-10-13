@@ -8,7 +8,7 @@ from enum import Enum
 
 from flask_login import UserMixin
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import ForeignKey, Numeric, Text
+from sqlalchemy import ForeignKey, Numeric, Text, event
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -253,6 +253,9 @@ class Quote(db.Model):
     attachments: Mapped[list["QuoteAttachment"]] = relationship(
         back_populates="quote", cascade="all, delete-orphan"
     )
+    source_snapshot: Mapped["QuoteSourceSnapshot | None"] = relationship(
+        back_populates="quote", uselist=False
+    )
     replaces: Mapped["Quote | None"] = relationship(
         foreign_keys=[replaces_quote_id], remote_side=[id], back_populates="replaced_by"
     )
@@ -438,6 +441,48 @@ class QuoteAttachment(TimestampMixin, db.Model):
     content_bytes: Mapped[bytes] = mapped_column(db.LargeBinary, nullable=False)
 
     quote: Mapped[Quote] = relationship(back_populates="attachments")
+
+
+@event.listens_for(QuoteAttachment, "before_update")
+@event.listens_for(QuoteAttachment, "before_delete")
+def _reject_source_attachment_mutation(*_args) -> None:
+    """Keep inbound files immutable after intake."""
+    raise ValueError("quote source attachments are immutable")
+
+
+class QuoteSourceSnapshot(TimestampMixin, db.Model):
+    """Immutable inbound-email provenance for a parser-created quote.
+
+    Legacy and manually-created quotes intentionally have no snapshot. New
+    email-created quotes receive one in the same transaction as the quote,
+    line items, source attachments, and message-level idempotency claim.
+
+    ``original_body`` preserves the provider payload for audit purposes while
+    ``normalized_body_text`` preserves the plain text actually supplied to the
+    parser before attachment extraction. A future retry may use that stored
+    original or operator-corrected text without overwriting this record.
+    """
+
+    __tablename__ = "quote_source_snapshot"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    quote_id: Mapped[int] = mapped_column(
+        ForeignKey("quote.id"), nullable=False, unique=True, index=True
+    )
+    original_body: Mapped[str] = mapped_column(Text, nullable=False)
+    original_body_content_type: Mapped[str] = mapped_column(nullable=False)
+    normalized_body_text: Mapped[str] = mapped_column(Text, nullable=False)
+    parsed_rfq_json: Mapped[dict] = mapped_column(db.JSON, nullable=False)
+    parser_schema_version: Mapped[int] = mapped_column(default=1, nullable=False)
+
+    quote: Mapped[Quote] = relationship(back_populates="source_snapshot")
+
+
+@event.listens_for(QuoteSourceSnapshot, "before_update")
+@event.listens_for(QuoteSourceSnapshot, "before_delete")
+def _reject_source_snapshot_mutation(*_args) -> None:
+    """Keep the original customer request immutable through the ORM."""
+    raise ValueError("quote source snapshots are immutable")
 
 
 class QuoteVersion(db.Model):

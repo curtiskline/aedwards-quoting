@@ -54,6 +54,7 @@ def test_migrations_create_tables(tmp_path: Path) -> None:
     assert "user" in tables
     assert "quote" in tables
     assert "quote_line_item" in tables
+    assert "quote_source_snapshot" in tables
     assert "pricing_table" in tables
     assert "shipping_config" in tables
     assert "product_type" in tables

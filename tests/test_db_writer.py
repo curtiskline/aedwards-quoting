@@ -19,6 +19,7 @@ from app.models import (
     Quote as DBQuote,
     QuoteAttachment,
     QuoteLineItem as DBQuoteLineItem,
+    QuoteSourceSnapshot,
     QuoteStatus,
     ShipToAddress,
 )
@@ -169,6 +170,14 @@ def test_write_quote_creates_records(app, msg, rfq, priced_quote):
         assert db_quote.sender_email == "buyer@example.com"
         assert db_quote.sender_name == "John Buyer"
         assert db_quote.subject == "RFQ - 12\" sleeves"
+        assert db_quote.source_snapshot is not None
+        assert db_quote.source_snapshot.original_body == "Please quote 100 sleeves..."
+        assert db_quote.source_snapshot.original_body_content_type == "text"
+        assert db_quote.source_snapshot.normalized_body_text == "Please quote 100 sleeves..."
+        assert db_quote.source_snapshot.parser_schema_version == 1
+        assert db_quote.source_snapshot.parsed_rfq_json["customer_name"] == "Acme Pipeline Co"
+        assert db_quote.source_snapshot.parsed_rfq_json["items"] == []
+        assert "raw_body" not in db_quote.source_snapshot.parsed_rfq_json
         assert db_quote.customer_name_raw == "Acme Pipeline Co"
         assert db_quote.contact_name == "John Buyer"
         assert db_quote.contact_email == "buyer@example.com"
@@ -242,6 +251,7 @@ def test_atomic_claim_crash_is_reprocessed_from_state_file(app, tmp_path, msg, r
     with app.app_context():
         assert ProcessedInboundEmail.query.filter_by(source_email_id=msg.id).count() == 0
         assert DBQuote.query.filter_by(source_email_id=msg.id).count() == 0
+        assert QuoteSourceSnapshot.query.count() == 0
 
     retry_outlook = MagicMock()
     retry_outlook.fetch_messages.return_value = [msg]
@@ -265,6 +275,7 @@ def test_atomic_claim_crash_is_reprocessed_from_state_file(app, tmp_path, msg, r
     with app.app_context():
         assert ProcessedInboundEmail.query.filter_by(source_email_id=msg.id).count() == 1
         assert DBQuote.query.filter_by(source_email_id=msg.id).count() == 1
+        assert QuoteSourceSnapshot.query.count() == 1
 
 
 def test_write_quote_without_attachments_leaves_attachment_list_empty(app, msg, rfq, priced_quote):
@@ -273,6 +284,62 @@ def test_write_quote_without_attachments_leaves_attachment_list_empty(app, msg, 
 
         attachments = QuoteAttachment.query.filter_by(quote_id=db_quote.id).all()
         assert attachments == []
+
+
+def test_write_quote_preserves_original_and_normalized_source_bodies(app, msg, rfq, priced_quote):
+    msg.body_content = "<p>Please quote <strong>100 sleeves</strong>.</p>"
+    msg.body_content_type = "html"
+
+    with app.app_context():
+        db_quote = write_quote_to_db(
+            msg,
+            rfq,
+            priced_quote,
+            "126-source",
+            source_body_text="Please quote 100 sleeves.",
+        )
+
+        snapshot = QuoteSourceSnapshot.query.filter_by(quote_id=db_quote.id).one()
+        assert snapshot.original_body == "<p>Please quote <strong>100 sleeves</strong>.</p>"
+        assert snapshot.original_body_content_type == "html"
+        assert snapshot.normalized_body_text == "Please quote 100 sleeves."
+
+
+def test_quote_source_snapshot_rejects_mutation(app, msg, rfq, priced_quote):
+    with app.app_context():
+        db_quote = write_quote_to_db(msg, rfq, priced_quote, "126-immutable")
+        db_quote.source_snapshot.normalized_body_text = "operator replacement"
+
+        with pytest.raises(ValueError, match="source snapshots are immutable"):
+            db.session.commit()
+        db.session.rollback()
+
+        snapshot = QuoteSourceSnapshot.query.filter_by(quote_id=db_quote.id).one()
+        assert snapshot.normalized_body_text == "Please quote 100 sleeves..."
+
+
+def test_quote_source_attachment_rejects_mutation(app, msg, rfq, priced_quote):
+    attachment = OutlookAttachment(
+        filename="rfq.pdf",
+        content_bytes=b"original customer file",
+        content_type="application/pdf",
+    )
+    with app.app_context():
+        db_quote = write_quote_to_db(
+            msg,
+            rfq,
+            priced_quote,
+            "126-immutable-attachment",
+            attachments=[attachment],
+        )
+        db_quote.attachments[0].content_bytes = b"replacement"
+
+        with pytest.raises(ValueError, match="source attachments are immutable"):
+            db.session.commit()
+        db.session.rollback()
+
+        saved = QuoteAttachment.query.filter_by(quote_id=db_quote.id).one()
+        assert saved.content_bytes == b"original customer file"
 
 
 def test_write_quote_stores_metadata_only_for_oversized_attachment(app, msg, rfq, priced_quote):
@@ -426,7 +493,10 @@ def test_multi_rfq_email_numbers_never_alias_existing_quote(app, tmp_path):
         sender_name="Test User",
         sender_email="test@example.com",
         body_preview="Please quote two sleeve orders",
-        body_content="Please quote 10 pcs 6-5/8 x 0.25 GR50 sleeves for two sites",
+        body_content=(
+            "Please quote 10 pcs 6-5/8 x 0.25 GR50 sleeves for two sites. "
+            "Ship to Houston and Dallas."
+        ),
         body_content_type="text",
         internet_message_id="<multi@example.com>",
         received_datetime="2026-08-14T12:00:00Z",
@@ -451,6 +521,13 @@ def test_multi_rfq_email_numbers_never_alias_existing_quote(app, tmp_path):
         assert len(new_quotes) == 2
         new_numbers = sorted(q.quote_number for q in new_quotes)
         assert new_numbers == ["126-004-01", "126-004-02"]
+        assert {q.source_snapshot.normalized_body_text for q in new_quotes} == {
+            "Please quote 10 pcs 6-5/8 x 0.25 GR50 sleeves for two sites. "
+            "Ship to Houston and Dallas."
+        }
+        assert {
+            q.source_snapshot.parsed_rfq_json["ship_to"]["city"] for q in new_quotes
+        } == {"Houston", "Dallas"}
 
         for number in new_numbers:
             # No new number equals an existing quote number...
