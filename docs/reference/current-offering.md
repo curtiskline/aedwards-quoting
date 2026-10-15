@@ -530,8 +530,9 @@ delete the test records.
   to a PostgreSQL maintenance URL (role needs CREATEDB) to run the same suite on
   PostgreSQL — each test gets its own disposable database via the shared
   `db_url` fixture (`tests/conftest.py`). `tests/test_postgres_support.py` holds
-  the CP-1 acceptance tests (alembic-on-empty-PG, SQLite→PG copy round-trip) and
-  skips unless `TEST_DATABASE_URL` is set. Migration tests that exercise SQLite
+  the CP-1 acceptance tests (alembic-on-empty-PG, SQLite→PG copy round-trip),
+  which skip unless `TEST_DATABASE_URL` is set, plus an always-run
+  alembic-on-empty-SQLite smoke test. Migration tests that exercise SQLite
   internals on purpose stay on SQLite regardless. Dev deps: `pip install -e '.[dev]'`; browser-level
   regression tests additionally need
   `pip install playwright && playwright install chromium-headless-shell`

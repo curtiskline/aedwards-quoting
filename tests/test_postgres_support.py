@@ -1,10 +1,10 @@
 """PostgreSQL support: alembic-from-scratch and the SQLite -> PG data copy.
 
-These tests need a real PostgreSQL server and are skipped unless
-TEST_DATABASE_URL is set (see conftest.py). They are the executable form of
-the CP-1 migration acceptance criteria:
+The PostgreSQL tests need a real server and are skipped unless
+TEST_DATABASE_URL is set (see conftest.py); the SQLite smoke test always runs.
+They are the executable form of the CP-1 migration acceptance criteria:
 
-- the alembic chain runs clean on an empty PostgreSQL database;
+- the alembic chain runs clean on an empty database (SQLite and PostgreSQL);
 - the app works against the result (enum round-trip, BLOBs, JSON, sequences);
 - scripts/migrate_sqlite_to_postgres.py copies a head-revision SQLite database
   verbatim, verifies itself, refuses a non-empty target, and reloads with
@@ -22,7 +22,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 
-pytestmark = pytest.mark.skipif(
+requires_postgres = pytest.mark.skipif(
     not os.environ.get("TEST_DATABASE_URL"),
     reason="TEST_DATABASE_URL not set (PostgreSQL required)",
 )
@@ -172,6 +172,24 @@ def _run_migration(db_path, pg_url, *extra):
     )
 
 
+def test_alembic_upgrade_head_on_empty_sqlite(tmp_path):
+    """The full alembic chain runs clean on an empty SQLite database.
+
+    Unlike the PostgreSQL tests below this needs no server, so it smoke-tests
+    the migration chain on every default `pytest` run."""
+    db_path = tmp_path / "empty.db"
+    _alembic_upgrade_head(f"sqlite:///{db_path}")
+
+    import sqlite3
+
+    with sqlite3.connect(db_path) as conn:
+        versions = conn.execute("SELECT version_num FROM alembic_version").fetchall()
+        assert len(versions) == 1
+        assert conn.execute("SELECT COUNT(*) FROM pricing_table").fetchone()[0] > 0
+        assert conn.execute("SELECT COUNT(*) FROM product_type").fetchone()[0] > 0
+
+
+@requires_postgres
 def test_alembic_upgrade_head_on_empty_postgres(db_url):
     _alembic_upgrade_head(db_url)
 
@@ -202,6 +220,7 @@ def test_alembic_upgrade_head_on_empty_postgres(db_url):
     engine.dispose()
 
 
+@requires_postgres
 def test_sqlite_to_postgres_copy_round_trips(sqlite_source, db_url):
     _alembic_upgrade_head(db_url)
     result = _run_migration(sqlite_source, db_url)
@@ -239,6 +258,7 @@ def test_sqlite_to_postgres_copy_round_trips(sqlite_source, db_url):
         Config.SQLALCHEMY_DATABASE_URI = old_uri
 
 
+@requires_postgres
 def test_migration_refuses_non_empty_target_then_reloads_with_recreate(sqlite_source, db_url):
     _alembic_upgrade_head(db_url)
     first = _run_migration(sqlite_source, db_url)
@@ -253,6 +273,7 @@ def test_migration_refuses_non_empty_target_then_reloads_with_recreate(sqlite_so
     assert "Migration complete and verified." in recreate.stdout
 
 
+@requires_postgres
 def test_migration_refuses_revision_mismatch(sqlite_source, db_url, tmp_path):
     """A source that is not at the target's alembic head must be refused."""
     _alembic_upgrade_head(db_url)
