@@ -41,7 +41,11 @@
     {% endif %}
   </div>
   {% if quote.status.value != 'replaced' %}
+  {# Lifecycle-locked statuses (sent/archived) hide the demotion buttons:
+     leaving SENT happens only via Revise, and the /status endpoint refuses
+     these transitions anyway (see QUOTE_STATUS_TRANSITIONS in routes.py). #}
   <div class="quote-editor-status-actions">
+    {% if quote.status.value not in ('sent', 'archived') %}
     <form method="post" action="/quotes/{{ quote.id }}/status" hx-post="/quotes/{{ quote.id }}/status" hx-target="#editor-status-bar" hx-swap="outerHTML">
       <input type="hidden" name="status" value="in_review" />
       <button type="submit">Mark In Review</button>
@@ -54,14 +58,22 @@
       <input type="hidden" name="status" value="archived" />
       <button type="submit">Archive</button>
     </form>
+    {% elif quote.status.value == 'archived' %}
+    <form method="post" action="/quotes/{{ quote.id }}/status" hx-post="/quotes/{{ quote.id }}/status" hx-target="#editor-status-bar" hx-swap="outerHTML">
+      <input type="hidden" name="status" value="in_review" />
+      <button type="submit">Unarchive</button>
+    </form>
+    {% endif %}
     <a href="/quotes/{{ quote.id }}/preview-pdf" target="_blank"
        onclick="event.preventDefault(); window.open(this.href, '_blank', 'width=900,height=700,scrollbars=yes,resizable=yes')">
       <button type="button">Preview PDF</button>
     </a>
+    {% if quote.status.value != 'archived' %}
     <button type="button"
             hx-get="/quotes/{{ quote.id }}/send-form"
             hx-target="body"
-            hx-swap="beforeend">Send Quote</button>
+            hx-swap="beforeend">{% if quote.status.value == 'sent' %}Re-send Quote{% else %}Send Quote{% endif %}</button>
+    {% endif %}
     {% if quote.status.value == 'sent' and not quote_order %}
     <button type="button"
             style="background:#16a34a;color:#fff;border-color:#16a34a;"
