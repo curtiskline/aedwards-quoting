@@ -320,3 +320,44 @@ def test_shop_queue_heading_and_flow(client):
     assert "Shop &amp; shipping" in page
     assert "one action for each real event" in page
     assert 'aria-current="step">04 · Shop<b>Pick &amp; load</b>' in page
+
+
+def test_stock_list_next_action_column(client):
+    from app.models import Reorder, ReorderStatus
+
+    for pn, desc in [("SL-12", "Steel sleeve"), ("GTB-12", "Geotextile bag"),
+                     ("CUST-16", "Custom sleeve"), ("NEW-1", "New part")]:
+        client.post("/admin/catalog/add", data={"part_number": pn, "description": desc})
+    by_pn = {
+        c.part_number: c
+        for c in _db.session.query(ProductCatalog).all()
+    }
+    low = StockItem(catalog_id=by_pn["SL-12"].id, on_hand=10, min_qty=15, max_qty=40)
+    fine = StockItem(catalog_id=by_pn["GTB-12"].id, on_hand=150, min_qty=50, max_qty=200)
+    never = StockItem(catalog_id=by_pn["CUST-16"].id, on_hand=0, min_qty=0, max_qty=0)
+    unseeded = StockItem(catalog_id=by_pn["NEW-1"].id, on_hand=0)
+    _db.session.add_all([low, fine, never, unseeded])
+    _db.session.flush()
+    _db.session.add(
+        Reorder(
+            stock_item_id=low.id,
+            status=ReorderStatus.OPEN,
+            qty=30,
+            on_hand_at_trigger=10,
+            min_qty_at_trigger=15,
+            max_qty_at_trigger=40,
+            vendor_at_trigger="AE MFG",
+        )
+    )
+    _db.session.commit()
+
+    page = client.get("/stock/").get_data(as_text=True)
+    assert "Stock &amp; purchasing" in page
+    assert "Send the vendor order (30)" in page
+    assert "No reorder needed" in page
+    assert "Ordered per customer job" in page
+    assert "Set min/max in Stock setup" in page
+
+    reorders = client.get("/stock/reorders/").get_data(as_text=True)
+    assert "Vendor orders" in reorders
+    assert "No vendor email is sent automatically" in reorders

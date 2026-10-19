@@ -17,15 +17,18 @@
   .header-links { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
 </style>
 <div class="stock-header">
-  <h1>Stock</h1>
+  <div>
+    <h1 style="margin:0 0 0.3rem;">Stock &amp; purchasing</h1>
+    <p style="margin:0;color:#6b7280;">Counts change only from recorded shipments, receipts and adjustments — there is no live warehouse feed.</p>
+  </div>
   <div class="header-links">
-    <a href="{{ url_for('stock.seed_screen') }}">Seed counts &amp; thresholds</a>
+    <a href="{{ url_for('stock.seed_screen') }}">Stock setup</a>
     {% if open_reorders %}
       <a class="badge badge-reorders-open" href="{{ url_for('stock.reorders_list') }}">
-        {{ open_reorders | length }} open reorder{{ 's' if open_reorders | length != 1 }}
+        Vendor orders · {{ open_reorders | length }}
       </a>
     {% else %}
-      <a href="{{ url_for('stock.reorders_list') }}">Reorders</a>
+      <a href="{{ url_for('stock.reorders_list') }}">Vendor orders</a>
     {% endif %}
     {% if unmatched_count %}
       <a class="badge badge-triage" href="{{ url_for('stock.unmatched_list') }}">
@@ -45,6 +48,7 @@
       <th>Type</th>
       <th class="num">On hand</th>
       <th class="num">Min / Max</th>
+      <th>Next action</th>
       <th></th>
     </tr>
   </thead>
@@ -66,6 +70,24 @@
           {{ item.min_qty }} / {{ item.max_qty }}
         {% else %}
           <span class="badge badge-unseeded" title="Min/max thresholds not set yet — reorder logic cannot fire until they are seeded (CP-5b).">unseeded</span>
+        {% endif %}
+      </td>
+      <td>
+        {% set open_reorder = open_reorders.get(item.id) %}
+        {% if open_reorder %}
+          {% if open_reorder.status.value == 'sent' %}
+            Waiting for delivery{% if open_reorder.vendor_at_trigger %} from {{ open_reorder.vendor_at_trigger }}{% endif %}
+          {% else %}
+            <a href="{{ url_for('stock.reorders_list') }}">Send the vendor order ({{ open_reorder.qty }})</a>
+          {% endif %}
+        {% elif item.is_non_stocked %}
+          Ordered per customer job
+        {% elif not item.is_seeded %}
+          <a href="{{ url_for('stock.seed_screen') }}">Set min/max in Stock setup</a>
+        {% elif item.needs_reorder %}
+          Below minimum
+        {% else %}
+          No reorder needed
         {% endif %}
       </td>
       <td><a href="{{ url_for('stock.item_detail', item_id=item.id) }}">History</a></td>
