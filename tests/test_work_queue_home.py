@@ -361,3 +361,46 @@ def test_stock_list_next_action_column(client):
     reorders = client.get("/stock/reorders/").get_data(as_text=True)
     assert "Vendor orders" in reorders
     assert "No vendor email is sent automatically" in reorders
+
+
+def test_quotes_queue_heading_and_plain_tier_note(client):
+    page = client.get("/quotes/").get_data(as_text=True)
+    assert "Requests become priced quotes here." in page
+    assert 'aria-current="step">01 · Sales<b>Quote</b>' in page
+    assert "Auto-send is off (Tier 1). The app recommends; a person sends every quote." in page
+    assert "Trust ramp: Tier" not in page
+
+
+def test_sent_quote_editor_is_read_only(client):
+    quote = _make_quote("126-092", QuoteStatus.SENT)
+    page = client.get(f"/quotes/{quote.id}").get_data(as_text=True)
+    assert "its content is read-only" in page
+    assert "<fieldset disabled" in page
+
+    meta = client.post(f"/quotes/{quote.id}/meta", data={"project_name": "X"})
+    assert meta.status_code == 409
+    add = client.post(
+        f"/quotes/{quote.id}/line-items/add",
+        data={"product_type": "sleeve", "description": "d", "quantity": "1", "unit_price": "1"},
+    )
+    assert add.status_code == 409
+    _db.session.refresh(quote)
+    assert quote.project_name is None
+    assert quote.line_items == []
+
+
+def test_archived_quote_read_only_points_at_unarchive(client):
+    quote = _make_quote("126-093", QuoteStatus.ARCHIVED)
+    page = client.get(f"/quotes/{quote.id}").get_data(as_text=True)
+    assert "Press Unarchive to work on it again." in page
+    assert client.post(f"/quotes/{quote.id}/meta", data={"project_name": "X"}).status_code == 409
+
+
+def test_editable_quote_still_edits(client):
+    quote = _make_quote("126-094", QuoteStatus.IN_REVIEW)
+    page = client.get(f"/quotes/{quote.id}").get_data(as_text=True)
+    assert "<fieldset disabled" not in page
+    response = client.post(f"/quotes/{quote.id}/meta", data={"project_name": "Jenks job"})
+    assert response.status_code == 200
+    _db.session.refresh(quote)
+    assert quote.project_name == "Jenks job"

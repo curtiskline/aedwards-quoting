@@ -20,13 +20,30 @@
 
   {% include "quotes/_recommendation.html" %}
 
-  {% include "quotes/_quote_fields.html" %}
+  {% if quote_editable %}
+    {% include "quotes/_quote_fields.html" %}
 
-  {% include "quotes/_customer_info.html" %}
+    {% include "quotes/_customer_info.html" %}
 
-  {% include "quotes/_attachments.html" %}
+    {% include "quotes/_attachments.html" %}
 
-  {% include "quotes/_line_items.html" %}
+    {% include "quotes/_line_items.html" %}
+  {% else %}
+    <div role="status" style="padding:0.75rem 1rem;border:1px solid #93c5fd;background:#eff6ff;color:#1d4ed8;font-weight:600;border-radius:8px;">
+      {{ quote_read_only_message }}
+    </div>
+    {# A disabled fieldset disables every control inside; the /meta, /customer,
+       /totals and line-item endpoints also refuse these quotes (T515 M2). #}
+    <fieldset disabled style="border:0;margin:0;padding:0;min-width:0;">
+      {% include "quotes/_quote_fields.html" %}
+
+      {% include "quotes/_customer_info.html" %}
+
+      {% include "quotes/_attachments.html" %}
+
+      {% include "quotes/_line_items.html" %}
+    </fieldset>
+  {% endif %}
 
   {% include "quotes/_source_email.html" %}
 </div>

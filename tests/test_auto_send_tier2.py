@@ -837,7 +837,7 @@ def test_admin_dials_reject_bad_values(app, client):
 def test_dashboard_surfaces_dial_values_at_tier_2(app, client):
     _set_tier(2)
     html = client.get("/quotes/").data.decode()
-    assert "auto-send" in html
+    assert "Auto-send is ON" in html
     assert "threshold 95%" in html
     assert "$2500.00" in html
     admin = client.get("/admin/pricing?tab=trust").data.decode()

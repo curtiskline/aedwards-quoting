@@ -422,6 +422,46 @@ def _get_active_quote_or_404(quote_id: int) -> Quote:
     return quote
 
 
+# Statuses whose quote CONTENT may still change. A sent quote's content is
+# the record the customer received — changing it is only allowed by creating
+# a revision (audit T515 M2); archived quotes are unarchived first.
+EDITABLE_QUOTE_STATUSES = {
+    QuoteStatus.NEW,
+    QuoteStatus.IN_REVIEW,
+    QuoteStatus.NEEDS_PRICING,
+    QuoteStatus.READY,
+}
+
+_READ_ONLY_QUOTE_MESSAGES = {
+    QuoteStatus.SENT: (
+        "This quote was sent, so its content is read-only. "
+        "Press Revise to change it as a new version."
+    ),
+    QuoteStatus.REPLACED: (
+        "This quote was replaced by a revision, so its content is read-only. "
+        "Edit the replacing quote instead."
+    ),
+    QuoteStatus.ARCHIVED: (
+        "This quote is archived, so its content is read-only. "
+        "Press Unarchive to work on it again."
+    ),
+}
+
+
+def _quote_is_editable(quote: Quote) -> bool:
+    return quote.status in EDITABLE_QUOTE_STATUSES
+
+
+def _require_editable_quote(quote: Quote) -> None:
+    """Refuse content edits on sent/replaced/archived quotes (T515 M2).
+
+    The editor renders these quotes read-only; this is the backstop so a
+    stale tab or direct POST cannot silently rewrite a sent record either.
+    """
+    if not _quote_is_editable(quote):
+        abort(409, description=_READ_ONLY_QUOTE_MESSAGES[quote.status])
+
+
 def _current_user() -> User | None:
     if current_user.is_authenticated:
         return current_user
@@ -1254,6 +1294,10 @@ def _quote_context(quote: Quote) -> dict:
         "shipping_amount": totals["shipping"],
         "tax_amount": totals["tax"],
         "quote_needs_pricing": _quote_needs_pricing(quote),
+        "quote_editable": _quote_is_editable(quote),
+        "quote_read_only_message": (
+            None if _quote_is_editable(quote) else _READ_ONLY_QUOTE_MESSAGES[quote.status]
+        ),
         "pricing_block_reasons": quote_pricing_block_reasons(quote),
         "revision_chain": _revision_chain(quote),
         "recommendation": quote_recommendation(quote),
@@ -1974,6 +2018,7 @@ def quote_duplicate(quote_id: int):
 @main_bp.post("/quotes/<int:quote_id>/meta")
 def quote_update_meta(quote_id: int):
     quote = _get_active_quote_or_404(quote_id)
+    _require_editable_quote(quote)
     quote.quote_number = (
         request.form.get("quote_number") or quote.quote_number
     ).strip() or quote.quote_number
@@ -1988,6 +2033,7 @@ def quote_update_meta(quote_id: int):
 @main_bp.post("/quotes/<int:quote_id>/customer")
 def quote_update_customer(quote_id: int):
     quote = _get_active_quote_or_404(quote_id)
+    _require_editable_quote(quote)
     _update_quote_customer_from_request(quote)
     _apply_auto_shipping_line_item(quote)
     _sync_quote_pricing_status(quote)
@@ -2083,6 +2129,7 @@ def quote_update_status(quote_id: int):
 @main_bp.post("/quotes/<int:quote_id>/totals")
 def quote_update_totals(quote_id: int):
     quote = _get_active_quote_or_404(quote_id)
+    _require_editable_quote(quote)
     if "price_adjustment_pct" in request.form:
         try:
             quote.price_adjustment_pct = price_adjustments.parse_percentage(request.form["price_adjustment_pct"])
@@ -2182,6 +2229,7 @@ def quote_update_totals(quote_id: int):
 @main_bp.post("/quotes/<int:quote_id>/line-items/add")
 def quote_add_line_item(quote_id: int):
     quote = _get_active_quote_or_404(quote_id)
+    _require_editable_quote(quote)
     _normalize_sort_orders(quote)
     product_type = _resolve_product_type(request.form.get("product_type"), "sleeve")
     if product_type == on_site_fill.TYPE:
@@ -2287,6 +2335,7 @@ def quote_calc_line_item_total(quote_id: int, item_id: int):
 @main_bp.post("/quotes/<int:quote_id>/line-items/<int:item_id>/update")
 def quote_update_line_item(quote_id: int, item_id: int):
     quote = _get_active_quote_or_404(quote_id)
+    _require_editable_quote(quote)
     item = db.get_or_404(QuoteLineItem, item_id)
     if item.quote_id != quote.id:
         abort(404)
@@ -2552,6 +2601,7 @@ def product_catalog_lookup(part_number: str):
 @main_bp.post("/quotes/<int:quote_id>/line-items/<int:item_id>/delete")
 def quote_delete_line_item(quote_id: int, item_id: int):
     quote = _get_active_quote_or_404(quote_id)
+    _require_editable_quote(quote)
     item = db.get_or_404(QuoteLineItem, item_id)
     if item.quote_id != quote.id:
         abort(404)
@@ -2567,6 +2617,7 @@ def quote_delete_line_item(quote_id: int, item_id: int):
 @main_bp.post("/quotes/<int:quote_id>/line-items/<int:item_id>/move")
 def quote_move_line_item(quote_id: int, item_id: int):
     quote = _get_active_quote_or_404(quote_id)
+    _require_editable_quote(quote)
     direction = (request.form.get("direction") or "").strip().lower()
     _normalize_sort_orders(quote)
     items = _sorted_line_items(quote)
