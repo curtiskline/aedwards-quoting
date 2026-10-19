@@ -16,6 +16,7 @@ from app.models import (
     Customer,
     Contact,
     ProcessedInboundEmail,
+    ProductCatalog,
     Quote as DBQuote,
     QuoteAttachment,
     QuoteLineItem as DBQuoteLineItem,
@@ -26,6 +27,7 @@ from app.models import (
 from allenedwards.monitor import InboxMonitor
 from allenedwards.db_writer import (
     MAX_ATTACHMENT_BYTES,
+    build_db_line_item,
     write_quote_to_db,
     _normalize_company_name,
     _match_customer,
@@ -35,8 +37,12 @@ from allenedwards.db_writer import (
 from app.quote_numbers import generate_quote_number
 from allenedwards.outlook import OutlookMessage
 from allenedwards.outlook import OutlookAttachment
-from allenedwards.parser import ParsedRFQ, ShipTo
-from allenedwards.pricing import Quote as PricingQuote, QuoteLineItem as PricingLineItem
+from allenedwards.parser import ParsedItem, ParsedRFQ, ShipTo
+from allenedwards.pricing import (
+    Quote as PricingQuote,
+    QuoteLineItem as PricingLineItem,
+    generate_quote,
+)
 
 
 @pytest.fixture()
@@ -213,11 +219,179 @@ def test_write_quote_creates_records(app, msg, rfq, priced_quote):
         # Single identifier: a generated part_number wins over the catalog-match
         # SKU, which is folded in only when part_number is blank.
         assert li1.part_number == "SLV-12-375"
+        assert li1.catalog_id is None
+        assert li1.catalog_match_status == "unmatched"
 
         # Audit log
         audits = AuditLog.query.filter_by(quote_id=db_quote.id).all()
         assert len(audits) == 1
         assert audits[0].action == "created_from_email"
+
+
+def test_intake_catalog_match_freezes_catalog_identity(app, msg, rfq, priced_quote):
+    with app.app_context():
+        catalog = ProductCatalog(
+            part_number="S-12.34-38-50-10",
+            description='Canonical half sole, 12-3/4" ID',
+            product_type="sleeve",
+            is_active=True,
+        )
+        db.session.add(catalog)
+        db.session.commit()
+
+        db_quote = write_quote_to_db(msg, rfq, priced_quote, "126-catalog")
+        line = db_quote.line_items[0]
+
+        assert line.catalog_id == catalog.id
+        assert line.catalog_match_status == "active"
+        assert line.part_number == catalog.part_number
+        assert line.description == catalog.description
+        # Catalog identity does not replace the deterministic pricing result.
+        assert float(line.unit_price) == 45.50
+
+
+def test_inactive_catalog_product_is_linked_and_flagged(app, msg, rfq, priced_quote):
+    with app.app_context():
+        catalog = ProductCatalog(
+            part_number="S-12.34-38-50-10",
+            description="Historical catalog sleeve",
+            product_type="sleeve",
+            is_active=False,
+        )
+        db.session.add(catalog)
+        db.session.commit()
+
+        db_quote = write_quote_to_db(msg, rfq, priced_quote, "126-inactive")
+        line = db_quote.line_items[0]
+
+        assert line.catalog_id == catalog.id
+        assert line.catalog_match_status == "inactive"
+        assert line.part_number == catalog.part_number
+
+
+def test_active_catalog_range_supersedes_inactive_generated_variant(app):
+    """A valid range is authoritative over an import-era inactive per-size SKU."""
+    with app.app_context():
+        legacy = ProductCatalog(
+            part_number="G-18-14-50",
+            description="Legacy imported 18in variant",
+            product_type="girth_weld",
+            is_active=False,
+        )
+        catalog_range = ProductCatalog(
+            part_number=None,
+            description='18"-30" Girth Weld Sleeves',
+            product_type="girth_weld",
+            diameter_min=18,
+            diameter_max=30,
+            wall_thickness_min=Decimal("0.25"),
+            wall_thickness_max=Decimal("0.50"),
+            is_active=True,
+        )
+        db.session.add_all([legacy, catalog_range])
+        db.session.commit()
+
+        line = build_db_line_item(
+            999,
+            PricingLineItem(
+                sort_order=1,
+                product_type="girth_weld",
+                part_number="G-18-14-50",
+                description='Girth Weld Sleeve, 18" ID, 1/4" w/t, A572 GR50',
+                quantity=1,
+                unit_price=Decimal("550.00"),
+                total=Decimal("550.00"),
+                diameter=18,
+                wall_thickness=0.25,
+                grade=50,
+            ),
+        )
+
+        assert line.catalog_id == catalog_range.id
+        assert line.catalog_match_status == "active"
+        assert line.part_number is None
+        assert line.description == catalog_range.description
+        assert float(line.unit_price) == 550
+
+
+def test_hard_catalog_enforcement_is_opt_in(app):
+    with app.app_context():
+        app.config["CATALOG_HARD_TBD_ENFORCEMENT"] = True
+        line = build_db_line_item(
+            999,
+            PricingLineItem(
+                sort_order=1,
+                product_type="service",
+                part_number="AI-INVENTED-99",
+                description="Imagined service",
+                quantity=2,
+                unit_price=Decimal("125.00"),
+                total=Decimal("250.00"),
+            ),
+        )
+
+        assert line.catalog_match_status == "unmatched"
+        assert line.part_number == "TBD"
+        assert float(line.unit_price) == 0
+        assert float(line.line_total) == 0
+        assert "active Product Catalog" in line.specs_json["notes"]
+
+        catalog = ProductCatalog(
+            part_number="REAL-1",
+            description="Real catalog service",
+            product_type="service",
+            is_active=True,
+        )
+        db.session.add(catalog)
+        db.session.commit()
+        fallback_line = build_db_line_item(
+            999,
+            PricingLineItem(
+                sort_order=2,
+                product_type="service",
+                sku="MODEL-MADE-THIS-UP",
+                part_number="REAL-1",
+                description="Service",
+                quantity=1,
+                unit_price=Decimal("125.00"),
+                total=Decimal("125.00"),
+            ),
+        )
+        assert fallback_line.catalog_id == catalog.id
+        assert fallback_line.part_number == "REAL-1"
+        assert float(fallback_line.unit_price) == 125
+
+
+def test_rfq_product_missing_from_catalog_is_flagged_without_fabrication(app, msg):
+    """An unknown RFQ item stays TBD and carries an explicit catalog flag."""
+    with app.app_context():
+        rfq = ParsedRFQ(
+            customer_name="Acme Pipeline Co",
+            contact_name="Buyer",
+            contact_email="buyer@example.com",
+            contact_phone=None,
+            ship_to=None,
+            po_number=None,
+            quote_number=None,
+            items=[
+                ParsedItem(
+                    product_type="service",
+                    quantity=1,
+                    description="Teleport a pipeline across the state",
+                )
+            ],
+        )
+        priced = generate_quote(rfq, "126-unknown")
+
+        assert priced.line_items[0].part_number == "TBD"
+        assert priced.line_items[0].unit_price == Decimal("0.00")
+
+        db_quote = write_quote_to_db(msg, rfq, priced, "126-unknown")
+        line = db_quote.line_items[0]
+        assert line.catalog_id is None
+        assert line.catalog_match_status == "unmatched"
+        assert line.part_number == "TBD"
+        assert float(line.unit_price) == 0
 
 
 def test_atomic_claim_crash_is_reprocessed_from_state_file(app, tmp_path, msg, rfq, priced_quote):

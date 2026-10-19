@@ -928,8 +928,8 @@ def _split_bag_empty_and_fill_options(items: list[ParsedItem]) -> list[ParsedIte
     return normalized
 
 
-def _load_active_sku_prompt_block() -> str:
-    """Build prompt context for active catalog SKUs when app/DB context is available."""
+def _load_catalog_prompt_block() -> str:
+    """Build prompt context from active exact and range catalog identities."""
     if not has_app_context():
         return ""
     try:
@@ -941,25 +941,26 @@ def _load_active_sku_prompt_block() -> str:
 
         rows = (
             db.session.query(ProductCatalog)
-            .filter(
-                ProductCatalog.is_active.is_(True),
-                ProductCatalog.part_number.isnot(None),
-            )
-            .order_by(ProductCatalog.part_number.asc())
+            .filter(ProductCatalog.is_active.is_(True))
+            .order_by(ProductCatalog.part_number.asc(), ProductCatalog.id.asc())
             .all()
         )
-        # Name-only rows (blank part number) have nothing for the model to match.
-        rows = [row for row in rows if (row.part_number or "").strip()]
         if not rows:
             return ""
 
-        lines = "\n".join(f"- {row.part_number}: {row.description}" for row in rows)
+        lines = "\n".join(
+            f"- {row.part_number}: {row.description}"
+            if (row.part_number or "").strip()
+            else f"- [range; no part number]: {row.description}"
+            for row in rows
+        )
         return (
-            "\n\nCANONICAL PART NUMBER LIST (active catalog entries):\n"
+            "\n\nCANONICAL PRODUCT LIST (active Product Catalog entries):\n"
             f"{lines}\n"
             'If a line item clearly matches a part number, include "sku": "<part number>" '
             "in its JSON item.\n"
-            'If uncertain, set "sku" to null.'
+            'For range products without a part number, set "sku" to null. '
+            "Never create or infer a part number."
         )
     except Exception:
         return ""
@@ -987,7 +988,7 @@ _DEFAULT_PRODUCT_TYPES_FOR_PROMPT: tuple[tuple[str, str], ...] = (
 def _active_product_types_for_prompt() -> list[tuple[str, str]]:
     """Active (name, display_label) product types from the editable table.
 
-    Mirrors the guard style of _load_active_sku_prompt_block: reads the live
+    Mirrors the guard style of _load_catalog_prompt_block: reads the live
     ProductType table when app/DB context exists, else falls back to a sane
     default. Ordered by sort_order so the prompt matches the UI ordering.
     """
@@ -1033,7 +1034,7 @@ def _parse_system_prompt() -> str:
         PARSE_SYSTEM_PROMPT.replace(_PRODUCT_TYPE_ENUM_PLACEHOLDER, enum)
         + '\n\nEach line item may include optional field "sku": string|null.'
         + _product_type_prompt_block(types)
-        + _load_active_sku_prompt_block()
+        + _load_catalog_prompt_block()
     )
 
 

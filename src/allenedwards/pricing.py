@@ -963,8 +963,10 @@ def _match_omegawrap_key(description: str) -> str | None:
         for kw in keywords:
             if kw in desc_lower:
                 return key
-    # Default to carbon if no variant specified
-    return "omegawrap_carbon"
+    # An unspecified composite is not necessarily Carbon. Failing closed keeps
+    # the line on the existing TBD path for human review instead of inventing
+    # a saleable variant that the customer never requested.
+    return None
 
 
 def _match_other_pricing_key(description: str, keyword_map: dict[str, list[str]]) -> str | None:
@@ -1655,7 +1657,10 @@ def _catalog_description_for_part_number(part_number: str) -> str | None:
 
         row = (
             db.session.query(ProductCatalog)
-            .filter(func.lower(ProductCatalog.part_number) == part_number.lower())
+            .filter(
+                ProductCatalog.is_active.is_(True),
+                func.lower(ProductCatalog.part_number) == part_number.lower(),
+            )
             .one_or_none()
         )
         return row.description if row else None

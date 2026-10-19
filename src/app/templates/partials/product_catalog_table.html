@@ -48,6 +48,18 @@
       <label>Vendor
         <input name="vendor" maxlength="255" placeholder="e.g. AE MFG" />
       </label>
+      <label>Diameter min (in)
+        <input name="diameter_min" type="number" min="0" step="0.0001" placeholder="Optional" />
+      </label>
+      <label>Diameter max (in)
+        <input name="diameter_max" type="number" min="0" step="0.0001" placeholder="Optional" />
+      </label>
+      <label>Wall min (in)
+        <input name="wall_thickness_min" type="number" min="0" step="0.0001" placeholder="Optional" />
+      </label>
+      <label>Wall max (in)
+        <input name="wall_thickness_max" type="number" min="0" step="0.0001" placeholder="Optional" />
+      </label>
       <button type="submit" class="save-btn">Add product</button>
       {% if catalog_just_saved %}<span class="save-confirmation">Saved</span>{% endif %}
     </form>
@@ -64,6 +76,8 @@
             <th>Description</th>
             <th>Type</th>
             <th>Vendor</th>
+            <th>Diameter range</th>
+            <th>Wall range</th>
             <th>Active</th>
             <th></th>
           </tr>
@@ -71,7 +85,7 @@
         <tbody>
           {% for item in catalog_items %}
             <tr id="catalog-item-{{ item.id }}" class="{% if not item.is_active %}catalog-inactive{% endif %}" data-catalog-search="{{ (item.part_number or '')|lower }} {{ item.description|lower }} {{ (item.vendor or '')|lower }}">
-              <td colspan="6">
+              <td colspan="8">
                 <form method="post" action="/admin/catalog/{{ item.id }}/update" hx-post="/admin/catalog/{{ item.id }}/update" hx-target="#product-catalog-card" hx-swap="outerHTML" class="catalog-form catalog-form-row">
                   <input type="hidden" name="catalog_filter" value="{{ catalog_filter }}" />
                   <input name="part_number" value="{{ item.part_number or '' }}" aria-label="Part Number" maxlength="255" placeholder="Optional" />
@@ -83,6 +97,10 @@
                     {% endfor %}
                   </select>
                   <input name="vendor" value="{{ item.vendor or '' }}" aria-label="Vendor" maxlength="255" placeholder="e.g. AE MFG" />
+                  <input name="diameter_min" value="{{ item.diameter_min if item.diameter_min is not none else '' }}" aria-label="Diameter min (in)" type="number" min="0" step="0.0001" placeholder="Dia min" />
+                  <input name="diameter_max" value="{{ item.diameter_max if item.diameter_max is not none else '' }}" aria-label="Diameter max (in)" type="number" min="0" step="0.0001" placeholder="Dia max" />
+                  <input name="wall_thickness_min" value="{{ item.wall_thickness_min if item.wall_thickness_min is not none else '' }}" aria-label="Wall thickness min (in)" type="number" min="0" step="0.0001" placeholder="Wall min" />
+                  <input name="wall_thickness_max" value="{{ item.wall_thickness_max if item.wall_thickness_max is not none else '' }}" aria-label="Wall thickness max (in)" type="number" min="0" step="0.0001" placeholder="Wall max" />
                   <label class="checkbox-row"><input type="checkbox" name="is_active" {% if item.is_active %}checked{% endif %} /> Active</label>
                   <button type="submit" class="save-btn">Save</button>
                 </form>

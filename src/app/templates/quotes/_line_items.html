@@ -65,6 +65,13 @@
                   Specs changed but the price was not recalculated — fill in every spec field to re-price this line.
                 </div>
               {% endif %}
+              {% if item.catalog_match_status == 'active' %}
+                <div class="pricing-note">Product Catalog matched</div>
+              {% elif item.catalog_match_message %}
+                <div class="{% if item.catalog_needs_review %}pricing-note-critical{% else %}pricing-note-warn{% endif %}">
+                  {{ item.catalog_match_message }}
+                </div>
+              {% endif %}
               {% if item.no_charge %}<div class="pricing-note">No charge</div>{% endif %}
               {% if item.needs_pricing %}<div class="pricing-note-critical">Needs Pricing</div>{% endif %}
             </div>
@@ -360,7 +367,7 @@
           const q = input.value.trim();
           if (q.length < 2) return;
           const rows = await searchCatalog(q);
-          list.innerHTML = rows.map((row) => `<option value="${row.part_number}">${row.description}</option>`).join("");
+          list.innerHTML = rows.map((row) => `<option value="${row.part_number}">${row.description}${row.is_active ? "" : " (inactive — verify)"}</option>`).join("");
         });
 
         input.addEventListener("change", async () => {

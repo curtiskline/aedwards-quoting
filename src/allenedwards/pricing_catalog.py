@@ -6,19 +6,19 @@ from decimal import Decimal
 
 # Price per pound lookup table: wall_thickness -> (GR50 price, GR65 price)
 DEFAULT_PRICE_PER_LB: dict[str, tuple[Decimal, Decimal]] = {
-    "0.25": (Decimal("3.01"), Decimal("3.11")),
-    "0.3125": (Decimal("2.86"), Decimal("2.96")),
-    "0.375": (Decimal("2.65"), Decimal("2.75")),
-    "0.5": (Decimal("2.59"), Decimal("2.69")),
+    "0.25": (Decimal("4.45"), Decimal("4.62")),
+    "0.3125": (Decimal("3.84"), Decimal("4.01")),
+    "0.375": (Decimal("3.31"), Decimal("3.48")),
+    "0.5": (Decimal("3.40"), Decimal("3.57")),
     "0.625": (Decimal("2.52"), Decimal("2.62")),
     "0.75": (Decimal("2.52"), Decimal("2.62")),
 }
 
 # Girth weld pricing by diameter range: (min_diameter, max_diameter, price_per_set)
 DEFAULT_GIRTH_WELD_PRICING: list[tuple[int, int, Decimal]] = [
-    (2, 19, Decimal("300")),
-    (20, 31, Decimal("500")),
-    (32, 44, Decimal("800")),
+    (2, 16, Decimal("325")),
+    (18, 30, Decimal("550")),
+    (32, 44, Decimal("875")),
 ]
 
 # Bag pricing: (pipe_size_min, pipe_size_max, part_number, pieces_per_pallet, price_per_bag)

@@ -25,6 +25,7 @@ from statistics import median
 
 from allenedwards.ship_to import normalize_ship_to
 
+from .catalog_resolution import catalog_status_message, catalog_status_needs_review
 from .extensions import db
 from .models import (
     Customer,
@@ -133,6 +134,8 @@ def quote_pricing_block_reasons(quote: Quote) -> list[str]:
             reasons.append(f"“{label}” has “{item.part_number}” as its part number — replace or clear it.")
         if "tbd" in str(item.description or "").lower():
             reasons.append(f"“{label}” still says TBD in its description — reword it.")
+        if catalog_status_needs_review(item.catalog_match_status):
+            reasons.append(f"“{label}”: {catalog_status_message(item.catalog_match_status)}.")
     return reasons
 
 
@@ -163,6 +166,8 @@ def quote_ready_fingerprint(quote: Quote) -> str:
                 "id": item.id,
                 "product_type": item.product_type,
                 "part_number": item.part_number,
+                "catalog_id": item.catalog_id,
+                "catalog_match_status": item.catalog_match_status,
                 "description": item.description,
                 "quantity": item.quantity,
                 "unit_price": item.unit_price,
@@ -224,6 +229,8 @@ def _signal_decode_clean(quote: Quote) -> tuple[str, dict]:
         specs = dict(item.specs_json or {})
         if line_item_has_tbd_marker(item):
             reasons.append(f"{label}: TBD marker")
+        if catalog_status_needs_review(item.catalog_match_status):
+            reasons.append(f"{label}: {catalog_status_message(item.catalog_match_status)}")
         if specs.get("price_stale"):
             reasons.append(f"{label}: price flagged stale")
         notes = str(specs.get("notes") or "")

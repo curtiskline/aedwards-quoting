@@ -615,6 +615,8 @@ def test_send_quote_success(mock_outlook_class, db_url, tmp_path):
                     "length_ft": "10",
                 },
                 "part_number": "HM120253G10",
+                "catalog_id": None,
+                "catalog_match_status": "unchecked",
                 "sort_order": 1,
             },
             {
@@ -626,6 +628,8 @@ def test_send_quote_success(mock_outlook_class, db_url, tmp_path):
                 "line_total": "50.00",
                 "specs_json": {"diameter": "12"},
                 "part_number": "BAG-12",
+                "catalog_id": None,
+                "catalog_match_status": "unchecked",
                 "sort_order": 2,
             },
         ]

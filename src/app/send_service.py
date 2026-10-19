@@ -194,6 +194,8 @@ def quote_line_items_snapshot(quote: Quote) -> list[dict[str, object]]:
             # only the subset currently rendered by the quote editor.
             "specs_json": copy.deepcopy(item.specs_json),
             "part_number": item.part_number,
+            "catalog_id": item.catalog_id,
+            "catalog_match_status": item.catalog_match_status,
             "sort_order": item.sort_order,
             **({
                 "on_site_label": item.on_site_label,
