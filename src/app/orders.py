@@ -319,14 +319,46 @@ def quote_accept(quote_id: int):
 # ---------------------------------------------------------------------------
 
 
+def _order_next_action(order: Order, pick_list: "PickList | None") -> tuple[str | None, str | None]:
+    """The order's next real step and whose stage it is (T514 slice 4).
+
+    Derived only from enforced state: the order status, whether its pick
+    list exists, and the pick list's stage.
+    """
+    from .models import PickListStatus
+
+    if pick_list is None:
+        if order.status in (OrderStatus.ACCEPTED, OrderStatus.ORDERED):
+            if order.quote_version.line_items_snapshot is None:
+                # create_pick_list refuses pre-archive sends; say so up front.
+                return "Handle this order manually (no frozen line record)", "Sales"
+            return "Generate the pick list", "Sales"
+        return None, None
+    return {
+        PickListStatus.QUEUED: ("Pick the order", "Shop"),
+        PickListStatus.PICKED: ("Load the order", "Shop"),
+        PickListStatus.LOADED: ("Record it as shipped", "Shipping"),
+        PickListStatus.SHIPPED: (None, None),
+    }[pick_list.status]
+
+
 def _enrich_orders(orders: list[Order]) -> list[dict]:
+    pick_lists = {
+        pl.order_id: pl
+        for pl in db.session.query(PickList)
+        .filter(PickList.order_id.in_([o.id for o in orders]))
+        .all()
+    } if orders else {}
     results = []
     for o in orders:
         snapshot = o.quote_version.line_items_snapshot or []
         total = sum((Decimal(str(line.get("line_total") or 0)) for line in snapshot), Decimal("0")) + Decimal(str(o.quote_version.tax_amount or 0))
+        next_action, next_team = _order_next_action(o, pick_lists.get(o.id))
         results.append(
             {
                 "id": o.id,
+                "next_action": next_action,
+                "next_team": next_team,
                 "quote_number": o.quote.quote_number,
                 "version_number": o.quote_version.version_number,
                 "customer_name": o.quote.customer_name_raw or o.quote.sender_name or "Unknown",

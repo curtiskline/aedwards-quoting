@@ -1,0 +1,35 @@
+{# Quote-to-ship flow strip (T514 slice 4, from the T485 mockup).
+   Set `flow_current` before including: quote | reply | order | pick | ship.
+   Every step is an enforced stage in the real workflow; there is no
+   invoice/documents step because nothing is built behind one. #}
+<nav class="flow-strip" aria-label="Quote to ship">
+  <a href="/quotes/"{% if flow_current == 'quote' %} class="current" aria-current="step"{% endif %}>01 · Sales<b>Quote</b></a>
+  <a href="/quotes/?status=sent"{% if flow_current == 'reply' %} class="current" aria-current="step"{% endif %}>02 · Customer<b>Customer reply</b></a>
+  <a href="/orders/"{% if flow_current == 'order' %} class="current" aria-current="step"{% endif %}>03 · Sales<b>Order</b></a>
+  <a href="/pick-lists/"{% if flow_current == 'pick' %} class="current" aria-current="step"{% endif %}>04 · Shop<b>Pick &amp; load</b></a>
+  <a href="/pick-lists/?status=loaded"{% if flow_current == 'ship' %} class="current" aria-current="step"{% endif %}>05 · Shipping<b>Ship</b></a>
+</nav>
+<style>
+  .flow-strip {
+    display: flex;
+    flex-wrap: wrap;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 7px;
+    margin: 0 0 1.25rem;
+    overflow: hidden;
+  }
+  .flow-strip a {
+    flex: 1;
+    min-width: 100px;
+    padding: 0.7rem 0.9rem;
+    text-decoration: none;
+    font-size: 0.72rem;
+    color: #6b7280;
+    border-right: 1px solid var(--border);
+  }
+  .flow-strip a:last-child { border-right: 0; }
+  .flow-strip a.current { background: #e5f1e9; color: #075d43; font-weight: 700; }
+  .flow-strip b { display: block; font-size: 0.85rem; color: var(--text); }
+  @media (max-width: 700px) { .flow-strip a { min-width: 30%; } }
+</style>

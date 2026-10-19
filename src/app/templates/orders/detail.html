@@ -29,6 +29,8 @@
   .audit-row { font-size: 0.85rem; color: #6b7280; padding: 0.2rem 0; }
 </style>
 
+<p style="font-size:0.8rem;color:#6b7280;margin:0 0 1rem;"><a href="/orders/" style="color:inherit;">Orders</a> / {{ quote.quote_number }}</p>
+
 {# Internal identifier only: a customer-facing order-number scheme is a
    deferred Chip decision — never put "Order #id" on anything customer-shaped. #}
 <h1 style="margin:0 0 0.25rem;">Order for Quote {{ quote.quote_number }} <span style="color:#6b7280;font-weight:500;">(version {{ version.version_number }})</span></h1>

@@ -289,3 +289,34 @@ def test_bulk_delete_skips_active_rows_and_says_so(client):
     assert "Deleted 0 products permanently." in text
     assert "make a product inactive first" in text
     assert _db.session.get(ProductCatalog, item.id) is not None
+
+
+def test_orders_queue_shows_next_action_and_flow(client):
+    quote = _make_quote("126-090", QuoteStatus.SENT)
+    order = _make_order(quote)
+
+    page = client.get("/orders/").get_data(as_text=True)
+    assert "Customer go-ahead" in page
+    assert 'aria-current="step">03 · Sales<b>Order</b>' in page
+    assert "Next: Generate the pick list" in page
+    assert "waiting on Sales" in page
+
+    pick = PickList(order_id=order.id, status=PickListStatus.QUEUED, lines_snapshot=[])
+    _db.session.add(pick)
+    _db.session.commit()
+    page = client.get("/orders/").get_data(as_text=True)
+    assert "Next: Pick the order" in page
+    assert "waiting on Shop" in page
+
+    pick.status = PickListStatus.SHIPPED
+    order.status = OrderStatus.FULFILLED
+    _db.session.commit()
+    page = client.get("/orders/").get_data(as_text=True)
+    assert "Shipped — nothing left to do." in page
+
+
+def test_shop_queue_heading_and_flow(client):
+    page = client.get("/pick-lists/").get_data(as_text=True)
+    assert "Shop &amp; shipping" in page
+    assert "one action for each real event" in page
+    assert 'aria-current="step">04 · Shop<b>Pick &amp; load</b>' in page
