@@ -15,7 +15,7 @@ from .customers import customers_bp
 from .extensions import db, login_manager
 from .fulfillment import fulfillment_bp
 from .inventory import stock_bp
-from .models import User
+from .models import FailedIntake, User
 from .orders import orders_bp
 from .quotes import quotes_bp
 from .routes import main_bp
@@ -60,5 +60,25 @@ def create_app() -> Flask:
     @app.context_processor
     def inject_auth_state() -> dict[str, bool]:
         return {"is_authenticated": current_user.is_authenticated}
+
+    @app.context_processor
+    def inject_failed_intake_count() -> dict[str, int]:
+        """Outstanding failed-intake count for the nav badge (T514).
+
+        An unread RFQ can become a missed quote, so the count stays visible
+        in the top navigation rather than buried behind Settings.
+        """
+        if not current_user.is_authenticated:
+            return {"failed_intake_outstanding": 0}
+        try:
+            count = (
+                db.session.query(FailedIntake)
+                .filter(FailedIntake.resolved_at.is_(None))
+                .count()
+            )
+        except Exception:
+            # A missing table (fresh DB before migrations) must not break every page.
+            count = 0
+        return {"failed_intake_outstanding": count}
 
     return app

@@ -1,12 +1,18 @@
 {% extends "layout.html" %}
-{% block title %}Failed Intakes{% endblock %}
+{% block title %}Failed intake{% endblock %}
 {% block body %}
-  <h1>Failed Intakes</h1>
-  <p>
-    RFQs that reached the inbox but could not be turned into a quote
-    automatically (parse failure, response truncation, or a database error).
-    These need to be handled manually so nothing is lost.
-  </p>
+  {% include "partials/settings_chrome.html" %}
+
+  <p class="crumb"><a href="{{ url_for('main.settings_home') }}">Settings</a> / Failed intake</p>
+
+  <header class="page-heading">
+    <h1>Failed intake</h1>
+    <p class="page-sub">
+      Emails that asked for a quote, but no quote was created
+      (the email could not be read, or an error stopped it).
+      Handle each one so no request is missed.
+    </p>
+  </header>
 
   <div style="margin-bottom:1rem;">
     {% if show_resolved %}

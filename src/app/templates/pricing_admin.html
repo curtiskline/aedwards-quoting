@@ -1,78 +1,30 @@
 {% extends "layout.html" %}
-{% block title %}Admin{% endblock %}
+{% block title %}{{ settings_tabs[active_tab].label }} · Settings{% endblock %}
 {% block body %}
-  <h1>Admin</h1>
+  {% include "partials/settings_chrome.html" %}
 
-  <div class="tabbar">
-    <button type="button" class="tab-btn {% if active_tab == 'shipping' %}active{% endif %}" data-tab-target="admin-tab-shipping">Shipping</button>
-    <button type="button" class="tab-btn {% if active_tab == 'pricing' %}active{% endif %}" data-tab-target="admin-tab-pricing">Pricing</button>
-    <button type="button" class="tab-btn {% if active_tab == 'catalog' %}active{% endif %}" data-tab-target="admin-tab-catalog">Product Catalog</button>
-    <button type="button" class="tab-btn {% if active_tab == 'types' %}active{% endif %}" data-tab-target="admin-tab-types">Product Types</button>
-    <button type="button" class="tab-btn {% if active_tab == 'trust' %}active{% endif %}" data-tab-target="admin-tab-trust">Trust Ramp</button>
-  </div>
+  <p class="crumb"><a href="{{ url_for('main.settings_home') }}">Settings</a> / {{ settings_tabs[active_tab].label }}</p>
 
-  <section id="admin-tab-shipping" class="tab-panel {% if active_tab == 'shipping' %}active{% endif %}">
+  <header class="page-heading">
+    <h1>{{ settings_tabs[active_tab].label }}</h1>
+    <p class="page-sub">{{ settings_tabs[active_tab].sub }}</p>
+  </header>
+
+  <nav class="settings-tabs" aria-label="Settings sections">
+    {% for key, tab in settings_tabs.items() %}
+      <a href="{{ url_for('main.pricing_admin', tab=key) }}"{% if key == active_tab %} class="selected" aria-current="page"{% endif %}>{{ tab.label }}</a>
+    {% endfor %}
+  </nav>
+
+  {% if active_tab == "shipping" %}
     {% include "partials/shipping_config_form.html" %}
-  </section>
-
-  <section id="admin-tab-pricing" class="tab-panel {% if active_tab == 'pricing' %}active{% endif %}">
+  {% elif active_tab == "pricing" %}
     {% include "partials/pricing_catalog.html" %}
-  </section>
-
-  <section id="admin-tab-catalog" class="tab-panel {% if active_tab == 'catalog' %}active{% endif %}">
+  {% elif active_tab == "catalog" %}
     {% include "partials/product_catalog_table.html" %}
-  </section>
-
-  <section id="admin-tab-types" class="tab-panel {% if active_tab == 'types' %}active{% endif %}">
+  {% elif active_tab == "types" %}
     {% include "partials/product_types_table.html" %}
-  </section>
-
-  <section id="admin-tab-trust" class="tab-panel {% if active_tab == 'trust' %}active{% endif %}">
+  {% elif active_tab == "trust" %}
     {% include "partials/trust_ramp.html" %}
-  </section>
-
-  <style>
-    .tabbar {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-      margin: 1rem 0;
-    }
-    .tab-btn {
-      border: 1px solid #cbd5e1;
-      background: #f8fafc;
-      color: #1f2937;
-      border-radius: 999px;
-      padding: 0.4rem 0.9rem;
-      cursor: pointer;
-      font-weight: 600;
-    }
-    .tab-btn.active {
-      background: #0f766e;
-      color: #ffffff;
-      border-color: #0f766e;
-    }
-    .tab-panel {
-      display: none;
-    }
-    .tab-panel.active {
-      display: block;
-    }
-  </style>
-  <script>
-    (function() {
-      const tabs = document.querySelectorAll(".tab-btn");
-      const panels = document.querySelectorAll(".tab-panel");
-      tabs.forEach((btn) => {
-        btn.addEventListener("click", () => {
-          const target = btn.dataset.tabTarget;
-          tabs.forEach((tab) => tab.classList.remove("active"));
-          panels.forEach((panel) => panel.classList.remove("active"));
-          btn.classList.add("active");
-          const panel = document.getElementById(target);
-          if (panel) panel.classList.add("active");
-        });
-      });
-    })();
-  </script>
+  {% endif %}
 {% endblock %}

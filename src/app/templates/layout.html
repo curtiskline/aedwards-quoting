@@ -323,11 +323,8 @@
           <a href="{{ url_for('fulfillment.queue') }}">Shop</a>
           <a href="{{ url_for('stock.stock_list') }}">Stock</a>
           <a href="{{ url_for('customers.customer_list') }}">Customers</a>
-          <a href="{{ url_for('main.pricing_admin') }}">Admin</a>
-          <a href="{{ url_for('admin.users_page') }}">Users</a>
-          <a href="{{ url_for('admin.rejected_emails') }}">Rejected</a>
-          <a href="{{ url_for('admin.failed_intakes') }}">Failed intake</a>
-          <a href="{{ url_for('auth.set_password') }}">Set password</a>
+          <a href="{{ url_for('admin.failed_intakes') }}">Failed intake{% if failed_intake_outstanding %}<span class="badge">{{ failed_intake_outstanding }}</span>{% endif %}</a>
+          <a href="{{ url_for('main.settings_home') }}">Settings</a>
           <form method="post" action="{{ url_for('auth.logout') }}">
             <button type="submit">Logout</button>
           </form>
