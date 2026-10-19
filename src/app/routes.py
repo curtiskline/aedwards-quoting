@@ -1599,6 +1599,60 @@ _LIFECYCLE_LOCKED_STATUSES = frozenset(
     {QuoteStatus.SENT, QuoteStatus.REPLACED, QuoteStatus.ARCHIVED}
 )
 
+# The quote state machine, modeled on ORDER_TRANSITIONS (orders.py) and
+# PICK_LIST_SEQUENCE (fulfillment.py). Every status write that acts on a
+# caller-chosen target must pass through this table:
+#   - quote_update_status checks its in_review/ready/archived targets here;
+#   - quote_send/quote_send_form check "may this status become SENT" here
+#     (re-sending a SENT quote is deliberate — versioning records each send);
+#   - quote_revise's REPLACED write is covered by its own already-replaced
+#     guard, and the pricing sync only runs outside _LIFECYCLE_LOCKED_STATUSES.
+# SENT and REPLACED record completed lifecycle events a customer may be
+# acting on: the only way out of SENT is Revise (or a deliberate re-send),
+# and REPLACED is terminal — its successor revision is the live quote.
+# ARCHIVED is reversible (back to review) but can never be emailed.
+QUOTE_STATUS_TRANSITIONS: dict[QuoteStatus, set[QuoteStatus]] = {
+    QuoteStatus.NEW: {
+        QuoteStatus.IN_REVIEW,
+        QuoteStatus.NEEDS_PRICING,
+        QuoteStatus.READY,
+        QuoteStatus.ARCHIVED,
+        QuoteStatus.SENT,
+        QuoteStatus.REPLACED,
+    },
+    QuoteStatus.IN_REVIEW: {
+        QuoteStatus.IN_REVIEW,
+        QuoteStatus.NEEDS_PRICING,
+        QuoteStatus.READY,
+        QuoteStatus.ARCHIVED,
+        QuoteStatus.SENT,
+        QuoteStatus.REPLACED,
+    },
+    QuoteStatus.NEEDS_PRICING: {
+        QuoteStatus.IN_REVIEW,
+        QuoteStatus.NEEDS_PRICING,
+        QuoteStatus.READY,
+        QuoteStatus.ARCHIVED,
+        QuoteStatus.SENT,
+        QuoteStatus.REPLACED,
+    },
+    QuoteStatus.READY: {
+        QuoteStatus.IN_REVIEW,
+        QuoteStatus.NEEDS_PRICING,
+        QuoteStatus.READY,
+        QuoteStatus.ARCHIVED,
+        QuoteStatus.SENT,
+        QuoteStatus.REPLACED,
+    },
+    QuoteStatus.SENT: {QuoteStatus.SENT, QuoteStatus.REPLACED},
+    QuoteStatus.REPLACED: set(),
+    QuoteStatus.ARCHIVED: {QuoteStatus.IN_REVIEW, QuoteStatus.REPLACED},
+}
+
+
+def _quote_may_transition(quote: Quote, new_status: QuoteStatus) -> bool:
+    return new_status in QUOTE_STATUS_TRANSITIONS.get(quote.status, set())
+
 
 def _sync_quote_pricing_status(quote: Quote) -> bool:
     """Sync pricing-driven status, then recompute the quote's confidence row.
@@ -1625,6 +1679,11 @@ def _attempt_auto_send(quote: Quote) -> None:
     never send it) nor at revise/duplicate creation (those start a human
     editing workflow). No-op below Tier 2; never raises.
     """
+    # Any QuoteVersion means a customer already received this quote. Whatever
+    # its live status says (legacy demotions predate the transition table),
+    # auto-send must never re-email it — only a human re-send is deliberate.
+    if quote.versions:
+        return
     send_service.maybe_auto_send(quote)
 
 
@@ -1970,8 +2029,18 @@ def quote_update_status(quote_id: int):
     }
     if raw_status not in status_map:
         abort(400, description="Invalid status")
-    if raw_status == "ready" and quote.status in {QuoteStatus.SENT, QuoteStatus.REPLACED}:
-        abort(409, description="A sent or replaced quote cannot be marked ready.")
+    new_status = status_map[raw_status]
+    if not _quote_may_transition(quote, new_status):
+        current = quote.status.value.replace("_", " ")
+        target = new_status.value.replace("_", " ")
+        abort(
+            409,
+            description=(
+                f"A {current} quote cannot be changed to {target}. "
+                "Sent and replaced quotes record a completed lifecycle event — "
+                "use Revise to make changes."
+            ),
+        )
 
     if raw_status == "ready":
         _clear_stale_tbd_part_numbers(quote)
@@ -3230,6 +3299,13 @@ def quote_preview_pdf(quote_id: int):
 def quote_send_form(quote_id: int):
     """Return the send confirmation form as an HTMX partial."""
     quote = _get_active_quote_or_404(quote_id)
+    if not _quote_may_transition(quote, QuoteStatus.SENT):
+        return render_template(
+            "quotes/_send_result.html",
+            success=False,
+            error=_send_status_block_message(quote),
+            quote=quote,
+        )
     if _invalidate_stale_ready_override(quote):
         db.session.commit()
     structural_reasons = quote_structural_block_reasons(quote)
@@ -3250,6 +3326,22 @@ def quote_send_form(quote_id: int):
             quote=quote,
         )
     return _render_send_form(quote)
+
+
+def _send_status_block_message(quote: Quote) -> str:
+    """Why this quote's status forbids emailing it (REPLACED/ARCHIVED)."""
+    if quote.status == QuoteStatus.REPLACED:
+        successor = quote.replaced_by
+        suffix = (
+            f" — send revision {successor.quote_number} instead."
+            if successor
+            else " — send the current revision instead."
+        )
+        return f"This quote was replaced{suffix}"
+    return (
+        f"A {quote.status.value.replace('_', ' ')} quote cannot be sent. "
+        "Return it to review first."
+    )
 
 
 def _render_send_form(quote: Quote, *, error: str | None = None):
@@ -3279,6 +3371,13 @@ def quote_send(quote_id: int):
     """Generate PDF, send email via Graph API, update quote status."""
     quote = _get_active_quote_or_404(quote_id)
     user = _current_user()
+
+    # Status guard (audit T515 H2): REPLACED/ARCHIVED are not sendable — a
+    # replaced quote emailed again would flip back to SENT and make two
+    # revisions separately acceptable. Re-sending a SENT quote stays allowed;
+    # each send is recorded as its own QuoteVersion.
+    if not _quote_may_transition(quote, QuoteStatus.SENT):
+        abort(409, description=_send_status_block_message(quote))
 
     if _invalidate_stale_ready_override(quote):
         db.session.commit()
