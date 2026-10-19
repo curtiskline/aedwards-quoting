@@ -45,7 +45,7 @@
 </div>
 
 <div class="entry-forms">
-  <form class="entry-form" method="post" action="{{ url_for('stock.add_receipt', item_id=item.id) }}">
+  <form class="entry-form" method="post" action="{{ url_for('stock.add_receipt', item_id=item.id) }}">{{ csrf_field() }}
     <h3>Record receipt</h3>
     <label>Pieces received
       <input type="number" name="qty" min="1" required>
@@ -55,7 +55,7 @@
     </label>
     <button type="submit">Add receipt</button>
   </form>
-  <form class="entry-form" method="post" action="{{ url_for('stock.add_adjustment', item_id=item.id) }}">
+  <form class="entry-form" method="post" action="{{ url_for('stock.add_adjustment', item_id=item.id) }}">{{ csrf_field() }}
     <h3>Record adjustment</h3>
     <label>Delta (e.g. -3 for damage, 5 for a recount)
       <input type="number" name="qty_delta" required>

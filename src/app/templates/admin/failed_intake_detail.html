@@ -42,7 +42,7 @@
       here — if the items were in an attachment, type or paste them into the box.
     </p>
     <form method="post" action="{{ url_for('admin.reparse_failed_intake', intake_id=intake.id) }}"
-          onsubmit="var b=document.getElementById('retry-button'); b.disabled=true; b.textContent='Reading the text… this can take a minute. Please wait.'; return true;">
+          onsubmit="var b=document.getElementById('retry-button'); b.disabled=true; b.textContent='Reading the text… this can take a minute. Please wait.'; return true;">{{ csrf_field() }}
       <textarea name="input_text" rows="14" style="width:100%;font-family:monospace;font-size:0.85rem;"
                 aria-label="Email text the system reads">{{ retry_panel.input_text }}</textarea>
       <div style="margin-top:0.5rem;">

@@ -6,7 +6,7 @@
 
   <section class="panel">
     <h2>Magic Link</h2>
-    <form method="post" action="{{ url_for('auth.request_magic_link') }}" class="stack">
+    <form method="post" action="{{ url_for('auth.request_magic_link') }}" class="stack">{{ csrf_field() }}
       <label>Email
         <input type="email" name="email" required autocomplete="email" />
       </label>
@@ -20,7 +20,7 @@
 
   <section class="panel">
     <h2>Password</h2>
-    <form method="post" action="{{ url_for('auth.password_login') }}" class="stack">
+    <form method="post" action="{{ url_for('auth.password_login') }}" class="stack">{{ csrf_field() }}
       <label>Email
         <input type="email" name="email" required autocomplete="email" />
       </label>

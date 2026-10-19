@@ -13,7 +13,7 @@
     <form method="post" action="{{ url_for('stock.seed_row_save', catalog_id=row.catalog.id) }}"
           hx-post="{{ url_for('stock.seed_row_save', catalog_id=row.catalog.id) }}"
           hx-target="#seed-row-{{ row.catalog.id }}"
-          hx-swap="outerHTML">
+          hx-swap="outerHTML">{{ csrf_field() }}
       <input type="number" name="on_hand" placeholder="count" required
              value="{{ row.item.on_hand if row.item is not none else '' }}" />
       <input type="number" name="min_qty" placeholder="min" min="0"

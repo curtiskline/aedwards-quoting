@@ -19,6 +19,7 @@ from .models import FailedIntake, User
 from .orders import orders_bp
 from .quotes import quotes_bp
 from .routes import main_bp
+from .security import install_csrf
 
 
 def create_app() -> Flask:
@@ -28,6 +29,7 @@ def create_app() -> Flask:
 
     db.init_app(app)
     login_manager.init_app(app)
+    install_csrf(app)
 
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp)
@@ -62,23 +64,17 @@ def create_app() -> Flask:
         return {"is_authenticated": current_user.is_authenticated}
 
     @app.context_processor
-    def inject_failed_intake_count() -> dict[str, int]:
-        """Outstanding failed-intake count for the nav badge (T514).
-
-        An unread RFQ can become a missed quote, so the count stays visible
-        in the top navigation rather than buried behind Settings.
-        """
+    def inject_shell_state() -> dict[str, bool]:
+        """Sidebar seat line (T514 slice 2): the live sending mode, so the
+        shell never claims a policy the backend is not enforcing."""
         if not current_user.is_authenticated:
-            return {"failed_intake_outstanding": 0}
+            return {"shell_auto_send_on": False}
         try:
-            count = (
-                db.session.query(FailedIntake)
-                .filter(FailedIntake.resolved_at.is_(None))
-                .count()
-            )
+            from .confidence import active_trust_tier
+
+            return {"shell_auto_send_on": active_trust_tier() == 2}
         except Exception:
             # A missing table (fresh DB before migrations) must not break every page.
-            count = 0
-        return {"failed_intake_outstanding": count}
+            return {"shell_auto_send_on": False}
 
     return app

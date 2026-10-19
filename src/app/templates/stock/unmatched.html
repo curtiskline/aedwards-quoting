@@ -26,7 +26,7 @@ guessed or silently skipped.</p>
         <span>Pick list #{{ m.pick_list_id }}</span>
         <span>Shipped {{ m.created_at.strftime('%Y-%m-%d %H:%M') }}</span>
       </div>
-      <form class="resolve-form" method="post" action="{{ url_for('stock.resolve', movement_id=m.id) }}">
+      <form class="resolve-form" method="post" action="{{ url_for('stock.resolve', movement_id=m.id) }}">{{ csrf_field() }}
         <select name="catalog_id" required>
           <option value="" disabled selected>Assign to product…</option>
           {% for row in catalog_choices %}

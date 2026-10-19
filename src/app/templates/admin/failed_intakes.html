@@ -66,7 +66,7 @@
                 {%- endif -%}
               </a>
               {% if not intake.resolved_at %}
-                <form method="post" action="{{ url_for('admin.resolve_failed_intake', intake_id=intake.id) }}">
+                <form method="post" action="{{ url_for('admin.resolve_failed_intake', intake_id=intake.id) }}">{{ csrf_field() }}
                   <button type="submit">Mark handled</button>
                 </form>
               {% endif %}
