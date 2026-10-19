@@ -5,6 +5,13 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{% block title %}Allan Edwards Quotes{% endblock %}</title>
     <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+    <script>
+      // One listener covers every htmx request, including hx-post buttons
+      // that live outside a form (CSRF, audit T515 M3).
+      document.addEventListener("htmx:configRequest", (event) => {
+        event.detail.headers["X-CSRF-Token"] = {{ csrf_token() | tojson }};
+      });
+    </script>
     <style>
       :root {
         --bg: #f3f5f7;
@@ -20,14 +27,71 @@
         background: var(--bg);
         color: var(--text);
       }
-      nav {
-        background: var(--surface);
-        border-bottom: 1px solid var(--border);
-        padding: 1rem;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 1rem;
+      /* Shell: dark sidebar + content column (T514 slice 2, T485 mockup). */
+      .shell {
+        display: grid;
+        grid-template-columns: 218px minmax(0, 1fr);
+        min-height: 100vh;
+      }
+      .shell > aside {
+        background: #162f34;
+        color: #e8efed;
+        padding: 1.6rem 1.1rem;
+      }
+      .brand {
+        font-weight: 800;
+        font-size: 1.2rem;
+        line-height: 1.2;
+        color: #fff;
+        margin: 0 0.6rem 1.8rem;
+      }
+      .brand small {
+        display: block;
+        font-size: 0.6rem;
+        letter-spacing: 2px;
+        font-weight: 500;
+        color: #a6bfbd;
+        margin-top: 0.45rem;
+      }
+      .navlabel {
+        font-size: 0.62rem;
+        letter-spacing: 1.5px;
+        color: #a6bfbd;
+        margin: 1.4rem 0.75rem 0.6rem;
+        text-transform: uppercase;
+      }
+      .sidenav a {
+        display: block;
+        color: #e0eae8;
+        padding: 0.6rem 0.75rem;
+        border-radius: 5px;
+        text-decoration: none;
+        margin: 0.2rem 0;
+        font-size: 0.92rem;
+      }
+      .sidenav a.active {
+        background: #31534f;
+        color: #fff;
+        border-left: 3px solid #90d5b1;
+        padding-left: calc(0.75rem - 3px);
+      }
+      .sidenav a:hover { background: #29484a; }
+      .seat {
+        border-top: 1px solid #46615e;
+        margin: 1.8rem 0.6rem 0;
+        padding-top: 1rem;
+        font-size: 0.75rem;
+        color: #c2d2cf;
+      }
+      .seat strong { display: block; font-size: 0.85rem; color: #fff; margin-bottom: 0.2rem; }
+      .seat form { margin-top: 0.75rem; }
+      .seat button {
+        background: transparent;
+        border: 1px solid #839e99;
+        color: #e0eae8;
+        font-weight: 600;
+        font-size: 0.78rem;
+        padding: 0.35rem 0.7rem;
       }
       main {
         max-width: 1100px;
@@ -35,15 +99,20 @@
         background: var(--surface);
         border-radius: 8px;
         padding: 1.25rem;
+        width: calc(100% - 3rem);
+        box-sizing: border-box;
+        align-self: start;
       }
-      .nav-links {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-      }
-      .nav-links a {
-        color: var(--text);
-        text-decoration: none;
+      @media (max-width: 760px) {
+        .shell { grid-template-columns: 1fr; }
+        .shell > aside { padding: 0.8rem; }
+        .brand { margin: 0 0 0.6rem; }
+        .brand small, .navlabel, .seat-meta { display: none; }
+        .sidenav { display: flex; flex-wrap: wrap; gap: 0.1rem; }
+        .sidenav a { font-size: 0.8rem; padding: 0.4rem 0.55rem; }
+        .seat { margin-top: 0.6rem; padding-top: 0.6rem; display: flex; align-items: center; gap: 0.75rem; }
+        .seat form { margin: 0; }
+        main { width: calc(100% - 1.5rem); margin: 0.75rem auto; }
       }
       .stack {
         display: grid;
@@ -314,25 +383,36 @@
     </style>
   </head>
   <body>
-    <nav>
-      <strong>Allan Edwards Quote Manager</strong>
-      <div class="nav-links">
-        {% if is_authenticated %}
-          <a href="{{ url_for('quotes.queue') }}">Quotes <span id="nav-badge" hx-get="{{ url_for('quotes.badge') }}" hx-trigger="load, every 30s" hx-swap="innerHTML"></span></a>
-          <a href="{{ url_for('orders.queue') }}">Orders</a>
-          <a href="{{ url_for('fulfillment.queue') }}">Shop</a>
-          <a href="{{ url_for('stock.stock_list') }}">Stock</a>
-          <a href="{{ url_for('customers.customer_list') }}">Customers</a>
-          <a href="{{ url_for('admin.failed_intakes') }}">Failed intake{% if failed_intake_outstanding %}<span class="badge">{{ failed_intake_outstanding }}</span>{% endif %}</a>
-          <a href="{{ url_for('main.settings_home') }}">Settings</a>
-          <form method="post" action="{{ url_for('auth.logout') }}">
+    <div class="shell">
+    <aside>
+      <div class="brand">Allan Edwards<small>QUOTE TO SHIP</small></div>
+      {% if is_authenticated %}
+        {% set path = request.path %}
+        <div class="navlabel">Daily work</div>
+        <nav class="sidenav" aria-label="Main navigation">
+          <a href="{{ url_for('main.dashboard') }}"{% if path == '/' %} class="active" aria-current="page"{% endif %}>Work queue</a>
+          <a href="{{ url_for('quotes.queue') }}"{% if path.startswith('/quotes') %} class="active" aria-current="page"{% endif %}>Quotes <span id="nav-badge" hx-get="{{ url_for('quotes.badge') }}" hx-trigger="load, every 30s" hx-swap="innerHTML"></span></a>
+          <a href="{{ url_for('orders.queue') }}"{% if path.startswith('/orders') %} class="active" aria-current="page"{% endif %}>Orders</a>
+          <a href="{{ url_for('fulfillment.queue') }}"{% if path.startswith('/pick-lists') %} class="active" aria-current="page"{% endif %}>Shop &amp; shipping</a>
+          <a href="{{ url_for('stock.stock_list') }}"{% if path.startswith('/stock') %} class="active" aria-current="page"{% endif %}>Stock &amp; purchasing</a>
+          <a href="{{ url_for('customers.customer_list') }}"{% if path.startswith('/customers') %} class="active" aria-current="page"{% endif %}>Customers</a>
+          <a href="{{ url_for('main.settings_home') }}"{% if path.startswith('/settings') or path.startswith('/admin') %} class="active" aria-current="page"{% endif %}>Settings</a>
+        </nav>
+        <div class="seat">
+          <strong>{{ current_user.name }}</strong>
+          <span class="seat-meta">
+            {% if shell_auto_send_on %}Auto-send on for eligible quotes{% else %}Auto-send off · a person sends every quote{% endif %}
+          </span>
+          <form method="post" action="{{ url_for('auth.logout') }}">{{ csrf_field() }}
             <button type="submit">Logout</button>
           </form>
-        {% else %}
+        </div>
+      {% else %}
+        <nav class="sidenav" aria-label="Main navigation">
           <a href="{{ url_for('auth.login') }}">Login</a>
-        {% endif %}
-      </div>
-    </nav>
+        </nav>
+      {% endif %}
+    </aside>
     <main>
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
@@ -343,5 +423,6 @@
       {% endwith %}
       {% block body %}{% endblock %}
     </main>
+    </div>
   </body>
 </html>

@@ -76,11 +76,11 @@
     <div class="actions">
       <a class="sheet-link" href="{{ url_for('stock.reorder_sheet', reorder_id=r.id) }}" target="_blank" rel="noopener">PO sheet</a>
       {% if r.status.value == 'open' %}
-      <form class="sent-form" method="post" action="{{ url_for('stock.reorder_mark_sent', reorder_id=r.id) }}">
+      <form class="sent-form" method="post" action="{{ url_for('stock.reorder_mark_sent', reorder_id=r.id) }}">{{ csrf_field() }}
         <button type="submit" class="sent-btn">Mark PO sent</button>
       </form>
       {% endif %}
-      <form class="receive-form" method="post" action="{{ url_for('stock.reorder_receive', reorder_id=r.id) }}">
+      <form class="receive-form" method="post" action="{{ url_for('stock.reorder_receive', reorder_id=r.id) }}">{{ csrf_field() }}
         <input type="number" name="received_qty" min="0" placeholder="qty received" required />
         <button type="submit" class="receive-btn">Mark received</button>
       </form>

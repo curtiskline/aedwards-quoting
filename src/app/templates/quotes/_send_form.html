@@ -22,7 +22,7 @@
     <form method="post" action="/quotes/{{ quote.id }}/send-preview"
           hx-post="/quotes/{{ quote.id }}/send-preview"
           hx-target="#send-modal"
-          hx-swap="outerHTML">
+          hx-swap="outerHTML">{{ csrf_field() }}
       <label style="display:block;margin-bottom:0.75rem;">
         Recipient Email
         <input name="to_email" type="email" value="{{ default_to }}" required style="width:100%;margin-top:0.25rem;" />

@@ -77,24 +77,21 @@ def test_nav_consolidated_to_settings(client):
     page = client.get("/settings").get_data(as_text=True)
     nav = page[: page.index("<main>")]
     assert ">Settings</a>" in nav
-    assert "Failed intake" in nav
-    # The four old admin links are gone from the nav.
+    assert "Work queue" in nav
+    # The old admin links are gone from the nav; failed intake now
+    # surfaces as work-queue rows and on the Settings hub instead.
     assert ">Admin</a>" not in nav
     assert ">Users</a>" not in nav
     assert ">Rejected</a>" not in nav
     assert ">Set password</a>" not in nav
 
 
-def test_failed_intake_nav_badge_counts_outstanding(client):
-    page = client.get("/settings").get_data(as_text=True)
-    nav = page[: page.index("<main>")]
-    assert '<span class="badge">' not in nav
-
+def test_failed_intake_surfaces_in_work_queue(client):
     _db.session.add(
         FailedIntake(
             received_at=datetime(2026, 10, 19, 12, 0),
             sender_email="buyer@example.com",
-            subject="RFQ",
+            subject="Tulsa RFQ",
             failure_stage="parse",
         )
     )
@@ -109,10 +106,14 @@ def test_failed_intake_nav_badge_counts_outstanding(client):
     )
     _db.session.commit()
 
-    page = client.get("/settings").get_data(as_text=True)
-    nav = page[: page.index("<main>")]
-    # Only the unresolved intake counts.
-    assert 'Failed intake<span class="badge">1</span>' in nav
+    page = client.get("/").get_data(as_text=True)
+    # Only the unresolved intake appears, as actionable work.
+    assert "buyer@example.com" in page
+    assert "Recover the request details" in page
+    assert "handled@example.com" not in page
+    # And the Settings hub still shows the outstanding count.
+    hub = client.get("/settings").get_data(as_text=True)
+    assert '<span class="settings-count">1</span>' in hub
 
 
 def test_users_page_offers_password_change(client):
