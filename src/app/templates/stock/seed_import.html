@@ -21,7 +21,7 @@
   the whole import.
 </p>
 <form class="import-form" method="post" enctype="multipart/form-data"
-      action="{{ url_for('stock.seed_import') }}">
+      action="{{ url_for('stock.seed_import') }}">{{ csrf_field() }}
   <textarea name="csv_text" placeholder="SLV-12,40,10,60,50">{{ csv_text }}</textarea>
   <div class="actions">
     <label>…or upload a file: <input type="file" name="csv_file" accept=".csv,text/csv"></label>

@@ -26,7 +26,7 @@
   </p>
 
   <form method="post" action="/admin/trust-ramp/tier"
-        style="display:flex;gap:0.6rem;align-items:end;flex-wrap:wrap;">
+        style="display:flex;gap:0.6rem;align-items:end;flex-wrap:wrap;">{{ csrf_field() }}
     <label style="max-width:340px;">
       Active tier
       <select name="active_tier">
@@ -53,7 +53,7 @@
     within the tolerance of history to auto-send.
   </p>
   <form method="post" action="/admin/trust-ramp/dials"
-        style="display:flex;gap:0.6rem;align-items:end;flex-wrap:wrap;">
+        style="display:flex;gap:0.6rem;align-items:end;flex-wrap:wrap;">{{ csrf_field() }}
     <label style="max-width:200px;">
       Confidence threshold (0-1)
       <input type="number" name="auto_send_threshold" step="0.01" min="0.01" max="1"
@@ -133,7 +133,7 @@
         <td>
           <form method="post" action="/admin/trust-ramp/holds/{{ hold.id }}/delete"
                 onsubmit="return confirm('Remove this hold? Matching quotes become recommendable again.');"
-                style="margin:0;">
+                style="margin:0;">{{ csrf_field() }}
             <button type="submit" class="danger">Remove</button>
           </form>
         </td>
@@ -146,7 +146,7 @@
   {% endif %}
 
   <div style="display:grid;gap:1rem;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));margin-top:1rem;">
-    <form method="post" action="/admin/trust-ramp/holds/add" class="stack" style="align-content:start;">
+    <form method="post" action="/admin/trust-ramp/holds/add" class="stack" style="align-content:start;">{{ csrf_field() }}
       <input type="hidden" name="hold_type" value="customer" />
       <h4 style="margin:0;">Hold a customer</h4>
       <label>
@@ -165,7 +165,7 @@
       <button type="submit">Add Customer Hold</button>
     </form>
 
-    <form method="post" action="/admin/trust-ramp/holds/add" class="stack" style="align-content:start;">
+    <form method="post" action="/admin/trust-ramp/holds/add" class="stack" style="align-content:start;">{{ csrf_field() }}
       <input type="hidden" name="hold_type" value="product_type" />
       <h4 style="margin:0;">Hold a product type</h4>
       <label>

@@ -24,7 +24,7 @@
           hx-post="/orders/{{ order.id }}/pick-list"
           hx-target="#order-status-panel"
           hx-swap="outerHTML"
-          onsubmit="return confirm('Generate the pick list and queue this order for the shop?');">
+          onsubmit="return confirm('Generate the pick list and queue this order for the shop?');">{{ csrf_field() }}
       <button type="submit" style="background:var(--accent);color:#fff;border:none;padding:0.4rem 0.9rem;border-radius:6px;font-weight:600;cursor:pointer;">Generate pick list</button>
     </form>
     {% endif %}

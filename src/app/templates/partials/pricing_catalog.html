@@ -6,7 +6,7 @@
   {% else %}
     <details class="pricing-add-form">
       <summary>Add pricing rate</summary>
-      <form method="post" action="/admin/pricing/add" hx-post="/admin/pricing/add" hx-target="#pricing-catalog-card" hx-swap="outerHTML" class="pricing-key-form" id="pricing-add-rate-form">
+      <form method="post" action="/admin/pricing/add" hx-post="/admin/pricing/add" hx-target="#pricing-catalog-card" hx-swap="outerHTML" class="pricing-key-form" id="pricing-add-rate-form">{{ csrf_field() }}
         <label>Product type
           <select name="product_type" id="new-pricing-product-type" required>
             {% for section in sections %}
