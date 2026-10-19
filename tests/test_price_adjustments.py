@@ -123,6 +123,25 @@ def test_discount_pdf_and_downstream_totals(setup):
         assert len(build_pick_lines(snapshot)) == 2
 
 
+def test_pdf_dto_uses_requested_quantity_and_retains_physical_quantity(setup):
+    app, _client, quote_id = setup
+    with app.app_context():
+        quote = db.session.get(Quote, quote_id)
+        line = next(item for item in quote.line_items if item.product_type != "shipping")
+        line.quantity = 5
+        line.unit_price = 100
+        line.line_total = 500
+        line.specs_json = {**(line.specs_json or {}), "original_qty": "1"}
+        db.session.commit()
+
+        dto = _db_quote_to_pricing_quote(quote)
+        priced_line = next(item for item in dto.line_items if item.product_type != "shipping")
+
+        assert priced_line.quantity == 1
+        assert priced_line.pricing_quantity == 5
+        assert priced_line.total == Decimal("500.00")
+
+
 def test_all_overridden_markup_save_twice_uses_base_once(setup):
     app, client, quote_id = setup
     for _ in range(2):

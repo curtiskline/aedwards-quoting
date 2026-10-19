@@ -59,7 +59,7 @@
   {% else %}
     <table class="order-lines">
       <thead>
-        <tr><th>Part #</th><th>Description</th><th>Type</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Total</th></tr>
+        <tr><th>Part #</th><th>Description</th><th>Type</th><th class="num">Customer qty</th><th class="num">Physical qty</th><th class="num">Unit price</th><th class="num">Total</th></tr>
       </thead>
       <tbody>
         {% for line in lines %}
@@ -67,7 +67,8 @@
           <td>{{ line.get('part_number') or '' }}</td>
           <td>{{ line.get('description') or '' }}</td>
           <td>{{ line.get('product_type') or '' }}</td>
-          <td class="num">{{ line.get('quantity') }}</td>
+          <td class="num">{{ line.get('requested_quantity') or (line.get('specs_json') or {}).get('original_qty') or line.get('quantity') }}</td>
+          <td class="num">{{ line.get('physical_quantity') or line.get('quantity') }}</td>
           {# snapshot values are strings (quote_line_items_snapshot stores str(Decimal)) #}
           <td class="num">${{ '%.2f' | format(line.get('unit_price') | float) }}</td>
           <td class="num">${{ '%.2f' | format(line.get('line_total') | float) }}</td>
@@ -75,12 +76,12 @@
         {% endfor %}
       </tbody>
       <tfoot>
-        <tr><td colspan="5" class="num" style="font-weight:600;">Product subtotal</td><td class="num" style="font-weight:600;">${{ '%.2f' | format(subtotal) }}</td></tr>
+        <tr><td colspan="6" class="num" style="font-weight:600;">Product subtotal</td><td class="num" style="font-weight:600;">${{ '%.2f' | format(subtotal) }}</td></tr>
         {% if shipping %}
-        <tr><td colspan="5" class="num">Freight</td><td class="num">${{ '%.2f' | format(shipping) }}</td></tr>
+        <tr><td colspan="6" class="num">Freight</td><td class="num">${{ '%.2f' | format(shipping) }}</td></tr>
         {% endif %}
-        {% if tax %}<tr><td colspan="5" class="num">Tax</td><td class="num">${{ '%.2f' | format(tax) }}</td></tr>{% endif %}
-        <tr><td colspan="5" class="num" style="font-weight:700;">Total</td><td class="num" style="font-weight:700;">${{ '%.2f' | format(total) }}</td></tr>
+        {% if tax %}<tr><td colspan="6" class="num">Tax</td><td class="num">${{ '%.2f' | format(tax) }}</td></tr>{% endif %}
+        <tr><td colspan="6" class="num" style="font-weight:700;">Total</td><td class="num" style="font-weight:700;">${{ '%.2f' | format(total) }}</td></tr>
       </tfoot>
     </table>
   {% endif %}

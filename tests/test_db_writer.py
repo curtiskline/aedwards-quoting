@@ -26,6 +26,7 @@ from app.models import (
 from allenedwards.monitor import InboxMonitor
 from allenedwards.db_writer import (
     MAX_ATTACHMENT_BYTES,
+    build_db_line_item,
     write_quote_to_db,
     _normalize_company_name,
     _match_customer,
@@ -37,6 +38,24 @@ from allenedwards.outlook import OutlookMessage
 from allenedwards.outlook import OutlookAttachment
 from allenedwards.parser import ParsedRFQ, ShipTo
 from allenedwards.pricing import Quote as PricingQuote, QuoteLineItem as PricingLineItem
+
+
+def test_db_line_item_keeps_physical_and_requested_quantities():
+    priced = PricingLineItem(
+        sort_order=1,
+        product_type="sleeve",
+        part_number="S-12.34-38-50-10",
+        description="Sleeve, Sealing",
+        quantity=1,
+        pricing_quantity=5,
+        unit_price=Decimal("100.00"),
+        total=Decimal("500.00"),
+    )
+
+    row = build_db_line_item(quote_id=17, li=priced)
+
+    assert row.quantity == 5  # physical quantity drives freight/fulfillment
+    assert row.specs_json["original_qty"] == "1"  # literal customer ask
 
 
 @pytest.fixture()

@@ -121,6 +121,9 @@ def test_line_item_update_recalculates_and_generates_sleeve_part(db_url):
 
     with app.app_context():
         updated = db.session.get(QuoteLineItem, item_id)
+        assert float(updated.quantity) == 10.0
+        assert dict(updated.specs_json or {})["original_qty"] == "7"
+        assert float(updated.unit_price) == 10.25  # Chip's manual price override
         assert float(updated.line_total) == 102.50
         # With no explicit part number, the sleeve part number is generated.
         assert (updated.part_number or "").startswith("S-")

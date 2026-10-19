@@ -233,6 +233,11 @@ class QuoteLineItem:
     quantity: int
     unit_price: Decimal
     total: Decimal
+    # Customer-facing quantity. ``quantity`` always echoes the ask; this
+    # optional value records how many physical pieces the packaging rule
+    # actually priced.  Keeping the two explicit prevents a pallet/bundle
+    # minimum from leaking into the customer's procurement quantity.
+    pricing_quantity: int | None = None
     is_note: bool = False
 
     # Optional details
@@ -1154,6 +1159,7 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
                 bundle_note = f"Priced as {bundle_count} bundle{'s' if bundle_count != 1 else ''} ({bundle_count * pieces_per_bundle} pcs / {bundle_count * pieces_per_bundle * item.length_ft:.0f} ft)"
                 notes = f"{bundle_note}; {notes}" if notes else bundle_note
             
+            pricing_quantity = bundle_count * pieces_per_bundle
             return QuoteLineItem(
                 sort_order=sort_order,
                 product_type="sleeve",
@@ -1166,9 +1172,10 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
                     item.painting,
                 ),
                 description=description,
-                quantity=bundle_count * pieces_per_bundle,
+                quantity=item.quantity,
                 unit_price=unit_price,
                 total=total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+                pricing_quantity=pricing_quantity,
                 weight_per_ft=weight_per_ft,
                 price_per_lb=price_per_lb,
                 notes=notes,
@@ -1364,9 +1371,10 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
             product_type="bag",
             part_number=part_number,
             description=desc,
-            quantity=rounded_qty,
+            quantity=item.quantity,
             unit_price=price_per_bag,
             total=total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+            pricing_quantity=rounded_qty,
             notes=notes,
             diameter=item.diameter,
         )
@@ -1510,13 +1518,8 @@ def _build_rfq_contact_text(rfq: ParsedRFQ) -> str | None:
 def generate_quote(rfq: ParsedRFQ, quote_number: str) -> Quote:
     """Generate a complete quote from a parsed RFQ."""
     line_items: list[QuoteLineItem] = []
-    quantity_warnings: list[str] = []
-
     default_notes: list[str] = []
     for i, item in enumerate(rfq.items, start=1):
-        _, warning = _quote_quantity_and_warning(item)
-        if warning:
-            quantity_warnings.append(warning)
         priced = price_item(item, i)
         if priced:
             if item.sku:
@@ -1530,7 +1533,16 @@ def generate_quote(rfq: ParsedRFQ, quote_number: str) -> Quote:
                         )
             line_items.append(priced)
             if priced.notes:
-                default_notes.append(f"Item {i}: {priced.notes}")
+                # Reuse the customer-note allowlist here as well as in the PDF
+                # line cell.  Otherwise a bundle/pallet note filtered from the
+                # line would leak back as a separate "Defaults applied" row.
+                from .line_notes import customer_note
+
+                customer_notes = customer_note(
+                    priced.notes, priced=priced.unit_price > 0
+                )
+                if customer_notes:
+                    default_notes.append(f"Item {i}: {customer_notes}")
         else:
             desc = item.description or item.product_type
             logger.warning(
@@ -1558,20 +1570,6 @@ def generate_quote(rfq: ParsedRFQ, quote_number: str) -> Quote:
                 product_type="note",
                 part_number="",
                 description=rfq_contact_text,
-                quantity=0,
-                unit_price=Decimal("0.00"),
-                total=Decimal("0.00"),
-                is_note=True,
-            )
-        )
-
-    for warning in quantity_warnings:
-        line_items.append(
-            QuoteLineItem(
-                sort_order=len(line_items) + 1,
-                product_type="note",
-                part_number="",
-                description=warning,
                 quantity=0,
                 unit_price=Decimal("0.00"),
                 total=Decimal("0.00"),
