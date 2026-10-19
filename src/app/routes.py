@@ -92,6 +92,7 @@ from .models import (
     SendHold,
     ShippingConfig,
     ShipToAddress,
+    StockItem,
     User,
 )
 from .orders import order_for_quote
@@ -117,7 +118,23 @@ QUOTE_EDITOR_HIDDEN_PRODUCT_TYPES = {"shipping"}
 @main_bp.get("/")
 @login_required
 def dashboard():
-    return redirect("/quotes/")
+    """Home is the work queue (T514 slice 2): what needs doing, by whom."""
+    from .work_queue import GROUP_CUSTOMER, GROUP_US, GROUP_VENDOR, build_work_queue
+
+    view = (request.args.get("view") or "us").strip().lower()
+    if view not in {"us", "customer", "vendor", "all"}:
+        view = "us"
+    queue = build_work_queue()
+    group_for_view = {"us": GROUP_US, "customer": GROUP_CUSTOMER, "vendor": GROUP_VENDOR}
+    rows = queue["rows"]
+    if view != "all":
+        rows = [row for row in rows if row["group"] == group_for_view[view]]
+    return render_template(
+        "work_queue.html",
+        rows=rows,
+        counts=queue["counts"],
+        view=view,
+    )
 
 
 _PRODUCT_TYPE_LABELS = {
@@ -2959,6 +2976,123 @@ def delete_catalog_item(item_id: int):
             else None
         ),
     )
+
+
+def _catalog_stock_item_ids(catalog_ids: list[int]) -> set[int]:
+    """Catalog ids that have a stock record and therefore cannot be deleted."""
+    if not catalog_ids:
+        return set()
+    rows = (
+        db.session.query(StockItem.catalog_id)
+        .filter(StockItem.catalog_id.in_(catalog_ids))
+        .all()
+    )
+    return {row[0] for row in rows}
+
+
+def _render_catalog_partial(catalog_filter: str, note: str | None = None):
+    return render_template(
+        "partials/product_catalog_table.html",
+        catalog_items=_catalog_items(catalog_filter),
+        catalog_filter=catalog_filter,
+        catalog_product_types=_catalog_type_choices(),
+        catalog_transition_note=note,
+    )
+
+
+@main_bp.post("/admin/catalog/<int:item_id>/hard-delete")
+@login_required
+def hard_delete_catalog_item(item_id: int):
+    """Permanently delete an INACTIVE catalog item (Chip, 2026-10-19 sync).
+
+    Making a product inactive is the reversible first step; deletion is only
+    offered on already-inactive rows, so there is no confirmation dialog.
+    A product with stock records is never deleted.
+    """
+    item = db.session.get(ProductCatalog, item_id)
+    if item is None:
+        abort(404)
+    catalog_filter = _catalog_filter(request.form.get("catalog_filter"))
+    if item.is_active:
+        abort(400, description="Make the product inactive first, then delete it.")
+    if _catalog_stock_item_ids([item.id]):
+        return _render_catalog_partial(
+            catalog_filter,
+            note=(
+                f"{_catalog_row_label(item)} was not deleted: it has stock "
+                "records. It stays inactive instead."
+            ),
+        )
+    label = _catalog_row_label(item)
+    db.session.delete(item)
+    db.session.commit()
+    return _render_catalog_partial(
+        catalog_filter, note=f"{label} was deleted permanently."
+    )
+
+
+@main_bp.post("/admin/catalog/bulk")
+@login_required
+def bulk_catalog_action():
+    """Apply one action to many checked rows (Chip's bulk cleanup ask).
+
+    'deactivate' makes every checked product inactive (reversible).
+    'delete' permanently removes checked INACTIVE products; checked active
+    products and products with stock records are kept, and the note says so.
+    """
+    action = (request.form.get("bulk_action") or "").strip()
+    catalog_filter = _catalog_filter(request.form.get("catalog_filter"))
+    ids = [int(raw) for raw in request.form.getlist("item_ids") if raw.isdigit()]
+    items = (
+        db.session.query(ProductCatalog).filter(ProductCatalog.id.in_(ids)).all()
+        if ids
+        else []
+    )
+    if not items:
+        return _render_catalog_partial(
+            catalog_filter, note="Nothing was checked, so nothing changed."
+        )
+
+    if action == "deactivate":
+        changed = 0
+        for item in items:
+            if item.is_active:
+                item.is_active = False
+                changed += 1
+        db.session.commit()
+        note = f"Made {changed} product{'' if changed == 1 else 's'} inactive."
+        if changed < len(items):
+            note += f" {len(items) - changed} already were."
+        return _render_catalog_partial(catalog_filter, note=note)
+
+    if action == "delete":
+        with_stock = _catalog_stock_item_ids([item.id for item in items])
+        deleted = 0
+        kept_active = 0
+        kept_stock = 0
+        for item in items:
+            if item.is_active:
+                kept_active += 1
+            elif item.id in with_stock:
+                kept_stock += 1
+            else:
+                db.session.delete(item)
+                deleted += 1
+        db.session.commit()
+        parts = [f"Deleted {deleted} product{'' if deleted == 1 else 's'} permanently."]
+        if kept_active:
+            parts.append(
+                f"{kept_active} still active product{' was' if kept_active == 1 else 's were'} "
+                "kept: make a product inactive first, then delete it."
+            )
+        if kept_stock:
+            parts.append(
+                f"{kept_stock} product{' was' if kept_stock == 1 else 's were'} "
+                "kept because they have stock records."
+            )
+        return _render_catalog_partial(catalog_filter, note=" ".join(parts))
+
+    abort(400, description="Pick an action: deactivate or delete.")
 
 
 @main_bp.post("/admin/shipping-config")

@@ -7,7 +7,7 @@
 
 <form method="post" action="/customers/{{ customer.id if editing else '' }}"
       hx-post="/customers/{{ customer.id if editing else '' }}"
-      hx-swap="none">
+      hx-swap="none">{{ csrf_field() }}
   <fieldset style="border:1px solid #d1d5db;border-radius:8px;padding:1rem;margin-bottom:1rem">
     <legend><strong>Company</strong></legend>
     <label style="display:block;margin-bottom:0.75rem">
