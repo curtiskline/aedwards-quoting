@@ -99,7 +99,9 @@ def test_authenticated_user_can_set_password_and_use_it_to_sign_in(client, app) 
     )
     assert set_password.status_code == 200
     assert b"Password set" in set_password.data
-    assert b"Set password" in set_password.data
+    # The password-change link lives on Users & account now (T514).
+    users_page = client.get("/admin/users")
+    assert b"Change your password" in users_page.data
 
     with app.app_context():
         user = db.session.get(User, user_id)

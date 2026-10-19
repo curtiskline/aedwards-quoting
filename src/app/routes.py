@@ -80,6 +80,7 @@ from .models import (
     AutoSendClaim,
     Contact,
     Customer,
+    FailedIntake,
     PricingTable,
     ProductCatalog,
     ProductType,
@@ -2502,24 +2503,75 @@ def quote_move_line_item(quote_id: int, item_id: int):
     return _render_line_items(quote)
 
 
+# Settings sections (T514, from the T485 mockup). Order here is the tab order.
+# Labels are plain statements of what the page holds — no clever wording.
+SETTINGS_TABS = {
+    "trust": {
+        "label": "Sending policy",
+        "sub": "Who sends quotes: a person every time, or the app for quotes that pass every safety check.",
+    },
+    "pricing": {
+        "label": "Pricing catalog",
+        "sub": "The rates used to price each product type.",
+    },
+    "catalog": {
+        "label": "Product catalog",
+        "sub": "The products that can be put on a quote: part numbers, descriptions and vendors.",
+    },
+    "types": {
+        "label": "Product types",
+        "sub": "Which product types exist and the order they appear in.",
+    },
+    "shipping": {
+        "label": "Shipping defaults",
+        "sub": "How the automatic shipping & handling line on a quote is calculated.",
+    },
+}
+
+
+@main_bp.get("/settings")
+@login_required
+def settings_home():
+    """Settings hub: occasional configuration, kept separate from daily work."""
+    return render_template(
+        "settings.html",
+        active_tier=active_trust_tier(),
+        send_holds_count=db.session.query(SendHold).count(),
+        outstanding_intakes=FailedIntake.query.filter(
+            FailedIntake.resolved_at.is_(None)
+        ).count(),
+        user_count=User.query.count(),
+    )
+
+
 @main_bp.get("/admin/pricing")
 @login_required
 def pricing_admin():
-    sections = _group_pricing_rows()
     active_tab = (request.args.get("tab") or "shipping").strip().lower()
-    if active_tab not in {"shipping", "pricing", "catalog", "types", "trust"}:
+    if active_tab not in SETTINGS_TABS:
         active_tab = "shipping"
-    catalog_filter = _catalog_filter()
+    # Only the active section is rendered, so only its data is loaded.
+    context: dict = {}
+    if active_tab == "shipping":
+        context["shipping_config"] = _shipping_config_form_data(_shipping_config())
+    elif active_tab == "pricing":
+        context["sections"] = _group_pricing_rows()
+    elif active_tab == "catalog":
+        catalog_filter = _catalog_filter()
+        context.update(
+            catalog_items=_catalog_items(catalog_filter),
+            catalog_filter=catalog_filter,
+            catalog_product_types=_catalog_type_choices(),
+        )
+    elif active_tab == "types":
+        context.update(_product_types_admin_data())
+    else:
+        context.update(_trust_ramp_admin_data())
     return render_template(
         "pricing_admin.html",
-        sections=sections,
-        shipping_config=_shipping_config_form_data(_shipping_config()),
-        catalog_items=_catalog_items(catalog_filter),
-        catalog_filter=catalog_filter,
-        catalog_product_types=_catalog_type_choices(),
         active_tab=active_tab,
-        **_product_types_admin_data(),
-        **_trust_ramp_admin_data(),
+        settings_tabs=SETTINGS_TABS,
+        **context,
     )
 
 

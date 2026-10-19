@@ -1,8 +1,9 @@
 {% extends "layout.html" %}
-{% block title %}Failed Intake{% endblock %}
+{% block title %}Failed intake{% endblock %}
 {% block body %}
-  <p><a href="{{ url_for('admin.failed_intakes') }}">&larr; Back to failed intakes</a></p>
-  <h1>Failed Intake</h1>
+  {% include "partials/settings_chrome.html" %}
+  <p class="crumb"><a href="{{ url_for('main.settings_home') }}">Settings</a> / <a href="{{ url_for('admin.failed_intakes') }}">Failed intake</a> / This email</p>
+  <h1>Failed intake</h1>
   <p style="margin:0.25rem 0;">
     From {{ intake.sender_name or intake.sender_email or "unknown sender" }}
     {% if intake.sender_email and intake.sender_name %} (<code>{{ intake.sender_email }}</code>){% endif %}

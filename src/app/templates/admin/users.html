@@ -1,11 +1,41 @@
 {% extends "layout.html" %}
-{% block title %}User Admin{% endblock %}
+{% block title %}Users &amp; account · Settings{% endblock %}
 {% block body %}
-  <h1>User Admin</h1>
-  <p>All users have full access. Add or remove users below.</p>
+  {% include "partials/settings_chrome.html" %}
 
-  <section class="panel">
-    <h2>Add User</h2>
+  <p class="crumb"><a href="{{ url_for('main.settings_home') }}">Settings</a> / Users &amp; account</p>
+
+  <header class="page-heading">
+    <h1>Users &amp; account</h1>
+    <p class="page-sub">Everyone listed here can sign in and do everything. There are no permission levels.</p>
+  </header>
+
+  <section class="settings-card">
+    <h2>Your account</h2>
+    <div class="settings-actions">
+      <a href="{{ url_for('auth.set_password') }}">Change your password</a>
+    </div>
+  </section>
+
+  <section class="settings-card">
+    <h2>Users</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Email</th>
+          <th>Created</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody id="user-list">
+        {% include "partials/user_rows.html" %}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="settings-card">
+    <h2>Add a user</h2>
     <form
       method="post"
       action="{{ url_for('admin.create_user') }}"
@@ -23,24 +53,7 @@
       <label>Password
         <input type="password" name="password" required />
       </label>
-      <button type="submit">Add User</button>
+      <button type="submit">Add user</button>
     </form>
-  </section>
-
-  <section class="panel">
-    <h2>Users</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Email</th>
-          <th>Created</th>
-          <th>Action</th>
-        </tr>
-      </thead>
-      <tbody id="user-list">
-        {% include "partials/user_rows.html" %}
-      </tbody>
-    </table>
   </section>
 {% endblock %}
