@@ -268,11 +268,11 @@ CATALOG_FILTERS = {"all", "active", "inactive"}
 
 def _catalog_filter(value: str | None = None) -> str:
     catalog_filter = (
-        (value if value is not None else request.args.get("catalog_filter") or "active")
+        (value if value is not None else request.args.get("catalog_filter") or "all")
         .strip()
         .lower()
     )
-    return catalog_filter if catalog_filter in CATALOG_FILTERS else "active"
+    return catalog_filter if catalog_filter in CATALOG_FILTERS else "all"
 
 
 def _catalog_items(
@@ -2755,10 +2755,11 @@ def add_catalog_item():
         )
     )
     db.session.commit()
+    catalog_filter = _catalog_filter(request.form.get("catalog_filter"))
     return render_template(
         "partials/product_catalog_table.html",
-        catalog_items=_catalog_items("active"),
-        catalog_filter="active",
+        catalog_items=_catalog_items(catalog_filter),
+        catalog_filter=catalog_filter,
         catalog_product_types=_catalog_type_choices(),
         catalog_just_saved=True,
     )

@@ -5,13 +5,23 @@
   <div class="catalog-controls">
     <div class="catalog-filter-pills" aria-label="Catalog status filter">
       {% for value, label in [('all', 'All'), ('active', 'Active'), ('inactive', 'Inactive')] %}
-        <a href="/admin/pricing?tab=catalog&amp;catalog_filter={{ value }}" class="catalog-filter-pill {% if catalog_filter == value %}active{% endif %}">{{ label }}</a>
+        <a href="/admin/pricing?tab=catalog&amp;catalog_filter={{ value }}" class="catalog-filter-pill {% if catalog_filter == value %}active{% endif %}" {% if catalog_filter == value %}aria-current="page"{% endif %}>{{ label }}</a>
       {% endfor %}
     </div>
     <label class="catalog-search-label">Search catalog
       <input id="catalog-search" type="search" placeholder="Part number or description" autocomplete="off" />
     </label>
   </div>
+
+  <p class="catalog-filter-status">
+    {% if catalog_filter == 'active' %}
+      Showing active products only. Inactive products are hidden.
+    {% elif catalog_filter == 'inactive' %}
+      Showing inactive products only. Active products are hidden.
+    {% else %}
+      Showing all products: active and inactive.
+    {% endif %}
+  </p>
 
   {% if catalog_transition_note %}
     <p class="catalog-transition-note" role="status">{{ catalog_transition_note }}</p>
@@ -100,6 +110,7 @@
   .catalog-filter-pill.active { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
   .catalog-search-label { display: grid; gap: 0.25rem; font-size: 0.9rem; }
   .catalog-search-label input { min-height: 2.2rem; padding: 0.35rem 0.45rem; border: 1px solid #cbd5e1; border-radius: 6px; }
+  .catalog-filter-status { margin: -0.5rem 0 1rem; font-weight: 600; }
   .catalog-transition-note { background: #eff6ff; border-left: 4px solid #2563eb; margin: 0.75rem 0; padding: 0.6rem 0.75rem; }
   .catalog-form { display: flex; flex-wrap: wrap; align-items: end; gap: 0.6rem; margin: 0.7rem 0; }
   .catalog-form label { display: grid; gap: 0.25rem; }
