@@ -1,8 +1,8 @@
 <section id="shipping-config-card" class="quote-editor-section">
-  <h2>Auto-Ship Pricing Defaults</h2>
+  <h2>Shipping defaults</h2>
   <p class="form-help">These settings control the automatic shipping &amp; handling line item added to quotes. Shipping cost is calculated as <strong>weight &times; distance &times; rate</strong>, using the quote's ship-to ZIP and the nearest origin warehouse below.</p>
 
-  <form method="post" action="/admin/shipping-config" hx-post="/admin/shipping-config" hx-target="#shipping-config-card" hx-swap="outerHTML">
+  <form method="post" action="/admin/shipping-config" hx-post="/admin/shipping-config" hx-target="#shipping-config-card" hx-swap="outerHTML">{{ csrf_field() }}
     <div class="quote-editor-grid quote-editor-grid-wide">
 
       <label>Warehouse Origin ZIP(s)

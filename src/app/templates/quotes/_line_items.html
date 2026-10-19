@@ -4,7 +4,7 @@
     {% for item in line_items %}
       {% set has_item_type = item.product_type in (product_type_choices | map(attribute='name') | list) %}
       <article class="line-item-card{% if item.needs_pricing %} needs-pricing{% endif %}">
-        <form id="line-item-{{ item.id }}-form" method="post" action="/quotes/{{ quote.id }}/line-items/{{ item.id }}/update" hx-post="/quotes/{{ quote.id }}/line-items/{{ item.id }}/update" hx-target="#editor-line-items" hx-swap="outerHTML" hx-trigger="submit, change from:input[type=checkbox]" class="line-item-form">
+        <form id="line-item-{{ item.id }}-form" method="post" action="/quotes/{{ quote.id }}/line-items/{{ item.id }}/update" hx-post="/quotes/{{ quote.id }}/line-items/{{ item.id }}/update" hx-target="#editor-line-items" hx-swap="outerHTML" hx-trigger="submit, change from:input[type=checkbox]" class="line-item-form">{{ csrf_field() }}
           <input type="hidden" name="auto_shipping_trigger" value="0" />
           <div class="line-item-row line-item-row-top">
             <label>Type
@@ -98,15 +98,15 @@
         </form>
 
         <div class="line-item-actions">
-          <form method="post" action="/quotes/{{ quote.id }}/line-items/{{ item.id }}/move" hx-post="/quotes/{{ quote.id }}/line-items/{{ item.id }}/move" hx-target="#editor-line-items" hx-swap="outerHTML">
+          <form method="post" action="/quotes/{{ quote.id }}/line-items/{{ item.id }}/move" hx-post="/quotes/{{ quote.id }}/line-items/{{ item.id }}/move" hx-target="#editor-line-items" hx-swap="outerHTML">{{ csrf_field() }}
             <input type="hidden" name="direction" value="up" />
             <button type="submit">Up</button>
           </form>
-          <form method="post" action="/quotes/{{ quote.id }}/line-items/{{ item.id }}/move" hx-post="/quotes/{{ quote.id }}/line-items/{{ item.id }}/move" hx-target="#editor-line-items" hx-swap="outerHTML">
+          <form method="post" action="/quotes/{{ quote.id }}/line-items/{{ item.id }}/move" hx-post="/quotes/{{ quote.id }}/line-items/{{ item.id }}/move" hx-target="#editor-line-items" hx-swap="outerHTML">{{ csrf_field() }}
             <input type="hidden" name="direction" value="down" />
             <button type="submit">Down</button>
           </form>
-          <form method="post" action="/quotes/{{ quote.id }}/line-items/{{ item.id }}/delete" hx-post="/quotes/{{ quote.id }}/line-items/{{ item.id }}/delete" hx-target="#editor-line-items" hx-swap="outerHTML">
+          <form method="post" action="/quotes/{{ quote.id }}/line-items/{{ item.id }}/delete" hx-post="/quotes/{{ quote.id }}/line-items/{{ item.id }}/delete" hx-target="#editor-line-items" hx-swap="outerHTML">{{ csrf_field() }}
             <button type="submit">Remove</button>
           </form>
         </div>
@@ -114,7 +114,7 @@
     {% endfor %}
   </div>
 
-  <form method="post" action="/quotes/{{ quote.id }}/line-items/add" hx-post="/quotes/{{ quote.id }}/line-items/add" hx-target="#editor-line-items" hx-swap="outerHTML" class="add-line-item-card" id="add-line-item-form">
+  <form method="post" action="/quotes/{{ quote.id }}/line-items/add" hx-post="/quotes/{{ quote.id }}/line-items/add" hx-target="#editor-line-items" hx-swap="outerHTML" class="add-line-item-card" id="add-line-item-form">{{ csrf_field() }}
     <input type="hidden" name="auto_shipping_trigger" value="0" />
     <h3>Add Line Item</h3>
     <div class="add-line-item-grid">
@@ -161,7 +161,7 @@
         </div>
       {% endif %}
     {% endif %}
-    <form method="post" action="/quotes/{{ quote.id }}/totals" hx-post="/quotes/{{ quote.id }}/totals" hx-target="#editor-line-items" hx-swap="outerHTML" class="add-line-item-card">
+    <form method="post" action="/quotes/{{ quote.id }}/totals" hx-post="/quotes/{{ quote.id }}/totals" hx-target="#editor-line-items" hx-swap="outerHTML" class="add-line-item-card">{{ csrf_field() }}
       <h3>Totals</h3>
       <label>Price adjustment (%)
         <input name="price_adjustment_pct" type="number" min="-100" max="100" step="0.01" value="{{ quote.price_adjustment_pct or 0 }}" />

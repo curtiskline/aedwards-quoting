@@ -1,0 +1,140 @@
+{% extends "layout.html" %}
+{% block title %}Work queue{% endblock %}
+{% block body %}
+  <header class="wq-heading">
+    <div>
+      <h1>Work queue</h1>
+      <p class="wq-sub">See what needs doing, then open the record to do it.</p>
+    </div>
+    <form method="post" action="/quotes/">{{ csrf_field() }}
+      <button type="submit">+ New quote</button>
+    </form>
+  </header>
+
+  <div class="wq-stats">
+    <a class="wq-stat" href="{{ url_for('main.dashboard', view='us') }}">
+      <b>{{ counts.sales }}</b><span>Waiting on sales</span>
+    </a>
+    <a class="wq-stat" href="{{ url_for('main.dashboard', view='customer') }}">
+      <b>{{ counts.customer }}</b><span>Waiting on customer</span>
+    </a>
+    <a class="wq-stat" href="{{ url_for('main.dashboard', view='us') }}">
+      <b>{{ counts.shop }}</b><span>Waiting on shop</span>
+    </a>
+    <a class="wq-stat" href="{{ url_for('main.dashboard', view='us') }}">
+      <b>{{ counts.shipping }}</b><span>Waiting on shipping</span>
+    </a>
+  </div>
+
+  <nav class="wq-tabs" aria-label="Work filters">
+    <a href="{{ url_for('main.dashboard', view='us') }}"{% if view == 'us' %} class="selected" aria-current="page"{% endif %}>Waiting on us · {{ counts.us }}</a>
+    <a href="{{ url_for('main.dashboard', view='customer') }}"{% if view == 'customer' %} class="selected" aria-current="page"{% endif %}>Waiting on customer · {{ counts.customer }}</a>
+    <a href="{{ url_for('main.dashboard', view='vendor') }}"{% if view == 'vendor' %} class="selected" aria-current="page"{% endif %}>Waiting on vendor · {{ counts.vendor }}</a>
+    <a href="{{ url_for('main.dashboard', view='all') }}"{% if view == 'all' %} class="selected" aria-current="page"{% endif %}>All work · {{ counts.all }}</a>
+  </nav>
+
+  <section class="wq-card">
+    <h2>
+      {% if view == 'customer' %}
+        {{ rows|length }} waiting on a customer
+      {% elif view == 'vendor' %}
+        {{ rows|length }} waiting on a vendor
+      {% elif view == 'all' %}
+        {{ rows|length }} open item{{ '' if rows|length == 1 else 's' }}
+      {% else %}
+        {{ rows|length }} thing{{ '' if rows|length == 1 else 's' }} waiting on us
+      {% endif %}
+    </h2>
+    {% if rows %}
+      <div class="wq-tablewrap">
+        <table class="wq-table">
+          <thead>
+            <tr>
+              <th scope="col">Record / job</th>
+              <th scope="col">Next action</th>
+              <th scope="col">Waiting on</th>
+              <th scope="col">Age</th>
+              <th scope="col"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+              <tr>
+                <td data-label="Record / job">
+                  <strong>{{ row.record }}</strong>
+                  {% if row.sub %}<small>{{ row.sub }}</small>{% endif %}
+                </td>
+                <td data-label="Next action">
+                  <strong>{{ row.action }}</strong>
+                  {% if row.badge %}<span class="wq-badge {{ row.badge_kind }}">{{ row.badge }}</span>{% endif %}
+                </td>
+                <td data-label="Waiting on">{{ row.team }}</td>
+                <td data-label="Age">{{ row.age }}</td>
+                <td data-label="Action"><a href="{{ row.url }}">Open &rarr;</a></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <p class="wq-empty">Nothing here is waiting. New requests appear as soon as they arrive.</p>
+    {% endif %}
+  </section>
+
+  <style>
+    .wq-heading { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+    .wq-heading h1 { margin: 0 0 0.3rem; }
+    .wq-heading form { margin: 0; }
+    .wq-sub { margin: 0; color: #6b7280; }
+    .wq-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 0.75rem;
+      margin: 1.25rem 0;
+    }
+    .wq-stat {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.9rem 1rem;
+      text-decoration: none;
+      color: var(--text);
+      background: var(--surface);
+    }
+    .wq-stat b { font-size: 1.6rem; display: block; }
+    .wq-stat span { font-size: 0.8rem; color: #6b7280; }
+    .wq-tabs {
+      display: flex; flex-wrap: wrap; gap: 0.25rem;
+      border-bottom: 1px solid var(--border); margin: 1rem 0 1.25rem;
+    }
+    .wq-tabs a {
+      padding: 0.6rem 0.9rem; text-decoration: none; color: #6b7280;
+      font-weight: 600; font-size: 0.9rem;
+      border-bottom: 3px solid transparent; margin-bottom: -1px;
+    }
+    .wq-tabs a.selected { color: var(--accent); border-bottom-color: var(--accent); }
+    .wq-tabs a:hover { color: var(--text); }
+    .wq-card { border: 1px solid var(--border); border-radius: 8px; padding: 1.1rem; background: var(--surface); }
+    .wq-card h2 { margin: 0 0 0.75rem; font-size: 1.1rem; }
+    .wq-tablewrap { overflow-x: auto; }
+    .wq-table td strong { display: block; }
+    .wq-table td small { display: block; color: #6b7280; margin-top: 0.2rem; }
+    .wq-badge {
+      display: inline-block; margin-top: 0.25rem; padding: 0.15rem 0.5rem;
+      border-radius: 4px; font-size: 0.75rem; font-weight: 650;
+      background: #edf0ef; color: #586970;
+    }
+    .wq-badge.green { background: #e6f0e9; color: #2b5846; }
+    .wq-badge.red { background: #fce8e2; color: #9d402f; }
+    .wq-empty { color: #6b7280; margin: 0; }
+    @media (max-width: 700px) {
+      .wq-table thead { display: none; }
+      .wq-table, .wq-table tbody, .wq-table tr { display: block; width: 100%; }
+      .wq-table tr { padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
+      .wq-table td { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 0.5rem; border: 0; padding: 0.3rem 0; }
+      .wq-table td::before {
+        content: attr(data-label);
+        font-size: 0.65rem; text-transform: uppercase; color: #6b7280; letter-spacing: 0.03em;
+      }
+    }
+  </style>
+{% endblock %}

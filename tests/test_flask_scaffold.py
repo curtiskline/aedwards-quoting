@@ -203,12 +203,18 @@ def test_pricing_admin_page_and_inline_update(tmp_path: Path) -> None:
             follow_redirects=True,
         )
 
+        # Default tab is Shipping defaults; the other sections are link tabs (T514).
         page = client.get("/admin/pricing")
         assert page.status_code == 200
-        assert b"Admin" in page.data
-        assert b"Auto-Ship Pricing Defaults" in page.data
-        assert b"Product Types" in page.data
-        assert b"Product Catalog" in page.data
+        assert b"Shipping defaults" in page.data
+        assert b"Product types" in page.data
+        assert b"Product catalog" in page.data
+        types_page = client.get("/admin/pricing?tab=types")
+        assert types_page.status_code == 200
+        assert b"Product types" in types_page.data
+        catalog_page = client.get("/admin/pricing?tab=catalog")
+        assert catalog_page.status_code == 200
+        assert b"Product catalog" in catalog_page.data
 
         conn = sqlite3.connect(db_path)
         try:

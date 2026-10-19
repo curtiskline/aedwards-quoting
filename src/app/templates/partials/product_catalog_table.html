@@ -1,6 +1,6 @@
 <section id="product-catalog-card" class="quote-editor-section">
-  <h2>Product Catalog</h2>
-  <p class="field-help">Add the products your team can select while building quotes. Removing an item makes it inactive and preserves quote history.</p>
+  <h2>Product catalog</h2>
+  <p class="field-help">Add the products your team can select while building quotes. Making a product inactive hides it from quoting and preserves quote history; an inactive product can then be deleted permanently (unless it has stock records).</p>
 
   <div class="catalog-controls">
     <div class="catalog-filter-pills" aria-label="Catalog status filter">
@@ -29,7 +29,7 @@
 
   <details class="catalog-add-form" {% if not catalog_items %}open{% endif %}>
     <summary>Add product</summary>
-    <form method="post" action="/admin/catalog/add" hx-post="/admin/catalog/add" hx-target="#product-catalog-card" hx-swap="outerHTML" class="catalog-form">
+    <form method="post" action="/admin/catalog/add" hx-post="/admin/catalog/add" hx-target="#product-catalog-card" hx-swap="outerHTML" class="catalog-form">{{ csrf_field() }}
       <input type="hidden" name="catalog_filter" value="{{ catalog_filter }}" />
       <label>Part Number
         <input name="part_number" maxlength="255" placeholder="Optional" />
@@ -68,6 +68,13 @@
   {% if not catalog_items %}
     <p>No catalog products yet.</p>
   {% else %}
+    <form method="post" action="/admin/catalog/bulk" hx-post="/admin/catalog/bulk" hx-target="#product-catalog-card" hx-swap="outerHTML" id="catalog-bulk-form" class="catalog-bulk-bar">{{ csrf_field() }}
+      <input type="hidden" name="catalog_filter" value="{{ catalog_filter }}" />
+      <label class="checkbox-row"><input type="checkbox" id="catalog-check-all" /> Check all shown</label>
+      <span id="catalog-bulk-count" role="status">0 checked</span>
+      <button type="submit" name="bulk_action" value="deactivate" class="save-btn">Make checked inactive</button>
+      <button type="submit" name="bulk_action" value="delete" class="delete-btn">Delete checked permanently</button>
+    </form>
     <div class="catalog-scroll">
       <table class="pricing-table">
         <thead>
@@ -86,7 +93,8 @@
           {% for item in catalog_items %}
             <tr id="catalog-item-{{ item.id }}" class="{% if not item.is_active %}catalog-inactive{% endif %}" data-catalog-search="{{ (item.part_number or '')|lower }} {{ item.description|lower }} {{ (item.vendor or '')|lower }}">
               <td colspan="8">
-                <form method="post" action="/admin/catalog/{{ item.id }}/update" hx-post="/admin/catalog/{{ item.id }}/update" hx-target="#product-catalog-card" hx-swap="outerHTML" class="catalog-form catalog-form-row">
+                <input type="checkbox" class="catalog-row-check" name="item_ids" value="{{ item.id }}" form="catalog-bulk-form" aria-label="Check {{ item.part_number or item.description }}" />
+                <form method="post" action="/admin/catalog/{{ item.id }}/update" hx-post="/admin/catalog/{{ item.id }}/update" hx-target="#product-catalog-card" hx-swap="outerHTML" class="catalog-form catalog-form-row">{{ csrf_field() }}
                   <input type="hidden" name="catalog_filter" value="{{ catalog_filter }}" />
                   <input name="part_number" value="{{ item.part_number or '' }}" aria-label="Part Number" maxlength="255" placeholder="Optional" />
                   <input name="description" value="{{ item.description }}" aria-label="Description" maxlength="1000" required />
@@ -105,9 +113,14 @@
                   <button type="submit" class="save-btn">Save</button>
                 </form>
                 {% if item.is_active %}
-                  <form method="post" action="/admin/catalog/{{ item.id }}/delete" hx-post="/admin/catalog/{{ item.id }}/delete" hx-target="#product-catalog-card" hx-swap="outerHTML" class="catalog-remove-form" onsubmit="return confirm('Remove {{ item.part_number or item.description }} from the active product catalog? Existing quotes will not change.');">
+                  <form method="post" action="/admin/catalog/{{ item.id }}/delete" hx-post="/admin/catalog/{{ item.id }}/delete" hx-target="#product-catalog-card" hx-swap="outerHTML" class="catalog-remove-form">{{ csrf_field() }}
                     <input type="hidden" name="catalog_filter" value="{{ catalog_filter }}" />
-                    <button type="submit" class="delete-btn">Remove</button>
+                    <button type="submit" class="delete-btn">Make inactive</button>
+                  </form>
+                {% else %}
+                  <form method="post" action="/admin/catalog/{{ item.id }}/hard-delete" hx-post="/admin/catalog/{{ item.id }}/hard-delete" hx-target="#product-catalog-card" hx-swap="outerHTML" class="catalog-remove-form">{{ csrf_field() }}
+                    <input type="hidden" name="catalog_filter" value="{{ catalog_filter }}" />
+                    <button type="submit" class="delete-btn">Delete permanently</button>
                   </form>
                 {% endif %}
               </td>
@@ -139,18 +152,45 @@
   .catalog-inactive { opacity: 0.6; }
   .delete-btn { border: 1px solid #b91c1c; background: #fff; color: #b91c1c; border-radius: 6px; padding: 0.35rem 0.7rem; cursor: pointer; }
   .catalog-scroll { overflow-x: auto; }
+  .catalog-bulk-bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem;
+    border: 1px solid #e5e7eb; border-radius: 6px; background: #f9fafb;
+    padding: 0.5rem 0.75rem; margin: 0 0 0.75rem;
+  }
+  .catalog-bulk-bar span { color: #6b7280; font-size: 0.85rem; }
+  .catalog-row-check { float: left; margin: 0.9rem 0.6rem 0 0; }
   @media (max-width: 640px) { .catalog-form-row { min-width: 650px; } }
 </style>
 <script>
   (function() {
     const search = document.getElementById("catalog-search");
-    if (!search) return;
     const rows = document.querySelectorAll("#product-catalog-card [data-catalog-search]");
-    search.addEventListener("input", () => {
-      const query = search.value.trim().toLowerCase();
-      rows.forEach((row) => {
-        row.hidden = Boolean(query) && !row.dataset.catalogSearch.includes(query);
+    if (search) {
+      search.addEventListener("input", () => {
+        const query = search.value.trim().toLowerCase();
+        rows.forEach((row) => {
+          row.hidden = Boolean(query) && !row.dataset.catalogSearch.includes(query);
+        });
       });
-    });
+    }
+
+    const checkAll = document.getElementById("catalog-check-all");
+    const counter = document.getElementById("catalog-bulk-count");
+    const rowChecks = Array.from(document.querySelectorAll("#product-catalog-card .catalog-row-check"));
+    const updateCount = () => {
+      if (!counter) return;
+      const checked = rowChecks.filter((box) => box.checked).length;
+      counter.textContent = checked + " checked";
+    };
+    rowChecks.forEach((box) => box.addEventListener("change", updateCount));
+    if (checkAll) {
+      checkAll.addEventListener("change", () => {
+        rowChecks.forEach((box) => {
+          const row = box.closest("tr");
+          if (!row || !row.hidden) box.checked = checkAll.checked;
+        });
+        updateCount();
+      });
+    }
   })();
 </script>

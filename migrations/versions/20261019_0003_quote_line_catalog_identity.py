@@ -4,8 +4,8 @@ Existing lines are deliberately left nullable/unchecked.  New intake and
 editor writes resolve exact catalog matches; a separate status distinguishes
 active, inactive, unmatched, ambiguous, and type-mismatch outcomes.
 
-Revision ID: 20261019_0001
-Revises: 20261013_0002
+Revision ID: 20261019_0003
+Revises: 20261019_0002
 Create Date: 2026-10-19 00:00:00
 """
 
@@ -17,8 +17,8 @@ from decimal import Decimal
 import sqlalchemy as sa
 from alembic import op
 
-revision = "20261019_0001"
-down_revision = "20261013_0002"
+revision = "20261019_0003"
+down_revision = "20261019_0002"
 branch_labels = None
 depends_on = None
 

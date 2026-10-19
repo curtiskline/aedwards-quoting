@@ -15,10 +15,11 @@ from .customers import customers_bp
 from .extensions import db, login_manager
 from .fulfillment import fulfillment_bp
 from .inventory import stock_bp
-from .models import User
+from .models import FailedIntake, User
 from .orders import orders_bp
 from .quotes import quotes_bp
 from .routes import main_bp
+from .security import install_csrf
 
 
 def create_app() -> Flask:
@@ -28,6 +29,7 @@ def create_app() -> Flask:
 
     db.init_app(app)
     login_manager.init_app(app)
+    install_csrf(app)
 
     app.register_blueprint(main_bp)
     app.register_blueprint(auth_bp)
@@ -60,5 +62,19 @@ def create_app() -> Flask:
     @app.context_processor
     def inject_auth_state() -> dict[str, bool]:
         return {"is_authenticated": current_user.is_authenticated}
+
+    @app.context_processor
+    def inject_shell_state() -> dict[str, bool]:
+        """Sidebar seat line (T514 slice 2): the live sending mode, so the
+        shell never claims a policy the backend is not enforcing."""
+        if not current_user.is_authenticated:
+            return {"shell_auto_send_on": False}
+        try:
+            from .confidence import active_trust_tier
+
+            return {"shell_auto_send_on": active_trust_tier() == 2}
+        except Exception:
+            # A missing table (fresh DB before migrations) must not break every page.
+            return {"shell_auto_send_on": False}
 
     return app

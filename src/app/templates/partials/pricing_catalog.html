@@ -1,12 +1,12 @@
 <section id="pricing-catalog-card" class="quote-editor-section">
-  <h2>Pricing Catalog</h2>
+  <h2>Pricing catalog</h2>
   <p class="field-help">Add and maintain the rates used for each product type. A new product type appears here even before it has its first rate.</p>
   {% if not sections %}
     <p>Add a product type before creating pricing rates.</p>
   {% else %}
     <details class="pricing-add-form">
       <summary>Add pricing rate</summary>
-      <form method="post" action="/admin/pricing/add" hx-post="/admin/pricing/add" hx-target="#pricing-catalog-card" hx-swap="outerHTML" class="pricing-key-form" id="pricing-add-rate-form">
+      <form method="post" action="/admin/pricing/add" hx-post="/admin/pricing/add" hx-target="#pricing-catalog-card" hx-swap="outerHTML" class="pricing-key-form" id="pricing-add-rate-form">{{ csrf_field() }}
         <label>Product type
           <select name="product_type" id="new-pricing-product-type" required>
             {% for section in sections %}
