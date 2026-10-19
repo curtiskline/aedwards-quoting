@@ -43,7 +43,7 @@
       hx-target="#user-list"
       hx-swap="innerHTML"
       class="stack"
-    >
+    >{{ csrf_field() }}
       <label>Name
         <input type="text" name="name" required />
       </label>

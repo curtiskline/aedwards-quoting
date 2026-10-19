@@ -19,7 +19,7 @@
           hx-post="/pick-lists/{{ row.id }}/status"
           hx-target="#pick-list-{{ row.id }}"
           hx-swap="outerHTML"
-          style="margin:0;">
+          style="margin:0;">{{ csrf_field() }}
       <input type="hidden" name="status" value="{{ row.next_status.value }}" />
       <button type="submit" class="advance-btn">Mark {{ row.next_status.value.title() }}</button>
     </form>

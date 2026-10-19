@@ -1,7 +1,7 @@
 <section id="product-types-card" class="quote-editor-section">
   <h2>Product types</h2>
 
-  <form method="post" action="/admin/product-types/add" hx-post="/admin/product-types/add" hx-target="#product-types-card" hx-swap="outerHTML">
+  <form method="post" action="/admin/product-types/add" hx-post="/admin/product-types/add" hx-target="#product-types-card" hx-swap="outerHTML">{{ csrf_field() }}
     <div class="quote-editor-grid quote-editor-grid-wide">
       <label>New Product Type
         <input name="display_label" placeholder="e.g. Field Service" required />
@@ -24,7 +24,7 @@
       {% for row in product_types %}
         <tr>
           <td>
-            <form method="post" action="/admin/product-types/{{ row.id }}/update" hx-post="/admin/product-types/{{ row.id }}/update" hx-target="#product-types-card" hx-swap="outerHTML" class="types-inline-form">
+            <form method="post" action="/admin/product-types/{{ row.id }}/update" hx-post="/admin/product-types/{{ row.id }}/update" hx-target="#product-types-card" hx-swap="outerHTML" class="types-inline-form">{{ csrf_field() }}
               <input name="display_label" value="{{ row.display_label }}" required />
               <span class="types-code-name">{{ row.name }}</span>
           </td>
@@ -38,11 +38,11 @@
           <td class="types-actions">
               <button type="submit">Save</button>
             </form>
-            <form method="post" action="/admin/product-types/{{ row.id }}/move" hx-post="/admin/product-types/{{ row.id }}/move" hx-target="#product-types-card" hx-swap="outerHTML">
+            <form method="post" action="/admin/product-types/{{ row.id }}/move" hx-post="/admin/product-types/{{ row.id }}/move" hx-target="#product-types-card" hx-swap="outerHTML">{{ csrf_field() }}
               <input type="hidden" name="direction" value="up" />
               <button type="submit">Up</button>
             </form>
-            <form method="post" action="/admin/product-types/{{ row.id }}/move" hx-post="/admin/product-types/{{ row.id }}/move" hx-target="#product-types-card" hx-swap="outerHTML">
+            <form method="post" action="/admin/product-types/{{ row.id }}/move" hx-post="/admin/product-types/{{ row.id }}/move" hx-target="#product-types-card" hx-swap="outerHTML">{{ csrf_field() }}
               <input type="hidden" name="direction" value="down" />
               <button type="submit">Down</button>
             </form>

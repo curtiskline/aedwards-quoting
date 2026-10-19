@@ -25,7 +25,7 @@
   {% endif %}
   {% if source_panel.allows_reparse %}
   <form method="post" action="/quotes/{{ quote.id }}/reparse" id="reparse-form"
-        onsubmit="if (!confirm('Read the email again?\n\nThis will REPLACE every item, price, customer detail, and address on this quote with what the system reads from the text below. Any changes you made to this quote by hand will be LOST.\n\nIt takes up to a minute.')) return false; var b=document.getElementById('reparse-button'); b.disabled=true; b.textContent='Reading the email again… this can take a minute. Please wait.'; return true;">
+        onsubmit="if (!confirm('Read the email again?\n\nThis will REPLACE every item, price, customer detail, and address on this quote with what the system reads from the text below. Any changes you made to this quote by hand will be LOST.\n\nIt takes up to a minute.')) return false; var b=document.getElementById('reparse-button'); b.disabled=true; b.textContent='Reading the email again… this can take a minute. Please wait.'; return true;">{{ csrf_field() }}
     <textarea name="input_text" rows="14" style="width:100%;font-family:monospace;font-size:0.85rem;"
               aria-label="Email text the system reads">{{ source_panel.input_text }}</textarea>
     <div style="margin-top:0.5rem;">
