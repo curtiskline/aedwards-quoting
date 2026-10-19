@@ -15,6 +15,11 @@
           <span>accepted {{ o.accepted_at.strftime('%Y-%m-%d %H:%M') }} UTC</span>
           {% if o.snapshot_missing %}<span style="color:#b91c1c;">snapshot missing (pre-archive send)</span>{% endif %}
         </div>
+        {% if o.next_action %}
+          <div class="next-action"><strong>Next: {{ o.next_action }}</strong> <span>&middot; waiting on {{ o.next_team }}</span></div>
+        {% else %}
+          <div class="next-action"><span>Shipped — nothing left to do.</span></div>
+        {% endif %}
       </div>
       <div class="amount">{{ o.total }}</div>
     </div>

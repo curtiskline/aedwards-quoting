@@ -32,9 +32,18 @@
   .status-fulfilled { background: #f3f4f6; color: #374151; }
   .amount { font-weight: 600; text-align: right; white-space: nowrap; }
   .empty-state { text-align: center; padding: 3rem 1rem; color: #9ca3af; }
+  .next-action { font-size: 0.9rem; margin-top: 0.3rem; }
+  .next-action strong { color: var(--text); }
+  .next-action span { color: #6b7280; }
 </style>
 
-<h1 style="margin:0 0 1rem;">Orders</h1>
+<header class="page-heading" style="margin-bottom:1rem;">
+  <h1 style="margin:0 0 0.3rem;">Orders</h1>
+  <p style="margin:0;color:#6b7280;">Customer go-ahead &rarr; pick list &rarr; fulfillment.</p>
+</header>
+
+{% set flow_current = 'order' %}
+{% include "partials/flow_strip.html" %}
 
 <div id="orders-container">
   <div class="tabs">
