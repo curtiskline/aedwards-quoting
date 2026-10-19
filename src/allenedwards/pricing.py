@@ -977,13 +977,99 @@ def _match_other_pricing_key(description: str, keyword_map: dict[str, list[str]]
     return None
 
 
+# STANDARD LINE-ITEM DESCRIPTION FORMAT (Chip, 2026-10-19):
+# Every customer-facing description is short and product-shaped — a product
+# label plus the key dimensions — never the raw RFQ prose. The parser keeps the
+# full raw spec text on ParsedItem.description for dimension decoding, and the
+# original request survives verbatim in QuoteSourceSnapshot; the quote line only
+# carries the standardized form. For bags, the description states the size the
+# customer asked for, never the priced range (the ranged part number is the part
+# number's job and stays as-is).
+_PRODUCT_LABELS: dict[str, str] = {
+    "sleeve": "Half Sole",
+    "oversleeve": "Oversleeve",
+    "girth_weld": "Girth Weld Sleeve",
+    "bag": "Geotextile Bag Weight",
+    "compression": "Compression Sleeve",
+    "composite": "OmegaWrap",
+    "accessory": "Accessory",
+    "service": "Service",
+}
+
+_TBD_DESCRIPTION_MAX_CHARS = 80
+
+
+def _first_request_clause(text: str) -> str:
+    """First sentence/line of raw request text, capped at a word boundary."""
+    text = " ".join((text or "").split())
+    if not text:
+        return ""
+    for separator in (". ", "; "):
+        head, sep, _ = text.partition(separator)
+        if sep:
+            text = head
+    text = text.rstrip(".;")
+    if len(text) <= _TBD_DESCRIPTION_MAX_CHARS:
+        return text
+    cut = text[:_TBD_DESCRIPTION_MAX_CHARS]
+    head, sep, _ = cut.rpartition(" ")
+    return (head if sep else cut).rstrip(",;:") + "…"
+
+
+def _standard_tbd_description(item: ParsedItem) -> str:
+    """Standardized description for an unpriceable line.
+
+    Product label plus key dimensions when the parser extracted them; otherwise
+    the first clause of the request, capped — never the whole RFQ paragraph.
+    """
+    label = _PRODUCT_LABELS.get(
+        item.product_type, (item.product_type or "item").replace("_", " ").title()
+    )
+    # Dimensions identify a product only when the pipe size is known; a stray
+    # grade or wall thickness alone reads worse than the customer's own words.
+    if item.diameter is not None:
+        dims = [f'{item.diameter:g}" pipe']
+        if item.wall_thickness is not None:
+            dims.append(f'{decimal_to_fraction(item.wall_thickness)}" w/t')
+        if item.grade is not None:
+            dims.append(f"GR{item.grade}")
+        return f"{label}, {', '.join(dims)}"
+    summary = _first_request_clause(item.description or "")
+    if summary and summary.lower() != label.lower():
+        return summary
+    return label
+
+
+# A catalog bag description names its priced range like "30-38in"; the rewrite
+# keeps the catalog's own unit formatting by replacing only the numeric span and
+# leaving the "in" (or " in") that follows untouched.
+_BAG_SIZE_RANGE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)(?=\s*in\b)")
+
+
+def _echo_requested_bag_size(catalog_desc: str, diameter: float) -> str:
+    """Replace a catalog range token with the size the customer asked for.
+
+    "Geotextile Bag Weight 30-38in Pipe MAX 9K Fill (30/pallet)" with a 36" ask
+    becomes "... 36in Pipe ...". Only a range that actually contains the
+    requested size is rewritten; anything else is left alone.
+    """
+
+    def _substitute(match: re.Match[str]) -> str:
+        low, high = float(match.group(1)), float(match.group(2))
+        if low <= diameter <= high:
+            return f"{diameter:g}"
+        return match.group(0)
+
+    return _BAG_SIZE_RANGE_RE.sub(_substitute, catalog_desc)
+
+
 def _tbd_line_item(item: ParsedItem, sort_order: int) -> QuoteLineItem:
     """Create a $0.00 line item with TBD note for unpriceable items."""
     return QuoteLineItem(
         sort_order=sort_order,
         product_type=item.product_type,
         part_number="TBD",
-        description=item.description or item.product_type,
+        description=_standard_tbd_description(item),
         quantity=item.quantity,
         unit_price=Decimal("0.00"),
         total=Decimal("0.00"),
@@ -1265,7 +1351,9 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
         part_number, pieces_per_pallet, price_per_bag = bag_entry
         rounded_qty, num_pallets = pallet_round(item.quantity, pieces_per_pallet)
         total = price_per_bag * Decimal(str(rounded_qty))
-        desc = f'Geotextile Bag, {part_number}, {int(item.diameter)}" pipe'
+        # The description states the size the customer asked for — never the
+        # priced range. The range lives in the part number, which stays as-is.
+        desc = f'Geotextile Bag Weight, {item.diameter:g}" pipe ({pieces_per_pallet}/pallet)'
         if "empty" in item.description.lower():
             desc += " (Empty)"
         notes = None
@@ -1436,6 +1524,10 @@ def generate_quote(rfq: ParsedRFQ, quote_number: str) -> Quote:
                 catalog_desc = _catalog_description_for_part_number(item.sku)
                 if catalog_desc:
                     priced.description = catalog_desc
+                    if priced.product_type == "bag" and item.diameter is not None:
+                        priced.description = _echo_requested_bag_size(
+                            catalog_desc, item.diameter
+                        )
             line_items.append(priced)
             if priced.notes:
                 default_notes.append(f"Item {i}: {priced.notes}")
