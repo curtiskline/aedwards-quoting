@@ -1106,3 +1106,141 @@ def test_price_item_girth_weld_carries_effective_specs():
     assert result.diameter == 12.75
     assert result.wall_thickness == 0.375
     assert result.grade == 50
+
+
+# --- Standardized line-item descriptions (T512, Chip 2026-10-19) ---
+
+
+def test_bag_description_echoes_requested_size_not_range():
+    """A 36in bag ask shows 36 in the description, never the priced range."""
+    item = ParsedItem(
+        product_type="bag",
+        quantity=30,
+        description='need (30) 36" geotextile bags for a crossing near Tulsa',
+        diameter=36,
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.part_number == "GTW 30-36"  # part number keeps the range (Chip: perfect)
+    assert '36" pipe' in result.description
+    assert "30-36" not in result.description
+    assert "Tulsa" not in result.description  # raw RFQ prose never enters the description
+
+
+def test_echo_requested_bag_size_rewrites_catalog_range():
+    """Catalog bag descriptions have their range token replaced by the asked size."""
+    from allenedwards.pricing import _echo_requested_bag_size
+
+    catalog = "Geotextile Bag Weight 30-38in Pipe MAX 9K Fill  (30/pallet)"
+    assert (
+        _echo_requested_bag_size(catalog, 36.0)
+        == "Geotextile Bag Weight 36in Pipe MAX 9K Fill  (30/pallet)"
+    )
+    # En-dash variant, same unit formatting preserved
+    assert (
+        _echo_requested_bag_size("Geotextile Bag Weight 42–48in Pipe MAX 14K Fill", 48.0)
+        == "Geotextile Bag Weight 48in Pipe MAX 14K Fill"
+    )
+    # A range that does not contain the requested size is left alone
+    assert _echo_requested_bag_size(catalog, 12.0) == catalog
+    # Text without a range token is returned unchanged
+    plain = "Geotextile Bag Weight 36in Pipe MAX 9K Fill"
+    assert _echo_requested_bag_size(plain, 36.0) == plain
+
+
+def test_generate_quote_catalog_bag_sku_echoes_requested_size(monkeypatch):
+    """SKU-matched bags get the catalog wording with the asked size, not the range."""
+    from allenedwards import pricing
+
+    monkeypatch.setattr(
+        pricing,
+        "_catalog_description_for_part_number",
+        lambda part_number: "Geotextile Bag Weight 30-38in Pipe MAX 9K Fill  (30/pallet)",
+    )
+    rfq = ParsedRFQ(
+        customer_name="Test Co",
+        contact_name=None,
+        contact_email=None,
+        contact_phone=None,
+        ship_to=None,
+        po_number=None,
+        quote_number=None,
+        items=[
+            ParsedItem(
+                product_type="bag",
+                quantity=30,
+                description='(30) 36" bag weights',
+                diameter=36,
+                sku="GTW 30-38in (9K)",
+            )
+        ],
+        confidence=1.0,
+    )
+
+    quote = generate_quote(rfq, "126-BAGS")
+
+    bag_items = [item for item in quote.line_items if item.product_type == "bag"]
+    assert len(bag_items) == 1
+    assert bag_items[0].description == "Geotextile Bag Weight 36in Pipe MAX 9K Fill  (30/pallet)"
+    assert bag_items[0].sku == "GTW 30-38in (9K)"
+
+
+def test_tbd_line_item_does_not_cram_raw_rfq_text():
+    """Unpriceable lines get a short product-shaped description, not the RFQ paragraph."""
+    raw = (
+        "Concrete Coating services for Enbridge TET Line 31 Expansion Project. "
+        "Scope includes approximately 10.2 miles of 36-inch pipeline and approximately "
+        "1.7 miles of 16-inch pipeline lateral in Madison County, MS. Tentative "
+        "construction start 7/15/27, end by 5/30/28."
+    )
+    item = ParsedItem(
+        product_type="service",
+        quantity=1,
+        description=raw,
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.part_number == "TBD"
+    # First clause only, capped — plain product language
+    assert result.description == (
+        "Concrete Coating services for Enbridge TET Line 31 Expansion Project"
+    )
+    assert "Madison County" not in result.description
+    assert len(result.description) <= 85
+
+
+def test_tbd_description_prefers_structured_dims():
+    """When the parser extracted dims, the TBD line is label + dims."""
+    item = ParsedItem(
+        product_type="bag",
+        quantity=5,
+        description="Buoyancy control bags for approximately 21 miles of laterals, Nevada.",
+        diameter=60,  # out of priced range -> TBD
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.part_number == "TBD"
+    assert result.description == 'Geotextile Bag Weight, 60" pipe'
+
+
+def test_tbd_description_caps_long_single_clause_at_word_boundary():
+    """A single overlong clause is cut at a word boundary with an ellipsis."""
+    raw = (
+        "10-inch split casing on 6-inch pipeline extension - material list "
+        "(excluding items P-007 and P-008) with Buy America requirements applying throughout"
+    )
+    item = ParsedItem(product_type="accessory", quantity=1, description=raw)
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.part_number == "TBD"
+    assert result.description.endswith("…")
+    assert len(result.description) <= 85
+    assert result.description.startswith("10-inch split casing on 6-inch pipeline extension")
+
+
+def test_tbd_description_falls_back_to_label_when_no_text():
+    """No raw text and no dims still yields a readable product label."""
+    item = ParsedItem(product_type="service", quantity=1, description="")
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.description == "Service"
