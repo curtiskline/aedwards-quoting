@@ -331,6 +331,8 @@ def test_pricing_admin_page_and_inline_update(tmp_path: Path) -> None:
         )
         assert added_catalog_item.status_code == 200
         assert b"FS-001" in added_catalog_item.data
+        assert b"Showing all products: active and inactive." in added_catalog_item.data
+        assert b'aria-current="page">All</a>' in added_catalog_item.data
 
         conn = sqlite3.connect(db_path)
         try:
@@ -389,9 +391,18 @@ def test_pricing_admin_page_and_inline_update(tmp_path: Path) -> None:
             == 200
         )
 
-        active_catalog = client.get("/admin/pricing?tab=catalog")
+        default_catalog = client.get("/admin/pricing?tab=catalog")
+        assert default_catalog.status_code == 200
+        assert b"Showing all products: active and inactive." in default_catalog.data
+        assert b"catalog_filter=all" in default_catalog.data
+        assert b'aria-current="page">All</a>' in default_catalog.data
+        assert default_catalog.data.index(b"AA-001") < default_catalog.data.index(b"ZZ-001")
+        assert default_catalog.data.index(b"ZZ-001") < default_catalog.data.index(b"FS-002")
+
+        active_catalog = client.get("/admin/pricing?tab=catalog&catalog_filter=active")
         assert active_catalog.status_code == 200
-        assert b"catalog_filter=active" in active_catalog.data
+        assert b"Showing active products only. Inactive products are hidden." in active_catalog.data
+        assert b'aria-current="page">Active</a>' in active_catalog.data
         assert b"FS-002" not in active_catalog.data
         assert b"AA-001" in active_catalog.data
         assert b"ZZ-001" in active_catalog.data
@@ -403,6 +414,7 @@ def test_pricing_admin_page_and_inline_update(tmp_path: Path) -> None:
 
         inactive_catalog = client.get("/admin/pricing?tab=catalog&catalog_filter=inactive")
         assert inactive_catalog.status_code == 200
+        assert b"Showing inactive products only. Active products are hidden." in inactive_catalog.data
         assert b"FS-002" in inactive_catalog.data
         assert b"AA-001" not in inactive_catalog.data
         assert b'id="catalog-search"' in inactive_catalog.data
