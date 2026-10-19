@@ -776,6 +776,10 @@ def auto_send_evaluation(quote: Quote) -> dict:
     if tier != AUTO_SEND_TIER:
         reasons.append(f"trust ramp is at Tier {tier}: auto-send requires Tier {AUTO_SEND_TIER}")
     reasons.extend(recommendation["reasons"])
+    if quote.versions:
+        reasons.append(
+            "quote already has a sent version — auto-send never re-emails a quote"
+        )
     if quote.price_adjustment_pct:
         reasons.append("manual price adjustment requires a human send")
     if (quote.email_message or "").strip():
