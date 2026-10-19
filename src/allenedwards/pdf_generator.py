@@ -396,6 +396,17 @@ class QuotePDFBuilder:
                 continue
             item_number = "" if item.is_note else item.part_number
             quantity = "" if item.is_note else str(item.quantity)
+            # A package minimum can make the true extended price differ from
+            # requested quantity × per-piece price.  Showing that unit price
+            # would be misleading to an automated buyer, so mismatched lines
+            # present the exact ask and the honest extended total only.
+            unit_price = format_currency(item.unit_price)
+            if (
+                not item.is_note
+                and item.unit_price is not None
+                and Decimal(str(item.quantity)) * item.unit_price != item.total
+            ):
+                unit_price = ""
             # The line's provenance note, filtered to what a customer should
             # read. Internal wording never reaches this cell — see
             # allenedwards.line_notes.
@@ -413,7 +424,7 @@ class QuotePDFBuilder:
                 Paragraph(item_number, self.styles["normal_small"]),
                 description_cell,
                 Paragraph(quantity, self.styles["normal_small"]),
-                Paragraph(format_currency(item.unit_price), self.styles["normal_small"]),
+                Paragraph(unit_price, self.styles["normal_small"]),
                 Paragraph(format_currency(item.total), self.styles["normal_small"]),
             ])
 

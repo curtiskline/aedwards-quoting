@@ -354,11 +354,20 @@ def build_db_line_item(quote_id: int, li) -> DBQuoteLineItem:
     if li.notes:
         specs["notes"] = li.notes
 
+    # The ORM quantity remains the physical quantity used by freight,
+    # fulfillment, and stock decrement.  The customer-facing quantity is
+    # retained separately so the editor/PDF can echo the literal RFQ ask.
+    physical_quantity = getattr(li, "pricing_quantity", None)
+    if physical_quantity is None:
+        physical_quantity = li.quantity
+    if physical_quantity != li.quantity:
+        specs["original_qty"] = str(li.quantity)
+
     return DBQuoteLineItem(
         quote_id=quote_id,
         product_type=li.product_type,
         description=li.description,
-        quantity=float(li.quantity),
+        quantity=float(physical_quantity),
         unit_price=float(li.unit_price),
         line_total=float(li.total),
         specs_json=specs or None,
