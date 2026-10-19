@@ -330,8 +330,8 @@ def test_price_item_girth_weld_no_wall_thickness():
     assert "wall thickness defaulted" in result.notes
 
 
-def test_price_item_converts_bundle_count_to_piece_count_for_standard_sleeves():
-    """Bundle sleeves show piece count (not bundle count) with per-piece pricing."""
+def test_price_item_preserves_requested_bundle_count_for_standard_sleeves():
+    """The quote echoes the requested bundle count while pricing all pieces."""
     item = ParsedItem(
         product_type="sleeve",
         quantity=2,
@@ -345,8 +345,29 @@ def test_price_item_converts_bundle_count_to_piece_count_for_standard_sleeves():
     result = price_item(item, sort_order=1)
 
     assert result is not None
-    assert result.quantity == 10  # 10 pieces (2 bundles × 5), not 2 bundles
+    assert result.quantity == 2
+    assert result.pricing_quantity == 10  # 2 bundles × 5 physical pieces
     assert "bundle" in result.notes.lower()
+
+
+def test_one_piece_sleeve_echoes_ask_but_prices_five_piece_minimum():
+    item = ParsedItem(
+        product_type="sleeve",
+        quantity=1,
+        description='1 pc 12-3/4" sleeve',
+        diameter=12.75,
+        wall_thickness=0.375,
+        grade=50,
+        length_ft=10,
+    )
+
+    result = price_item(item, sort_order=1)
+
+    assert result is not None
+    assert result.quantity == 1
+    assert result.pricing_quantity == 5
+    assert result.total == result.unit_price * 5
+    assert "1 pc" not in result.description.lower()
 
 
 def test_price_item_defaults_sleeve_length_to_10ft():
@@ -467,7 +488,8 @@ def test_price_item_bag():
     assert result.product_type == "bag"
     assert result.part_number == "GTW 30-36"
     assert result.unit_price == Decimal("139.50")
-    assert result.quantity == 30  # rounded up to 1 pallet
+    assert result.quantity == 10  # exact customer ask
+    assert result.pricing_quantity == 30  # one physical pallet
     assert result.total == Decimal("4185.00")  # 30 * $139.50
 
 
@@ -483,6 +505,7 @@ def test_price_item_bag_exact_pallet():
     result = price_item(item, sort_order=1)
     assert result is not None
     assert result.quantity == 30
+    assert result.pricing_quantity == 30
     assert result.total == Decimal("4185.00")  # April 2026 sheet: 30 x $139.50
     assert result.notes is None  # no rounding note
 
@@ -517,7 +540,8 @@ def test_price_item_bag_small():
     result = price_item(item, sort_order=1)
     assert result is not None
     assert result.unit_price == Decimal("46.87")
-    assert result.quantity == 48  # rounded up to 1 pallet
+    assert result.quantity == 5  # exact customer ask
+    assert result.pricing_quantity == 48  # rounded physical pallet quantity
     assert result.total == Decimal("2249.76")  # 48 * $46.87
 
 
@@ -550,7 +574,8 @@ def test_gtw_10_12_is_48_per_pallet_never_110():
     )
     result = price_item(item, sort_order=1)
     assert result is not None
-    assert result.quantity == 96
+    assert result.quantity == 49
+    assert result.pricing_quantity == 96
     assert "(48/pallet)" in result.description
     assert "110" not in result.description
 
@@ -961,13 +986,19 @@ def test_generate_quote_rounds_up_standard_bundle_sleeve():
 
     quote = generate_quote(rfq, "126-ROUND")
 
-    # Quantity should be 10 pieces (2 bundles × 5), not 2 bundles
+    # The customer-facing quantity remains the literal ask; pricing still uses
+    # two complete bundles.
     sleeve_items = [item for item in quote.line_items if item.product_type == "sleeve"]
     assert len(sleeve_items) == 1
-    assert sleeve_items[0].quantity == 10  # 10 pieces, not 2 bundles
+    assert sleeve_items[0].quantity == 7
+    assert sleeve_items[0].pricing_quantity == 10
 
     # Bundle pricing note should be in the sleeve item notes, not a separate note
     assert "bundle" in sleeve_items[0].notes.lower()
+    assert not any(
+        item.is_note and "bundle" in item.description.lower()
+        for item in quote.line_items
+    )
 
 
 def test_price_lookup_uses_db_override_in_app_context(tmp_path: Path):
@@ -1048,7 +1079,8 @@ def test_total_footage_in_quantity_converts_to_pieces_and_bundles():
     result = price_item(_sleeve_footage_item(quantity=20, length_ft=10), sort_order=1)
 
     assert result is not None
-    assert result.quantity == 5  # 2 pcs rounded up to 1 bundle (5 pcs), NOT 20
+    assert result.quantity == 2  # normalized requested pieces, not the 5-piece minimum
+    assert result.pricing_quantity == 5
     assert "20 ft" in result.notes
     assert "bundle" in result.notes.lower()
 
@@ -1058,7 +1090,8 @@ def test_total_footage_in_length_converts_to_pieces():
     result = price_item(_sleeve_footage_item(quantity=1, length_ft=20), sort_order=1)
 
     assert result is not None
-    assert result.quantity == 5  # 2 pcs of 10 ft -> 1 bundle
+    assert result.quantity == 2  # 2 pcs of 10 ft requested
+    assert result.pricing_quantity == 5
     assert "20 ft" in result.notes
 
 
@@ -1067,7 +1100,8 @@ def test_correct_footage_extraction_is_unchanged():
     result = price_item(_sleeve_footage_item(quantity=2, length_ft=10), sort_order=1)
 
     assert result is not None
-    assert result.quantity == 5  # still rounds to a bundle
+    assert result.quantity == 2
+    assert result.pricing_quantity == 5
     # No spurious footage-normalization note when quantity was already correct.
     assert "→" not in (result.notes or "")
 
@@ -1081,6 +1115,7 @@ def test_explicit_piece_count_is_not_treated_as_footage():
 
     assert result is not None
     assert result.quantity == 20  # unchanged — explicit piece count trusted
+    assert result.pricing_quantity == 20
 
 
 def test_large_footage_request_converts_to_piece_count():
@@ -1092,6 +1127,7 @@ def test_large_footage_request_converts_to_piece_count():
 
     assert result is not None
     assert result.quantity == 15  # ceil(150/10), NOT 150 pcs
+    assert result.pricing_quantity == 15
     assert "150 ft" in result.notes
 
 

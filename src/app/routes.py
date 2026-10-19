@@ -3214,18 +3214,24 @@ def _db_quote_to_pricing_quote(quote: Quote) -> PricingQuote:
         if li.product_type == "shipping":
             continue
         unit_price, line_total = price_adjustments.line_prices(quote, li)
+        specs = dict(li.specs_json or {})
+        physical_quantity = int(math.ceil(float(li.quantity)))
+        requested_quantity = _parse_int(str(specs.get("original_qty", "")))
+        if requested_quantity is None:
+            requested_quantity = physical_quantity
         pricing_items.append(
             PricingLineItem(
                 sort_order=len(pricing_items) + 1,
                 product_type=li.product_type,
                 part_number=li.part_number or "",
                 description=li.description,
-                quantity=int(math.ceil(float(li.quantity))),
+                quantity=requested_quantity,
                 unit_price=unit_price,
                 total=line_total,
+                pricing_quantity=physical_quantity,
                 # Carry the provenance note pricing wrote. The PDF renders only
                 # the customer-facing subset of it (allenedwards.line_notes).
-                notes=dict(li.specs_json or {}).get("notes"),
+                notes=specs.get("notes"),
             )
         )
     subtotal = _quantize_money(sum((item.total for item in pricing_items), Decimal("0.00")))

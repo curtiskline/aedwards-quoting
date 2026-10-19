@@ -125,14 +125,21 @@ def build_pick_lines(snapshot: list[dict]) -> list[dict]:
         if product_type in ("shipping", "discount"):
             continue
         specs = dict(raw.get("specs_json") or {})
-        pieces = int(math.ceil(_parse_float(raw.get("quantity")) or 0))
+        pieces = int(
+            math.ceil(
+                _parse_float(raw.get("physical_quantity"))
+                or _parse_float(raw.get("quantity"))
+                or 0
+            )
+        )
         line: dict = {
             "snapshot_line_id": raw.get("id"),
             "product_type": product_type,
             "part_number": raw.get("part_number"),
             "description": raw.get("description") or "",
             "pieces": pieces,
-            "requested_qty": _parse_int(specs.get("original_qty")),
+            "requested_qty": _parse_int(raw.get("requested_quantity"))
+            or _parse_int(specs.get("original_qty")),
             "pack_unit": None,
             "pack_count": None,
             "pieces_per_pack": None,

@@ -208,6 +208,28 @@ def test_pick_lines_pack_units_and_material_filter(app):
         assert composite["pack_unit"] is None
 
 
+def test_pick_lines_pull_physical_quantity_while_retaining_customer_ask(app):
+    snapshot = [
+        {
+            "product_type": "sleeve",
+            "description": '12" sleeve',
+            "quantity": "5",
+            "requested_quantity": "1",
+            "physical_quantity": "5",
+            "part_number": "SLV-12",
+            "specs_json": {"diameter": "12", "length_ft": "10"},
+        }
+    ]
+
+    with app.app_context():
+        (line,) = build_pick_lines(snapshot)
+
+    assert line["pieces"] == 5
+    assert line["requested_qty"] == 1
+    assert line["pack_count"] == 1
+    assert line["pack_unit"] == "bundle"
+
+
 def test_pick_lines_no_pack_unit_when_not_divisible(app):
     with app.app_context():
         snapshot = [dict(SNAPSHOT[0], quantity=7.0)]  # not whole bundles
