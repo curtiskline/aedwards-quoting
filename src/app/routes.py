@@ -3045,25 +3045,13 @@ def update_catalog_item(item_id: int):
     for field, value in range_fields.items():
         setattr(item, field, value)
     catalog_filter = _catalog_filter(request.form.get("catalog_filter"))
-    was_active = item.is_active
-    item.is_active = request.form.get("is_active") == "on"
     db.session.commit()
-    transition_note = None
-    if was_active != item.is_active and catalog_filter != "all":
-        destination = "Active" if item.is_active else "Inactive"
-        transition_note = (
-            f"{_catalog_row_label(item)} moved to {destination}; "
-            "it will leave this view after the next reload."
-        )
     return render_template(
         "partials/product_catalog_table.html",
-        catalog_items=_catalog_items(
-            catalog_filter, include_item_id=item.id if transition_note else None
-        ),
+        catalog_items=_catalog_items(catalog_filter),
         catalog_filter=catalog_filter,
         catalog_product_types=_catalog_type_choices(),
         catalog_just_saved=True,
-        catalog_transition_note=transition_note,
     )
 
 
@@ -3088,6 +3076,33 @@ def delete_catalog_item(item_id: int):
             f"{_catalog_row_label(item)} moved to Inactive; "
             "it will leave this view after the next reload."
             if catalog_filter == "active"
+            else None
+        ),
+    )
+
+
+@main_bp.post("/admin/catalog/<int:item_id>/activate")
+@login_required
+def activate_catalog_item(item_id: int):
+    item = db.session.get(ProductCatalog, item_id)
+    if item is None:
+        abort(404)
+    catalog_filter = _catalog_filter(request.form.get("catalog_filter"))
+    item.is_active = True
+    db.session.commit()
+    return render_template(
+        "partials/product_catalog_table.html",
+        catalog_items=_catalog_items(
+            catalog_filter,
+            include_item_id=item.id if catalog_filter == "inactive" else None,
+        ),
+        catalog_filter=catalog_filter,
+        catalog_product_types=_catalog_type_choices(),
+        catalog_just_saved=True,
+        catalog_transition_note=(
+            f"{_catalog_row_label(item)} moved to Active; "
+            "it will leave this view after the next reload."
+            if catalog_filter == "inactive"
             else None
         ),
     )

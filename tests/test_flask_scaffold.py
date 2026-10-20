@@ -365,13 +365,8 @@ def test_pricing_admin_page_and_inline_update(tmp_path: Path) -> None:
         search_before_deactivation = client.get("/api/product-catalog/search?q=FS-002")
         assert search_before_deactivation.get_json()[0]["part_number"] == "FS-002"
         deactivated_catalog_item = client.post(
-            f"/admin/catalog/{catalog_item_id}/update",
-            data={
-                "part_number": "FS-002",
-                "description": "Updated field service visit",
-                "product_type": "accessory",
-                "catalog_filter": "active",
-            },
+            f"/admin/catalog/{catalog_item_id}/delete",
+            data={"catalog_filter": "active"},
         )
         assert deactivated_catalog_item.status_code == 200
         assert b"FS-002 moved to Inactive" in deactivated_catalog_item.data
