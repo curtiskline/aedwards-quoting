@@ -350,7 +350,9 @@ def _unmatched_rows() -> list[dict]:
 def build_work_queue() -> dict:
     """All rows plus the counts the home page shows.
 
-    Returns {"rows": [...oldest first...], "counts": {...}}.
+    Returns {"rows": [...newest first...], "counts": {...}}. Newest first so new
+    work is visible without scrolling; stale items are already surfaced by the
+    age column and the red badges.
     """
     rows = (
         _quote_rows()
@@ -361,7 +363,7 @@ def build_work_queue() -> dict:
         + _unmatched_rows()
         + _sent_quote_rows()
     )
-    rows.sort(key=lambda row: row["at"] or datetime.min)
+    rows.sort(key=lambda row: row["at"] or datetime.min, reverse=True)
 
     def count(predicate) -> int:
         return sum(1 for row in rows if predicate(row))
