@@ -111,6 +111,28 @@ def test_quote_statuses_become_rows_with_plain_actions(client):
     assert "Broken Arrow, OK" in page
 
 
+def test_queue_lists_newest_first(client):
+    old = _make_quote("126-100", QuoteStatus.NEW)
+    new = _make_quote("126-101", QuoteStatus.NEW)
+    old.created_at = datetime(2026, 10, 1, 9, 0)
+    new.created_at = datetime(2026, 10, 19, 9, 0)
+    _db.session.commit()
+    page = client.get("/").get_data(as_text=True)
+    assert page.index("126-101") < page.index("126-100")
+
+
+def test_filter_controls_read_as_buttons_with_plain_hint(client):
+    page = client.get("/").get_data(as_text=True)
+    # Every stat tile says what a click does, and one plain line explains the filters.
+    assert page.count("Filter the list &rarr;") == 4
+    assert "The boxes and tabs above are buttons" in page
+    assert "<b>waiting on us</b>" in page
+    customer = client.get("/?view=customer").get_data(as_text=True)
+    assert "<b>waiting on customer</b>" in customer
+    everything = client.get("/?view=all").get_data(as_text=True)
+    assert "<b>all open work</b>" in everything
+
+
 def test_sent_quote_waits_on_customer_until_ordered(client):
     sent = _make_quote("126-086", QuoteStatus.SENT)
     page = client.get("/?view=customer").get_data(as_text=True)
