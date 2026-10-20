@@ -329,8 +329,81 @@ def test_active_catalog_range_supersedes_inactive_generated_variant(app):
         assert line.catalog_id == catalog_range.id
         assert line.catalog_match_status == "active"
         assert line.part_number is None
-        assert line.description == catalog_range.description
+        # A range row covers many sizes; the line keeps its size-stating
+        # description instead of being clobbered with the ranged canonical text.
+        assert line.description == 'Girth Weld Sleeve, 18" ID, 1/4" w/t, A572 GR50'
         assert float(line.unit_price) == 550
+
+
+def test_range_row_freeze_keeps_requested_size_through_pricing_and_resolution(app, msg, rfq):
+    """36in bag RFQ: pricing AND catalog resolution together (T520 regression).
+
+    The catalog's GTW 30-36 row carries a minimal canonical description equal
+    to its part number. The freeze must not clobber the requested-size echo
+    ("36\" pipe") with that range token: Chip wants the description to say the
+    size the customer asked for; only the part number keeps the range.
+    """
+    with app.app_context():
+        catalog = ProductCatalog(
+            part_number="GTW 30-36",
+            description="GTW 30-36",
+            product_type="bag",
+            diameter_min=28,
+            diameter_max=39,
+            is_active=True,
+        )
+        db.session.add(catalog)
+        db.session.commit()
+
+        rfq.items = [
+            ParsedItem(
+                product_type="bag",
+                quantity=30,
+                description='(30) bags for 36" pipe',
+                diameter=36,
+            )
+        ]
+        priced = generate_quote(rfq, "126-520")
+        db_quote = write_quote_to_db(msg, rfq, priced, "126-520")
+        line = db_quote.line_items[0]
+
+        assert line.catalog_id == catalog.id
+        assert line.catalog_match_status == "active"
+        assert line.part_number == "GTW 30-36"
+        assert line.description == 'Geotextile Bag Weight, 36" pipe (30/pallet)'
+
+
+def test_range_row_freeze_rewrites_descriptive_canonical_range_token(app):
+    """A range row with a real catalog sentence gets its range token rewritten."""
+    with app.app_context():
+        catalog = ProductCatalog(
+            part_number="GTW 30-36",
+            description="Geotextile Bag Weight 30-36in Pipe MAX 9K Fill (30/pallet)",
+            product_type="bag",
+            diameter_min=28,
+            diameter_max=39,
+            is_active=True,
+        )
+        db.session.add(catalog)
+        db.session.commit()
+
+        line = build_db_line_item(
+            999,
+            PricingLineItem(
+                sort_order=1,
+                product_type="bag",
+                part_number="GTW 30-36",
+                description='Geotextile Bag Weight, 36" pipe (30/pallet)',
+                quantity=30,
+                unit_price=Decimal("139.50"),
+                total=Decimal("4185.00"),
+                diameter=36,
+            ),
+        )
+
+        assert line.catalog_id == catalog.id
+        assert line.description == "Geotextile Bag Weight 36in Pipe MAX 9K Fill (30/pallet)"
+        assert line.part_number == "GTW 30-36"
 
 
 def test_hard_catalog_enforcement_is_opt_in(app):

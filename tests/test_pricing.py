@@ -1205,7 +1205,7 @@ def test_bag_description_echoes_requested_size_not_range():
 
 def test_echo_requested_bag_size_rewrites_catalog_range():
     """Catalog bag descriptions have their range token replaced by the asked size."""
-    from allenedwards.pricing import _echo_requested_bag_size
+    from app.catalog_resolution import echo_requested_size as _echo_requested_bag_size
 
     catalog = "Geotextile Bag Weight 30-38in Pipe MAX 9K Fill  (30/pallet)"
     assert (

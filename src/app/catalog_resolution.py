@@ -9,6 +9,7 @@ the line onto the existing $0/TBD path.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 
@@ -42,6 +43,29 @@ class CatalogResolution:
 
 def _normalized(value: str | None) -> str:
     return str(value or "").strip().casefold()
+
+
+# A catalog range description names its priced span like "30-38in"; the rewrite
+# keeps the catalog's own unit formatting by replacing only the numeric span and
+# leaving the "in" (or " in") that follows untouched.
+_SIZE_RANGE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)(?=\s*in\b)")
+
+
+def echo_requested_size(catalog_desc: str, diameter: float) -> str:
+    """Replace a catalog range token with the size the customer asked for.
+
+    "Geotextile Bag Weight 30-38in Pipe MAX 9K Fill (30/pallet)" with a 36" ask
+    becomes "... 36in Pipe ...". Only a range that actually contains the
+    requested size is rewritten; anything else is left alone.
+    """
+
+    def _substitute(match: re.Match[str]) -> str:
+        low, high = float(match.group(1)), float(match.group(2))
+        if low <= diameter <= high:
+            return f"{diameter:g}"
+        return match.group(0)
+
+    return _SIZE_RANGE_RE.sub(_substitute, catalog_desc)
 
 
 def _decimal(value: object | None) -> Decimal | None:
@@ -186,6 +210,30 @@ def resolve_catalog_product(
     return CatalogResolution(None, UNMATCHED)
 
 
+def _frozen_description(item: QuoteLineItem, row: ProductCatalog) -> str:
+    """Description to freeze onto a line matched to ``row``.
+
+    Exact (non-range) rows freeze their canonical text verbatim. A range row
+    covers many sizes, and Chip wants the customer-facing description to state
+    the size the customer asked for, never the range — only the part number
+    keeps the range. When the canonical text carries a range token ("30-38in")
+    it is rewritten to the requested diameter; when it does not (minimal rows
+    like "GTW 30-36") the line's existing size-stating description is kept
+    rather than clobbered with range-shaped text.
+    """
+    canonical = row.description
+    if row.diameter_min is None or row.diameter_max is None:
+        return canonical
+    diameter = _decimal((item.specs_json or {}).get("diameter"))
+    if diameter is None:
+        return canonical
+    echoed = echo_requested_size(canonical or "", float(diameter))
+    if echoed != canonical:
+        return echoed
+    existing = str(item.description or "").strip()
+    return existing or canonical
+
+
 def apply_catalog_identity(
     item: QuoteLineItem,
     *,
@@ -212,7 +260,7 @@ def apply_catalog_identity(
         # Quote rows remain point-in-time snapshots, but the catalog supplies
         # their identity and canonical text at the moment of resolution.
         item.part_number = result.row.part_number
-        item.description = result.row.description
+        item.description = _frozen_description(item, result.row)
         if result.row.product_type:
             item.product_type = result.row.product_type
     elif (

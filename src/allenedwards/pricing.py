@@ -1047,27 +1047,17 @@ def _standard_tbd_description(item: ParsedItem) -> str:
     return label
 
 
-# A catalog bag description names its priced range like "30-38in"; the rewrite
-# keeps the catalog's own unit formatting by replacing only the numeric span and
-# leaving the "in" (or " in") that follows untouched.
-_BAG_SIZE_RANGE_RE = re.compile(r"(\d+(?:\.\d+)?)\s*[-–]\s*(\d+(?:\.\d+)?)(?=\s*in\b)")
-
-
 def _echo_requested_bag_size(catalog_desc: str, diameter: float) -> str:
     """Replace a catalog range token with the size the customer asked for.
 
-    "Geotextile Bag Weight 30-38in Pipe MAX 9K Fill (30/pallet)" with a 36" ask
-    becomes "... 36in Pipe ...". Only a range that actually contains the
-    requested size is rewritten; anything else is left alone.
+    Shared with the catalog identity freeze so pricing previews and frozen
+    quote lines render the requested size identically.
     """
+    # Lazy import: app.catalog_resolution pulls in the Flask app package, which
+    # imports this module at its own top level.
+    from app.catalog_resolution import echo_requested_size
 
-    def _substitute(match: re.Match[str]) -> str:
-        low, high = float(match.group(1)), float(match.group(2))
-        if low <= diameter <= high:
-            return f"{diameter:g}"
-        return match.group(0)
-
-    return _BAG_SIZE_RANGE_RE.sub(_substitute, catalog_desc)
+    return echo_requested_size(catalog_desc, diameter)
 
 
 def _tbd_line_item(item: ParsedItem, sort_order: int) -> QuoteLineItem:
