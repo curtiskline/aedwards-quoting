@@ -216,11 +216,92 @@ def test_inactive_catalog_rows_offer_permanent_delete(client):
     client.post(f"/admin/catalog/{item.id}/delete")
     inactive_page = client.get("/admin/pricing?tab=catalog").get_data(as_text=True)
     assert "Delete permanently" in inactive_page
+    assert "Make active" in inactive_page
+    assert 'catalog-status-badge is-inactive">Inactive' in inactive_page
+
+    response = client.post(
+        f"/admin/catalog/{item.id}/update",
+        data={
+            "part_number": "GIR-1",
+            "description": "Edited girth weld kit",
+            "is_active": "on",
+        },
+    )
+    assert response.status_code == 200
+    assert _db.session.get(ProductCatalog, item.id).is_active is False
+
+    response = client.post(f"/admin/catalog/{item.id}/activate")
+    assert response.status_code == 200
+    assert _db.session.get(ProductCatalog, item.id).is_active is True
+
+    client.post(f"/admin/catalog/{item.id}/delete")
 
     response = client.post(f"/admin/catalog/{item.id}/hard-delete")
     assert response.status_code == 200
     assert "was deleted permanently" in response.get_data(as_text=True)
     assert _db.session.get(ProductCatalog, item.id) is None
+
+
+def test_catalog_rows_align_fields_with_plain_language_headers(client):
+    client.post(
+        "/admin/catalog/add",
+        data={
+            "part_number": "GIR-2",
+            "description": "Girth weld sleeve",
+            "product_type": "girth_weld",
+            "diameter_min": "2",
+            "diameter_max": "16",
+            "wall_thickness_min": "0.25",
+            "wall_thickness_max": "0.5",
+        },
+    )
+    client.post(
+        "/admin/catalog/add",
+        data={
+            "part_number": "GTW-30",
+            "description": "Pipe weight bag",
+            "product_type": "bag",
+            "diameter_min": "30",
+            "diameter_max": "38",
+        },
+    )
+    client.post(
+        "/admin/catalog/add",
+        data={
+            "part_number": "ACC-1",
+            "description": "Accessory without dimensions",
+            "product_type": "accessory",
+        },
+    )
+    items = {
+        item.part_number: item.id
+        for item in _db.session.query(ProductCatalog)
+        .filter(ProductCatalog.part_number.in_(["GIR-2", "GTW-30", "ACC-1"]))
+        .all()
+    }
+    page = client.get("/admin/pricing?tab=catalog").get_data(as_text=True)
+    girth_row = page.split(f'id="catalog-item-{items["GIR-2"]}"', 1)[1].split(
+        "</tr>", 1
+    )[0]
+    bag_row = page.split(f'id="catalog-item-{items["GTW-30"]}"', 1)[1].split(
+        "</tr>", 1
+    )[0]
+    accessory_row = page.split(f'id="catalog-item-{items["ACC-1"]}"', 1)[1].split(
+        "</tr>", 1
+    )[0]
+
+    assert '<table class="pricing-table catalog-table">' in page
+    assert '<td colspan="8">' not in page
+    assert page.count("Min–max; blank = not range-priced") == 1
+    assert "Fits pipe diameter (in)" in girth_row
+    assert "Wall thickness (in)" in girth_row
+    assert girth_row.count('class="catalog-range-inputs"') == 2
+    assert "Pipe size (in)" in bag_row
+    assert 'data-catalog-row-measurement="wall" hidden' in bag_row
+    assert 'data-catalog-row-measurement="diameter" hidden' in accessory_row
+    assert 'data-catalog-row-measurement="wall" hidden' in accessory_row
+    assert 'name="is_active"' not in page
+    assert 'catalog-status-badge is-active">Active' in page
 
 
 def test_hard_delete_keeps_products_with_stock_records(client):
