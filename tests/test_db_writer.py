@@ -45,7 +45,8 @@ from allenedwards.pricing import (
 )
 
 
-def test_db_line_item_keeps_physical_and_requested_quantities():
+def test_db_line_item_keeps_physical_and_requested_quantities(app):
+    # app context required: build_db_line_item resolves catalog identity.
     priced = PricingLineItem(
         sort_order=1,
         product_type="sleeve",
