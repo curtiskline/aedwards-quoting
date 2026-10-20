@@ -48,13 +48,13 @@ def test_weight_per_ft_calculation():
 def test_price_per_lb_lookup():
     """Test price per pound lookup."""
     # GR50, 1/4" wall
-    assert get_price_per_lb(0.25, 50) == Decimal("3.01")
+    assert get_price_per_lb(0.25, 50) == Decimal("4.45")
     # GR65, 1/4" wall
-    assert get_price_per_lb(0.25, 65) == Decimal("3.11")
+    assert get_price_per_lb(0.25, 65) == Decimal("4.62")
     # GR50, 3/8" wall
-    assert get_price_per_lb(0.375, 50) == Decimal("2.65")
+    assert get_price_per_lb(0.375, 50) == Decimal("3.31")
     # GR65, 1/2" wall (tier for >= 0.5)
-    assert get_price_per_lb(0.5, 65) == Decimal("2.69")
+    assert get_price_per_lb(0.5, 65) == Decimal("3.57")
 
 
 def test_sleeve_price_calculation():
@@ -72,10 +72,10 @@ def test_sleeve_price_calculation():
     assert weight_per_ft == expected_weight.quantize(Decimal("0.01"))
 
     # Verify price per lb
-    assert price_per_lb == Decimal("3.01")
+    assert price_per_lb == Decimal("4.45")
 
     # Verify unit price = weight_per_ft * price_per_lb * length
-    expected_unit = expected_weight.quantize(Decimal("0.01")) * Decimal("3.01") * 10
+    expected_unit = expected_weight.quantize(Decimal("0.01")) * Decimal("4.45") * 10
     assert unit_price == expected_unit.quantize(Decimal("0.01"))
 
 
@@ -159,24 +159,26 @@ def test_sleeve_description_uses_fraction_fallback_for_nonstandard_dimensions():
 
 def test_girth_weld_price_lookup():
     """Test girth weld price lookup by diameter tier."""
-    # 2-18" tier = $300
-    assert get_girth_weld_price(2) == Decimal("300")
-    assert get_girth_weld_price(8.625) == Decimal("300")
-    assert get_girth_weld_price(18) == Decimal("300")
+    # 2-16" tier = $325
+    assert get_girth_weld_price(2) == Decimal("325")
+    assert get_girth_weld_price(8.625) == Decimal("325")
+    assert get_girth_weld_price(16) == Decimal("325")
 
-    # 20-30" tier = $500
-    assert get_girth_weld_price(20) == Decimal("500")
-    assert get_girth_weld_price(24) == Decimal("500")
-    assert get_girth_weld_price(30) == Decimal("500")
+    # 18-30" tier = $550 (Chip, 2026-10-19: 18 moved into middle)
+    assert get_girth_weld_price(18) == Decimal("550")
+    assert get_girth_weld_price(20) == Decimal("550")
+    assert get_girth_weld_price(24) == Decimal("550")
+    assert get_girth_weld_price(30) == Decimal("550")
 
-    # 32-44" tier = $800
-    assert get_girth_weld_price(32) == Decimal("800")
-    assert get_girth_weld_price(36) == Decimal("800")
-    assert get_girth_weld_price(44) == Decimal("800")
+    # 32-44" tier = $875
+    assert get_girth_weld_price(32) == Decimal("875")
+    assert get_girth_weld_price(36) == Decimal("875")
+    assert get_girth_weld_price(44) == Decimal("875")
 
     # Gap diameters now covered
-    assert get_girth_weld_price(19) == Decimal("300")
-    assert get_girth_weld_price(31) == Decimal("500")
+    assert get_girth_weld_price(17) is None
+    assert get_girth_weld_price(19) == Decimal("550")
+    assert get_girth_weld_price(31) is None
 
     # Outside ranges returns None
     assert get_girth_weld_price(1) is None
@@ -221,7 +223,7 @@ def test_oversleeve_description_rounds_nonstandard_dimensions_to_fractions():
 
 def test_price_item_girth_weld():
     """Test price_item handles girth_weld product type."""
-    # 8-5/8" ID girth weld sleeve (in 2-18" tier = $300/set)
+    # 8-5/8" ID girth weld sleeve (in 2-16" tier = $325/set)
     item = ParsedItem(
         product_type="girth_weld",
         quantity=4,
@@ -237,14 +239,14 @@ def test_price_item_girth_weld():
     assert result is not None
     assert result.product_type == "girth_weld"
     assert result.part_number == "G-8.58-38-50"
-    assert result.unit_price == Decimal("300")  # Per set
-    assert result.total == Decimal("1200")  # 4 sets * $300
+    assert result.unit_price == Decimal("325")  # Per set
+    assert result.total == Decimal("1300")  # 4 sets * $325
     assert result.quantity == 4
 
 
 def test_price_item_girth_weld_different_tiers():
     """Test girth weld pricing across different diameter tiers."""
-    # 24" diameter (20-30" tier = $500)
+    # 24" diameter (18-30" tier = $550)
     item_24 = ParsedItem(
         product_type="girth_weld",
         quantity=2,
@@ -256,10 +258,10 @@ def test_price_item_girth_weld_different_tiers():
     )
     result = price_item(item_24, sort_order=1)
     assert result is not None
-    assert result.unit_price == Decimal("500")
-    assert result.total == Decimal("1000")
+    assert result.unit_price == Decimal("550")
+    assert result.total == Decimal("1100")
 
-    # 36" diameter (32-44" tier = $800)
+    # 36" diameter (32-44" tier = $875)
     item_36 = ParsedItem(
         product_type="girth_weld",
         quantity=3,
@@ -271,8 +273,8 @@ def test_price_item_girth_weld_different_tiers():
     )
     result = price_item(item_36, sort_order=2)
     assert result is not None
-    assert result.unit_price == Decimal("800")
-    assert result.total == Decimal("2400")
+    assert result.unit_price == Decimal("875")
+    assert result.total == Decimal("2625")
 
 
 def test_price_item_girth_weld_missing_data():
@@ -325,8 +327,8 @@ def test_price_item_girth_weld_no_wall_thickness():
     result = price_item(item, sort_order=1)
     assert result is not None
     assert result.product_type == "girth_weld"
-    assert result.unit_price == Decimal("500")  # 20-31" tier
-    assert result.total == Decimal("1000.00")
+    assert result.unit_price == Decimal("550")  # 18-30" tier
+    assert result.total == Decimal("1100.00")
     assert "wall thickness defaulted" in result.notes
 
 
@@ -677,8 +679,8 @@ def test_price_item_omegawrap_magnum():
     assert result.total == Decimal("390.00")
 
 
-def test_price_item_omegawrap_default_carbon():
-    """Composite defaults to carbon when no variant specified."""
+def test_price_item_unknown_omegawrap_variant_is_tbd_not_carbon():
+    """An unspecified composite must not be invented as Carbon."""
     item = ParsedItem(
         product_type="composite",
         quantity=1,
@@ -686,7 +688,10 @@ def test_price_item_omegawrap_default_carbon():
     )
     result = price_item(item, sort_order=1)
     assert result is not None
-    assert result.unit_price == Decimal("680")
+    assert result.part_number == "TBD"
+    assert result.unit_price == Decimal("0.00")
+    assert result.total == Decimal("0.00")
+    assert "Pricing TBD" in result.notes
 
 
 def test_price_item_accessory_resin():

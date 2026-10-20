@@ -16,6 +16,13 @@ def _default_database_url() -> str:
     return f"sqlite:///{DEFAULT_SQLITE_PATH}"
 
 
+def _env_bool(name: str, default: bool) -> bool:
+    raw = os.getenv(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() not in {"0", "false", "no", "off"}
+
+
 class Config:
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key")
     SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL", _default_database_url())
@@ -27,3 +34,10 @@ class Config:
     REMEMBER_COOKIE_DURATION_DAYS = int(os.getenv("REMEMBER_COOKIE_DURATION_DAYS", "30"))
     MAGIC_LINK_TTL_SECONDS = int(os.getenv("MAGIC_LINK_TTL_SECONDS", "1800"))
     APP_URL = os.getenv("APP_URL")
+    # Inactive rows still represent real historical catalog identities. Keep
+    # them matchable by default; this dial controls whether they require review.
+    CATALOG_ALLOW_INACTIVE_MATCHES = _env_bool("CATALOG_ALLOW_INACTIVE_MATCHES", False)
+    # Flag-only until the range catalog has been verified on staging.  Once
+    # enabled, new uncataloged/ambiguous/type-mismatched lines are forced onto
+    # the existing $0/TBD review path instead of retaining generated identity.
+    CATALOG_HARD_TBD_ENFORCEMENT = _env_bool("CATALOG_HARD_TBD_ENFORCEMENT", False)

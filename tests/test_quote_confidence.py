@@ -194,6 +194,27 @@ def test_decode_clean_fails_on_needs_pricing_status(app):
     assert _signal(quote, "decode_clean") == FAIL
 
 
+def test_decode_clean_fails_on_unmatched_catalog_identity(app):
+    quote = _make_quote(_make_customer())
+    line = _add_line(quote)
+    line.catalog_match_status = "unmatched"
+    _db.session.flush()
+    assert _signal(quote, "decode_clean") == FAIL
+
+
+def test_decode_clean_inactive_catalog_policy_is_configurable(app):
+    quote = _make_quote(_make_customer())
+    line = _add_line(quote)
+    line.catalog_match_status = "inactive"
+    _db.session.flush()
+
+    app.config["CATALOG_ALLOW_INACTIVE_MATCHES"] = False
+    assert _signal(quote, "decode_clean") == FAIL
+
+    app.config["CATALOG_ALLOW_INACTIVE_MATCHES"] = True
+    assert _signal(quote, "decode_clean") == PASS
+
+
 # ---------------------------------------------------------------------------
 # all_lines_priced
 # ---------------------------------------------------------------------------

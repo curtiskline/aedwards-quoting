@@ -11,7 +11,7 @@ from decimal import Decimal
 from app import create_app
 from app.config import Config
 from app.extensions import db
-from app.models import ProductType
+from app.models import ProductCatalog, ProductType
 
 from allenedwards import parser
 from allenedwards.parser import ParsedItem
@@ -65,6 +65,44 @@ def test_prompt_reads_live_product_type_table(db_url):
     assert "omegawrap" not in prompt
     # Live enum orders by sort_order: sleeve then composite then megasleeve.
     assert "sleeve|composite|megasleeve" in prompt
+
+
+def test_prompt_excludes_inactive_catalog_identities(db_url):
+    app = _make_app(db_url)
+    with app.app_context():
+        db.create_all()
+        db.session.add_all(
+            [
+                ProductCatalog(
+                    part_number="ACTIVE-1",
+                    description="Active product",
+                    product_type="accessory",
+                    is_active=True,
+                ),
+                ProductCatalog(
+                    part_number="HISTORICAL-1",
+                    description="Historical product",
+                    product_type="accessory",
+                    is_active=False,
+                ),
+                ProductCatalog(
+                    part_number=None,
+                    description='18"-30" Girth Weld Sleeves',
+                    product_type="girth_weld",
+                    diameter_min=18,
+                    diameter_max=30,
+                    is_active=True,
+                ),
+            ]
+        )
+        db.session.commit()
+
+        prompt = parser._parse_system_prompt()
+
+    assert "ACTIVE-1: Active product" in prompt
+    assert '[range; no part number]: 18"-30" Girth Weld Sleeves' in prompt
+    assert "Never create or infer a part number" in prompt
+    assert "HISTORICAL-1" not in prompt
 
 
 def test_prompt_falls_back_when_product_type_table_absent(db_url):

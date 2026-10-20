@@ -177,6 +177,70 @@ def test_service_item_number_can_be_edited_and_renders_in_preview_pdf(db_url):
     assert b'name="part_number"' in update_response.data
 
 
+def test_manual_line_item_catalog_resolution_flags_or_freezes_identity(db_url):
+    app = _make_app(db_url)
+    with app.app_context():
+        db.create_all()
+        user = User(email="catalog-editor@example.com", name="Catalog Editor", password_hash="x")
+        quote = Quote(quote_number="126-catalog-editor", status=QuoteStatus.IN_REVIEW)
+        catalog = ProductCatalog(
+            part_number="PJ-620",
+            description='Pipe Jack w/Chain 6-20" OD',
+            product_type="accessory",
+            is_active=True,
+        )
+        db.session.add_all([user, quote, catalog])
+        db.session.commit()
+        quote_id = quote.id
+        user_id = user.id
+        catalog_id = catalog.id
+
+    client = app.test_client()
+    _login(client, user_id)
+
+    unmatched_response = client.post(
+        f"/quotes/{quote_id}/line-items/add",
+        data={
+            "product_type": "service",
+            "part_number": "DREAMED-UP-1",
+            "description": "Invented service",
+            "quantity": "1",
+            "unit_price": "500",
+        },
+    )
+    assert unmatched_response.status_code == 200
+    assert b"Not found in Product Catalog" in unmatched_response.data
+
+    matched_response = client.post(
+        f"/quotes/{quote_id}/line-items/add",
+        data={
+            "product_type": "accessory",
+            "part_number": "pj-620",
+            "description": "Operator wording is not authoritative",
+            "quantity": "1",
+            "unit_price": "250",
+        },
+    )
+    assert matched_response.status_code == 200
+    assert b"Product Catalog matched" in matched_response.data
+
+    with app.app_context():
+        lines = (
+            db.session.query(QuoteLineItem)
+            .filter_by(quote_id=quote_id)
+            .order_by(QuoteLineItem.id.asc())
+            .all()
+        )
+        assert lines[0].catalog_id is None
+        assert lines[0].catalog_match_status == "unmatched"
+        assert lines[0].part_number == "DREAMED-UP-1"
+        assert float(lines[0].unit_price) == 500
+        assert lines[1].catalog_id == catalog_id
+        assert lines[1].catalog_match_status == "active"
+        assert lines[1].part_number == "PJ-620"
+        assert lines[1].description == 'Pipe Jack w/Chain 6-20" OD'
+
+
 def test_hydrated_ship_to_renders_unverified_confirmation_flag(db_url):
     """A stored default still hydrates, but must ask a human to confirm it."""
     app = _make_app(db_url)
@@ -433,6 +497,9 @@ def test_product_catalog_search_and_lookup_endpoints(db_url):
     assert len(search_data) >= 1
     assert search_data[0]["part_number"] == "S-6.58-38-50-10"
     assert search_data[0]["product_type"] == "sleeve"
+    assert search_data[0]["is_active"] is True
+
+    assert client.get("/api/product-catalog/search?q=12.34").get_json() == []
 
     lookup_resp = client.get("/api/product-catalog/lookup/S-6.58-38-50-10")
     assert lookup_resp.status_code == 200
@@ -440,6 +507,8 @@ def test_product_catalog_search_and_lookup_endpoints(db_url):
     assert lookup_data["part_number"] == "S-6.58-38-50-10"
     assert lookup_data["product_type"] == "sleeve"
     assert "Half Sole" in lookup_data["description"]
+
+    assert client.get("/api/product-catalog/lookup/G-12.34-38-50").status_code == 404
 
 
 def test_girth_weld_update_preserves_part_number_without_length_spec(db_url):
@@ -1724,14 +1793,14 @@ _SLEEVE_SPECS_38 = {
     "milling": False,
     "painting": False,
     "weight_per_ft": "72.91",
-    "price_per_lb": "2.75",
+    "price_per_lb": "3.48",
     "notes": 'wall thickness defaulted to 3/8"',
 }
 _SLEEVE_DESCRIPTION_38 = 'Half Sole, 36" ID, 3/8" w/t, A572 GR65, 20\' long. Backing Strip Included.'
 _SLEEVE_DESCRIPTION_12 = 'Half Sole, 36" ID, 1/2" w/t, A572 GR65, 20\' long. Backing Strip Included.'
 # calculate_sleeve_price(36, 0.375, 65, 20) and (36, 0.5, 65, 20)
-_PRICE_38 = 4010.05
-_PRICE_12 = 5248.19
+_PRICE_38 = 5074.54
+_PRICE_12 = 6965.07
 
 
 def _sleeve_quote(db_url, quote_number, *, specs=None, unit_price=_PRICE_38, description=None):
@@ -1795,7 +1864,7 @@ def test_wall_thickness_edit_recalculates_price_on_autosave(db_url):
         assert specs["wall_thickness"] == "0.5"
         # Both stored pricing inputs must move off the 3/8" basis.
         assert specs["weight_per_ft"] == "97.55"
-        assert specs["price_per_lb"] == "2.69"
+        assert specs["price_per_lb"] == "3.57"
         assert float(updated.unit_price) == _PRICE_12
         assert float(updated.line_total) == _PRICE_12
         # Provenance: the wall thickness is no longer a default.
@@ -1876,7 +1945,7 @@ def test_typed_unit_price_survives_later_spec_edits(db_url):
         specs = dict(updated.specs_json or {})
         assert float(updated.unit_price) == 6000.00
         assert specs["weight_per_ft"] == "97.55"
-        assert specs["price_per_lb"] == "2.69"
+        assert specs["price_per_lb"] == "3.57"
         assert specs["auto_unit_price"] == str(_PRICE_12)
         assert specs.get("price_override") is True
 

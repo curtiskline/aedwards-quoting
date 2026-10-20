@@ -57,6 +57,11 @@ from allenedwards.ship_to import SHIP_TO_KEYS, is_domestic_ship_to, normalize_sh
 
 from . import on_site_fill, price_adjustments, send_service
 from . import reparse as reparse_service
+from .catalog_resolution import (
+    apply_catalog_identity,
+    catalog_status_message,
+    catalog_status_needs_review,
+)
 from .confidence import (
     SIGNAL_LABELS,
     active_trust_tier,
@@ -1208,6 +1213,10 @@ def _line_item_view(item: QuoteLineItem) -> dict:
         "unit_price": unit_price,
         "line_total": line_total,
         "part_number": item.part_number,
+        "catalog_id": item.catalog_id,
+        "catalog_match_status": item.catalog_match_status,
+        "catalog_match_message": catalog_status_message(item.catalog_match_status),
+        "catalog_needs_review": catalog_status_needs_review(item.catalog_match_status),
         "specs": specs,
         **{key: getattr(item, key) for key in on_site_fill.LOCATION_FIELDS},
         "fill_history": on_site_fill.history(item.on_site_city, item.on_site_state, item.quote_id) if item.product_type == on_site_fill.TYPE else [],
@@ -1828,6 +1837,8 @@ def _copy_line_item(item: QuoteLineItem, new_quote_id: int) -> QuoteLineItem:
         line_total=item.line_total,
         specs_json=copy.deepcopy(item.specs_json) if item.specs_json is not None else None,
         part_number=item.part_number,
+        catalog_id=item.catalog_id,
+        catalog_match_status=item.catalog_match_status,
         sort_order=item.sort_order,
         **{key: getattr(item, key) for key in on_site_fill.LOCATION_FIELDS},
         on_site_priced_at=item.on_site_priced_at,
@@ -2272,6 +2283,7 @@ def quote_add_line_item(quote_id: int):
             line_item.line_total = 0
     if product_type == on_site_fill.TYPE:
         on_site_fill.apply_form(line_item, request.form)
+    apply_catalog_identity(line_item)
     db.session.add(line_item)
     _apply_auto_shipping_line_item(quote)
     _sync_quote_pricing_status(quote)
@@ -2529,6 +2541,7 @@ def quote_update_line_item(quote_id: int, item_id: int):
         for key in on_site_fill.LOCATION_FIELDS:
             setattr(item, key, None)
         item.on_site_priced_at = None
+    apply_catalog_identity(item)
     _apply_auto_shipping_line_item(quote)
     _sync_quote_pricing_status(quote)
 
@@ -2554,7 +2567,11 @@ def product_catalog_search():
     like = f"%{query.lower()}%"
     rows = (
         db.session.query(ProductCatalog)
-        .filter(ProductCatalog.is_active.is_(True))
+        .filter(
+            ProductCatalog.is_active.is_(True),
+            ProductCatalog.part_number.isnot(None),
+            func.trim(ProductCatalog.part_number) != "",
+        )
         .filter(
             or_(
                 func.lower(ProductCatalog.part_number).like(like),
@@ -2571,6 +2588,7 @@ def product_catalog_search():
                 "part_number": row.part_number,
                 "description": row.description,
                 "product_type": row.product_type,
+                "is_active": row.is_active,
             }
             for row in rows
         ]
@@ -2579,21 +2597,26 @@ def product_catalog_search():
 
 @main_bp.get("/api/product-catalog/lookup/<string:part_number>")
 def product_catalog_lookup(part_number: str):
-    row = (
+    rows = (
         db.session.query(ProductCatalog)
         .filter(
             ProductCatalog.is_active.is_(True),
             func.lower(ProductCatalog.part_number) == part_number.lower(),
         )
-        .one_or_none()
+        .order_by(ProductCatalog.id.asc())
+        .all()
     )
-    if row is None:
+    if not rows:
         abort(404)
+    if len(rows) > 1:
+        abort(409, description="Part number is ambiguous in the Product Catalog.")
+    row = rows[0]
     return jsonify(
         {
             "part_number": row.part_number,
             "description": row.description,
             "product_type": row.product_type,
+            "is_active": row.is_active,
         }
     )
 
@@ -2913,6 +2936,42 @@ def _resolve_catalog_product_type(raw: str | None) -> str | None:
     return slug
 
 
+def _catalog_range_fields(product_type: str | None) -> dict[str, Decimal | None]:
+    """Parse and validate optional inclusive catalog dimension ranges."""
+    parsed: dict[str, Decimal | None] = {}
+    for field in (
+        "diameter_min",
+        "diameter_max",
+        "wall_thickness_min",
+        "wall_thickness_max",
+    ):
+        raw = (request.form.get(field) or "").strip()
+        if not raw:
+            parsed[field] = None
+            continue
+        try:
+            value = Decimal(raw)
+        except InvalidOperation:
+            abort(400, description=f"Invalid {field.replace('_', ' ')}")
+        if not value.is_finite() or value < 0:
+            abort(400, description=f"Invalid {field.replace('_', ' ')}")
+        parsed[field] = value
+
+    for prefix in ("diameter", "wall_thickness"):
+        minimum = parsed[f"{prefix}_min"]
+        maximum = parsed[f"{prefix}_max"]
+        if (minimum is None) != (maximum is None):
+            abort(400, description=f"{prefix.replace('_', ' ').title()} needs both min and max")
+        if minimum is not None and maximum is not None and minimum > maximum:
+            abort(400, description=f"{prefix.replace('_', ' ').title()} min cannot exceed max")
+
+    if parsed["wall_thickness_min"] is not None and parsed["diameter_min"] is None:
+        abort(400, description="A wall thickness range requires a diameter range")
+    if parsed["diameter_min"] is not None and not product_type:
+        abort(400, description="A dimensional range requires a product type")
+    return parsed
+
+
 def _catalog_row_label(item: ProductCatalog) -> str:
     """Human label for flash messages: part number if present, else description."""
     return item.part_number or item.description
@@ -2924,6 +2983,7 @@ def add_catalog_item():
     part_number = (request.form.get("part_number") or "").strip() or None
     description = (request.form.get("description") or "").strip()
     product_type = _resolve_catalog_product_type(request.form.get("product_type"))
+    range_fields = _catalog_range_fields(product_type)
     if not description:
         abort(400, description="Description is required")
     if (
@@ -2940,6 +3000,7 @@ def add_catalog_item():
             description=description,
             product_type=product_type,
             vendor=(request.form.get("vendor") or "").strip() or None,
+            **range_fields,
             is_active=True,
         )
     )
@@ -2963,6 +3024,7 @@ def update_catalog_item(item_id: int):
     part_number = (request.form.get("part_number") or "").strip() or None
     description = (request.form.get("description") or "").strip()
     product_type = _resolve_catalog_product_type(request.form.get("product_type"))
+    range_fields = _catalog_range_fields(product_type)
     if not description:
         abort(400, description="Description is required")
     if part_number is not None:
@@ -2980,6 +3042,8 @@ def update_catalog_item(item_id: int):
     item.description = description
     item.product_type = product_type
     item.vendor = (request.form.get("vendor") or "").strip() or None
+    for field, value in range_fields.items():
+        setattr(item, field, value)
     catalog_filter = _catalog_filter(request.form.get("catalog_filter"))
     was_active = item.is_active
     item.is_active = request.form.get("is_active") == "on"

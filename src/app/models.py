@@ -421,6 +421,15 @@ class QuoteLineItem(db.Model):
     line_total: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
     specs_json: Mapped[dict | None] = mapped_column(db.JSON)
     part_number: Mapped[str | None]
+    # Product identity is the catalog surrogate key. Historical rows remain
+    # nullable and "unchecked"; new writes record an exact deterministic match
+    # outcome so uncataloged products cannot pass unnoticed.
+    catalog_id: Mapped[int | None] = mapped_column(
+        ForeignKey("product_catalog.id"), nullable=True, index=True
+    )
+    catalog_match_status: Mapped[str] = mapped_column(
+        default="unchecked", server_default="unchecked", nullable=False, index=True
+    )
     sort_order: Mapped[int] = mapped_column(default=0, nullable=False)
     # Structured quote-history seed for location-specific manual fill pricing.
     on_site_label: Mapped[str | None]
@@ -430,6 +439,7 @@ class QuoteLineItem(db.Model):
     on_site_priced_at: Mapped[datetime | None]
 
     quote: Mapped[Quote] = relationship(back_populates="line_items")
+    catalog: Mapped["ProductCatalog | None"] = relationship(foreign_keys=[catalog_id])
 
 
 class QuoteAttachment(TimestampMixin, db.Model):
@@ -796,6 +806,13 @@ class ProductCatalog(db.Model):
     # "AE MFG"). Plain text at <50 SKUs; a Vendor table only if/when POs go
     # out by email. NULL = Chip hasn't filled it in yet.
     vendor: Mapped[str | None] = mapped_column(nullable=True)
+    # Optional dimensional authority.  A range row represents a real product
+    # family without requiring the quote engine to invent a SKU for every
+    # diameter/thickness combination.
+    diameter_min: Mapped[float | None] = mapped_column(Numeric(12, 4), nullable=True)
+    diameter_max: Mapped[float | None] = mapped_column(Numeric(12, 4), nullable=True)
+    wall_thickness_min: Mapped[float | None] = mapped_column(Numeric(12, 4), nullable=True)
+    wall_thickness_max: Mapped[float | None] = mapped_column(Numeric(12, 4), nullable=True)
     is_active: Mapped[bool] = mapped_column(default=True, nullable=False, index=True)
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
