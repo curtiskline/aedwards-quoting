@@ -236,6 +236,8 @@ def _signal_decode_clean(quote: Quote) -> tuple[str, dict]:
         notes = str(specs.get("notes") or "")
         if "default" in notes.lower():
             reasons.append(f"{label}: defaults applied ({notes})")
+        if "source validation:" in notes.lower() or "needs a person" in notes.lower():
+            reasons.append(f"{label}: source text needs review ({notes})")
     if quote.status == QuoteStatus.NEEDS_PRICING:
         reasons.append("quote status is needs_pricing")
     if reasons:
