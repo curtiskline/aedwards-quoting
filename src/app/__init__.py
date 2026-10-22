@@ -10,6 +10,7 @@ from flask_login import current_user
 from . import models  # noqa: F401
 from .admin_routes import admin_bp
 from .auth_routes import auth_bp
+from .calculator_routes import calculator_bp
 from .config import Config
 from .customers import customers_bp
 from .extensions import db, login_manager
@@ -39,6 +40,7 @@ def create_app() -> Flask:
     app.register_blueprint(orders_bp)
     app.register_blueprint(fulfillment_bp)
     app.register_blueprint(stock_bp)
+    app.register_blueprint(calculator_bp)
 
     login_manager.login_view = "auth.login"
     login_manager.login_message = "Please sign in to continue."
