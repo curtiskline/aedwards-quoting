@@ -396,6 +396,7 @@
           <a href="{{ url_for('fulfillment.queue') }}"{% if path.startswith('/pick-lists') %} class="active" aria-current="page"{% endif %}>Shop &amp; shipping</a>
           <a href="{{ url_for('stock.stock_list') }}"{% if path.startswith('/stock') %} class="active" aria-current="page"{% endif %}>Stock &amp; purchasing</a>
           <a href="{{ url_for('customers.customer_list') }}"{% if path.startswith('/customers') %} class="active" aria-current="page"{% endif %}>Customers</a>
+          <a href="{{ url_for('calculator.page') }}"{% if path.startswith('/calculator') %} class="active" aria-current="page"{% endif %}>OmegaWrap calculator</a>
           <a href="{{ url_for('main.settings_home') }}"{% if path.startswith('/settings') or path.startswith('/admin') %} class="active" aria-current="page"{% endif %}>Settings</a>
         </nav>
         <div class="seat">

@@ -1,0 +1,124 @@
+{% extends "layout.html" %}
+{% block title %}OmegaWrap calculator · Allan Edwards Quotes{% endblock %}
+{% block body %}
+  <h1>OmegaWrap calculator</h1>
+  <p class="form-help">
+    Enter the pipe and the anomaly. The calculator tells you which fabric to use
+    and how much OmegaWrap the repair needs.
+  </p>
+
+  <div class="flash info" style="border-color: #f59e0b; background: #fffbeb;">
+    <strong>The repair length numbers are not ready yet.</strong>
+    They come from the AE Composite Calculator Excel file, which we are still
+    waiting on. Until it is in and checked against Excel, this page shows the
+    fabric and wrap rules but no lengths. It never shows a guessed number.
+  </div>
+
+  {% for error in errors %}
+    <div class="flash error">{{ error }}</div>
+  {% endfor %}
+
+  <form method="post" class="panel quote-editor">
+    {{ csrf_field() }}
+    <div class="quote-editor-grid quote-editor-grid-wide">
+      {% for field, label in measurements %}
+        <label>{{ label }}
+          <input type="text" name="{{ field }}" inputmode="decimal"
+                 value="{{ form.get(field, '') }}" />
+        </label>
+      {% endfor %}
+    </div>
+    <div class="quote-editor-grid quote-editor-grid-wide">
+      <label>Pipe grade
+        <select name="pipe_grade">
+          <option value="">Not known - use the SMYS box</option>
+          {% for grade in pipe_grades %}
+            <option value="{{ grade }}"{% if form.get('pipe_grade') == grade %} selected{% endif %}>{{ grade }}</option>
+          {% endfor %}
+        </select>
+        <span class="field-help">Pick the grade. If you only have the SMYS, leave this on "Not known".</span>
+      </label>
+      <label>SMYS (psi) - only if the grade is not known
+        <input type="text" name="pipe_grade_smys" inputmode="numeric"
+               value="{{ form.get('pipe_grade_smys', '') }}" placeholder="for example 52,200" />
+        <span class="field-help">The yield strength from the paperwork. 52,200 means grade X52.</span>
+      </label>
+      <label>Class location
+        <select name="class_location">
+          {% for number, factor in class_locations.items() %}
+            <option value="{{ number }}"{% if form.get('class_location', '1') == number|string %} selected{% endif %}>Class {{ number }}</option>
+          {% endfor %}
+        </select>
+        <span class="field-help">Class 1 is the usual one. Use what the paperwork says.</span>
+      </label>
+      <label>Anomaly type
+        <input type="text" name="anomaly_type"
+               value="{{ form.get('anomaly_type', '') }}" placeholder="for example External Corrosion, Dent, Gouge" />
+        <span class="field-help">Write it the way the paperwork says it. Leave it blank if nothing says - that is treated as not corrosion.</span>
+      </label>
+    </div>
+    <button type="submit">Work out the wrap</button>
+  </form>
+
+  {% if result %}
+    <div class="panel">
+      <h2>What to use</h2>
+      <table>
+        <tr>
+          <th>Fabric</th>
+          <td><strong>{{ result.fabric }}</strong></td>
+          <td>{{ result.fabric_why }}</td>
+        </tr>
+        <tr>
+          <th>Isolation wrap</th>
+          <td><strong>{{ 'Yes' if result.isolation_wrap else 'No' }}</strong></td>
+          <td>
+            {% if result.isolation_wrap %}
+              A Carbon repair gets an isolation wrap under it, 12 inches longer than the repair.
+            {% else %}
+              An E-Glass corrosion repair does not get an isolation wrap.
+            {% endif %}
+          </td>
+        </tr>
+        <tr>
+          <th>Pipe grade used</th>
+          <td><strong>{{ inputs.pipe_grade }}</strong></td>
+          <td>{{ grade_why }}</td>
+        </tr>
+        <tr>
+          <th>Class location</th>
+          <td><strong>Class {{ class_number }}</strong></td>
+          <td>Design factor {{ result.design_factor }} in the calculator.</td>
+        </tr>
+        <tr>
+          <th>Calculator sheet</th>
+          <td><strong>{{ result.sheet }}</strong></td>
+          <td>The repair length will come from the {{ result.sheet }} sheet, cell {{ result.output_cell }}.</td>
+        </tr>
+      </table>
+    </div>
+
+    <div class="panel">
+      <h2>How much OmegaWrap</h2>
+      {% if result.results_available %}
+        <table>
+          <tr>
+            <th>Repair length</th>
+            <td><strong>{{ result.repair_length_in }} inches</strong></td>
+          </tr>
+          {% if result.isolation_wrap %}
+            <tr>
+              <th>Isolation wrap length</th>
+              <td><strong>{{ result.isolation_wrap_length_in }} inches</strong></td>
+            </tr>
+          {% endif %}
+        </table>
+      {% else %}
+        <div class="flash error">
+          <strong>No length yet - waiting on the calculator file.</strong><br />
+          {{ result.engine_note }}
+        </div>
+      {% endif %}
+    </div>
+  {% endif %}
+{% endblock %}
