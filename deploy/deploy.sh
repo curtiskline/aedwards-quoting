@@ -2,19 +2,25 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 [--dry-run] [--env staging|prod] <host-or-ip>" >&2
+  echo "Usage: $0 [--dry-run] [--env staging|prod] [--env-file <path>] <host-or-ip>" >&2
   echo "  --dry-run   print the resulting host .env diff and apply nothing" >&2
   echo "  --env       assert the deploy target; aborts if it contradicts the known host map" >&2
+  echo "  --env-file  read credentials/config from this file instead of <repo>/.env" >&2
+  echo "              (deploy worktrees have no .env; without this flag the canonical" >&2
+  echo "              checkout's .env is used when one can be located)" >&2
 }
 
 DRY_RUN=false
 TARGET_ENV=""
+ENV_FILE_ARG=""
 POSITIONAL=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run) DRY_RUN=true; shift ;;
     --env) TARGET_ENV="${2:-}"; shift 2 ;;
     --env=*) TARGET_ENV="${1#--env=}"; shift ;;
+    --env-file) ENV_FILE_ARG="${2:-}"; shift 2 ;;
+    --env-file=*) ENV_FILE_ARG="${1#--env-file=}"; shift ;;
     -h|--help) usage; exit 0 ;;
     -*) echo "Unknown option: $1" >&2; usage; exit 1 ;;
     *) POSITIONAL+=("$1"); shift ;;
@@ -37,6 +43,29 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DOTENV_FILE="${ROOT_DIR}/.env"
 SERVICE_FILE="${ROOT_DIR}/deploy/aedwards-monitor.service"
 MERGE_ENV_FILE="${ROOT_DIR}/deploy/merge_env.sh"
+
+# Credential env file resolution (task 509). Deploy worktrees have no .env by
+# design, and deploying without one must never substitute built-in defaults
+# over real host values. --env-file is explicit; otherwise, when the repo has
+# no .env, fall back to the canonical checkout's .env (the file a main-checkout
+# deploy would read), located via the shared git common dir.
+if [[ -n "${ENV_FILE_ARG}" ]]; then
+  if [[ ! -f "${ENV_FILE_ARG}" ]]; then
+    echo "--env-file not found: ${ENV_FILE_ARG}" >&2
+    exit 1
+  fi
+  DOTENV_FILE="${ENV_FILE_ARG}"
+elif [[ ! -f "${DOTENV_FILE}" ]]; then
+  GIT_COMMON_DIR="$(git -C "${ROOT_DIR}" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+  if [[ -n "${GIT_COMMON_DIR}" && -f "$(dirname "${GIT_COMMON_DIR}")/.env" ]]; then
+    DOTENV_FILE="$(dirname "${GIT_COMMON_DIR}")/.env"
+    echo "NOTE: no .env in ${ROOT_DIR}; using the canonical checkout's env file ${DOTENV_FILE} (override with --env-file)." >&2
+  fi
+fi
+HAVE_ENV_FILE=false
+if [[ -f "${DOTENV_FILE}" ]]; then
+  HAVE_ENV_FILE=true
+fi
 
 # Known host map (docs/runbooks/postgres-cutover.md). Anything else is "unknown"
 # and deploys with a loud warning; --env only cross-checks, it cannot re-label.
@@ -91,10 +120,13 @@ APP_URL="${APP_URL:-$(read_from_dotenv APP_URL || true)}"
 QUOTE_ARTIFACT_DIR="${QUOTE_ARTIFACT_DIR:-$(read_from_dotenv QUOTE_ARTIFACT_DIR || true)}"
 ENABLE_MONITOR="${ENABLE_MONITOR:-true}"
 
-O365_CLIENT_ID="${O365_CLIENT_ID:-d3590ed6-52b3-4102-aeff-aad2292ab01c}"
-O365_SCOPES="${O365_SCOPES:-https://graph.microsoft.com/.default}"
-LLM_PROVIDER="${LLM_PROVIDER:-claude}"
-QUOTE_ARTIFACT_DIR="${QUOTE_ARTIFACT_DIR:-${APP_DIR}/instance/quote_versions}"
+# Built-in defaults (O365_CLIENT_ID, O365_SCOPES, LLM_PROVIDER,
+# QUOTE_ARTIFACT_DIR) are applied host-aware, AFTER the host .env snapshot is
+# fetched below: an explicit local value always wins; a key with no local value
+# but an existing host value is omitted from the fragment so the host value is
+# preserved; a default is written only for a host that has never set the key.
+# Missing monitor credentials (O365_EMAIL, and O365_CLIENT_ID absent from any
+# env file) abort rather than silently defaulting (task 509).
 
 # DATABASE_URL: the host's current value is authoritative (deploy/merge_env.sh
 # preserves it; the Postgres cutover edits it in place on the droplet, runbook
@@ -109,11 +141,6 @@ QUOTE_ARTIFACT_DIR="${QUOTE_ARTIFACT_DIR:-${APP_DIR}/instance/quote_versions}"
 # only to hosts that have never set it, so a deploy cannot flip a monitor-off
 # host (staging) back to polling a live mailbox.
 
-if [[ "${ENABLE_MONITOR,,}" != "false" && "${ENABLE_MONITOR,,}" != "0" && "${ENABLE_MONITOR,,}" != "no" && -z "${O365_EMAIL}" ]]; then
-  echo "O365_EMAIL is required (export it or set it in ${DOTENV_FILE})." >&2
-  exit 1
-fi
-
 if [[ ! -f "${KEY_PATH}" ]]; then
   echo "SSH key not found: ${KEY_PATH}" >&2
   exit 1
@@ -125,21 +152,84 @@ trap 'rm -rf "${TMP_DIR}"' EXIT
 SRC_TARBALL="${TMP_DIR}/aedwards-src.tgz"
 ENV_FILE="${TMP_DIR}/.env"
 
+SSH_OPTS=(-i "${KEY_PATH}" -o StrictHostKeyChecking=accept-new)
+
+# Fetch the host's current .env BEFORE building the deploy fragment so default
+# substitution can be host-aware (and the preflight merge below reuses it).
+HOST_ENV_SNAPSHOT="${TMP_DIR}/host.env"
+# shellcheck disable=SC2029  # APP_DIR expanding client-side is intentional
+ssh "${SSH_OPTS[@]}" "${SSH_USER}@${HOST}" "cat ${APP_DIR}/.env 2>/dev/null || true" > "${HOST_ENV_SNAPSHOT}"
+
+host_env_has() {
+  grep -q "^$1=" "${HOST_ENV_SNAPSHOT}"
+}
+
+# The host's ENABLE_MONITOR is authoritative in the merge, so the credential
+# guard keys off the EFFECTIVE value: a monitor-off host (staging) must not
+# demand mailbox credentials the merge would strip anyway.
+monitor_enabled() {
+  local effective="${ENABLE_MONITOR}"
+  local host_value
+  host_value="$(sed -n 's/^ENABLE_MONITOR=//p' "${HOST_ENV_SNAPSHOT}" | head -n1)"
+  if [[ -n "${host_value}" ]]; then
+    effective="${host_value}"
+  fi
+  [[ "${effective,,}" != "false" && "${effective,,}" != "0" && "${effective,,}" != "no" ]]
+}
+
+if monitor_enabled; then
+  if [[ -z "${O365_EMAIL}" ]] && ! host_env_has O365_EMAIL; then
+    echo "ABORT: O365_EMAIL is required for a monitor deploy and is not set locally, in any env file, or on ${HOST}." >&2
+    echo "Pass --env-file <path> (e.g. the canonical checkout's .env), export O365_EMAIL, or set it in ${DOTENV_FILE}." >&2
+    exit 1
+  fi
+  if [[ -z "${O365_CLIENT_ID}" ]] && ! host_env_has O365_CLIENT_ID; then
+    if [[ "${HAVE_ENV_FILE}" == true ]]; then
+      O365_CLIENT_ID="d3590ed6-52b3-4102-aeff-aad2292ab01c"
+    else
+      echo "ABORT: O365_CLIENT_ID is not set, no local env file was found, and ${HOST} has no existing value." >&2
+      echo "Refusing to deploy the built-in default over a credential-less host. Pass --env-file <path> or export O365_CLIENT_ID." >&2
+      exit 1
+    fi
+  fi
+  if [[ -z "${O365_SCOPES}" ]] && ! host_env_has O365_SCOPES; then
+    O365_SCOPES="https://graph.microsoft.com/.default"
+  fi
+fi
+if [[ -z "${LLM_PROVIDER}" ]] && ! host_env_has LLM_PROVIDER; then
+  LLM_PROVIDER="claude"
+fi
+if [[ -z "${QUOTE_ARTIFACT_DIR}" ]] && ! host_env_has QUOTE_ARTIFACT_DIR; then
+  QUOTE_ARTIFACT_DIR="${APP_DIR}/instance/quote_versions"
+fi
+
 {
   echo "ENABLE_MONITOR=${ENABLE_MONITOR}"
-  if [[ "${ENABLE_MONITOR,,}" != "false" && "${ENABLE_MONITOR,,}" != "0" && "${ENABLE_MONITOR,,}" != "no" ]]; then
-    echo "O365_EMAIL=${O365_EMAIL}"
+  # Empty keys are omitted (not written as empty) so the host's values survive
+  # the merge untouched.
+  if monitor_enabled; then
+    if [[ -n "${O365_EMAIL}" ]]; then
+      echo "O365_EMAIL=${O365_EMAIL}"
+    fi
     if [[ -n "${O365_PASSWORD}" ]]; then
       echo "O365_PASSWORD=${O365_PASSWORD}"
     fi
-    echo "O365_CLIENT_ID=${O365_CLIENT_ID}"
-    echo "O365_SCOPES=${O365_SCOPES}"
+    if [[ -n "${O365_CLIENT_ID}" ]]; then
+      echo "O365_CLIENT_ID=${O365_CLIENT_ID}"
+    fi
+    if [[ -n "${O365_SCOPES}" ]]; then
+      echo "O365_SCOPES=${O365_SCOPES}"
+    fi
   fi
-  echo "LLM_PROVIDER=${LLM_PROVIDER}"
+  if [[ -n "${LLM_PROVIDER}" ]]; then
+    echo "LLM_PROVIDER=${LLM_PROVIDER}"
+  fi
   if [[ -n "${DATABASE_URL}" ]]; then
     echo "DATABASE_URL=${DATABASE_URL}"
   fi
-  echo "QUOTE_ARTIFACT_DIR=${QUOTE_ARTIFACT_DIR}"
+  if [[ -n "${QUOTE_ARTIFACT_DIR}" ]]; then
+    echo "QUOTE_ARTIFACT_DIR=${QUOTE_ARTIFACT_DIR}"
+  fi
   if [[ -n "${SECRET_KEY}" ]]; then
     echo "SECRET_KEY=${SECRET_KEY}"
   fi
@@ -157,15 +247,10 @@ ENV_FILE="${TMP_DIR}/.env"
   fi
 } > "${ENV_FILE}"
 
-SSH_OPTS=(-i "${KEY_PATH}" -o StrictHostKeyChecking=accept-new)
-
-# Preflight: fetch the host's current .env and run the same merge the host
-# will run. This fails BEFORE any remote change when the merge would (e.g. no
+# Preflight: run the same merge the host will run against the snapshot fetched
+# above. This fails BEFORE any remote change when the merge would (e.g. no
 # DATABASE_URL anywhere), and gives --dry-run its diff.
-HOST_ENV_SNAPSHOT="${TMP_DIR}/host.env"
 MERGED_PREVIEW="${TMP_DIR}/merged-preview.env"
-# shellcheck disable=SC2029  # APP_DIR expanding client-side is intentional
-ssh "${SSH_OPTS[@]}" "${SSH_USER}@${HOST}" "cat ${APP_DIR}/.env 2>/dev/null || true" > "${HOST_ENV_SNAPSHOT}"
 bash "${MERGE_ENV_FILE}" "${HOST_ENV_SNAPSHOT}" "${ENV_FILE}" "${MERGED_PREVIEW}"
 
 echo ""

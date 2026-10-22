@@ -130,6 +130,7 @@ DATABASE_URL=postgresql://aedwards@/aedwards?host=/var/run/postgresql
 EMAIL_DELIVERY_ENABLED=false
 ENABLE_MONITOR=false
 SECRET_KEY=stagingsecret
+O365_CLIENT_ID=host-client-id
 EOF
 cp "${FAKE_HOST_DIR}/.env" "${WORK}/host-env-before"
 
@@ -162,9 +163,10 @@ exit 0
 EOF
 chmod +x "${STUBS}/ssh" "${STUBS}/scp"
 
-run_deploy() { # run_deploy <expected-note> <args...>
+run_deploy() { # run_deploy <args...>
   PATH="${STUBS}:${PATH}" KEY_PATH="${FAKE_KEY}" DATABASE_URL="" \
     EMAIL_DELIVERY_ENABLED="" SECRET_KEY="" \
+    O365_EMAIL="" O365_CLIENT_ID="" O365_SCOPES="" \
     bash "${FAKE_REPO}/deploy/deploy_web.sh" "$@" \
     > "${WORK}/deploy-stdout" 2> "${WORK}/deploy-stderr"
   DEPLOY_RC=$?
@@ -185,11 +187,42 @@ check "dry-run diff keeps host DATABASE_URL (no sqlite regress)" \
   bash -c "! grep -q -- '-DATABASE_URL=postgresql' '${WORK}/deploy-stdout'"
 check "dry-run diff never introduces EMAIL_DELIVERY_ENABLED=true" \
   bash -c "! grep -q '+EMAIL_DELIVERY_ENABLED=true' '${WORK}/deploy-stdout'"
+check "no local env file: host O365_CLIENT_ID neither removed nor replaced" \
+  bash -c "! grep -qE '^[-+]O365_CLIENT_ID=' '${WORK}/deploy-stdout'"
+check "no local env file: builtin O365_CLIENT_ID default never appears" \
+  bash -c "! grep -q 'd3590ed6-52b3-4102-aeff-aad2292ab01c' '${WORK}/deploy-stdout'"
+
+# 7b. Credential-less host and no local env file: the deploy must ABORT rather
+#     than ship the built-in O365_CLIENT_ID default (task 509 guard).
+mv "${FAKE_HOST_DIR}/.env" "${FAKE_HOST_DIR}/.env.saved"
+printf 'DATABASE_URL=postgresql://x\nEMAIL_DELIVERY_ENABLED=false\n' > "${FAKE_HOST_DIR}/.env"
+: > "${CALL_LOG}"
+run_deploy --dry-run 134.122.29.15
+check "credential-less host without env file aborts" test "${DEPLOY_RC}" -ne 0
+check "credential abort names the refused default" \
+  grep -q 'Refusing to deploy the built-in default' "${WORK}/deploy-stderr"
+check "credential abort copied nothing" \
+  bash -c "! grep -q '^scp ' '${CALL_LOG}'"
+mv "${FAKE_HOST_DIR}/.env.saved" "${FAKE_HOST_DIR}/.env"
+
+# 7c. --env-file: an explicit env file supplies credentials (its value wins
+#     over the host's), and a missing --env-file path is a hard error.
+printf 'O365_CLIENT_ID=envfile-client-id\n' > "${WORK}/explicit.env"
+: > "${CALL_LOG}"
+run_deploy --dry-run --env-file "${WORK}/explicit.env" 134.122.29.15
+check "--env-file dry run exits 0" test "${DEPLOY_RC}" -eq 0
+check "--env-file O365_CLIENT_ID reaches the merged preview" \
+  grep -q '+O365_CLIENT_ID=envfile-client-id' "${WORK}/deploy-stdout"
+run_deploy --dry-run --env-file "${WORK}/does-not-exist.env" 134.122.29.15
+check "missing --env-file path is a hard error" test "${DEPLOY_RC}" -ne 0
+check "missing --env-file error names the path" \
+  grep -q -- '--env-file not found' "${WORK}/deploy-stderr"
 
 # 8. Host with no DATABASE_URL and none provided: preflight hard-fails
 #    before anything is copied (the fail-loudly guard itself).
 mv "${FAKE_HOST_DIR}/.env" "${FAKE_HOST_DIR}/.env.saved"
-printf 'EMAIL_DELIVERY_ENABLED=false\n' > "${FAKE_HOST_DIR}/.env"
+# O365_CLIENT_ID present so the credential guard (7b) does not fire first.
+printf 'EMAIL_DELIVERY_ENABLED=false\nO365_CLIENT_ID=host-client-id\n' > "${FAKE_HOST_DIR}/.env"
 : > "${CALL_LOG}"
 run_deploy --dry-run 134.122.29.15
 check "missing DATABASE_URL everywhere fails the deploy preflight" \
@@ -280,9 +313,11 @@ check "Certbot nginx merge fails closed with no proxy location" \
 run_monitor() { # run_monitor <args...>
   # ENABLE_MONITOR is deliberately left empty so deploy.sh applies its own
   # default (true): the host's ENABLE_MONITOR=false must survive exactly that.
+  # MONITOR_O365_EMAIL lets guard tests drop the stub credential.
   PATH="${STUBS}:${PATH}" KEY_PATH="${FAKE_KEY}" DATABASE_URL="" \
     EMAIL_DELIVERY_ENABLED="" SECRET_KEY="" ENABLE_MONITOR="" \
-    O365_EMAIL="monitor-stub@example.invalid" \
+    O365_EMAIL="${MONITOR_O365_EMAIL-monitor-stub@example.invalid}" \
+    O365_CLIENT_ID="" O365_SCOPES="" \
     bash "${FAKE_REPO}/deploy/deploy.sh" "$@" \
     > "${WORK}/monitor-stdout" 2> "${WORK}/monitor-stderr"
   MONITOR_RC=$?
@@ -316,8 +351,9 @@ check "mailbox credential not added to delivery-off host" \
   bash -c "! grep -q '+O365_EMAIL=' '${WORK}/monitor-stdout'"
 
 # 11. Fresh host (no ENABLE_MONITOR key): the deploy fragment default applies.
+#     O365_CLIENT_ID present so the credential guard does not fire first.
 mv "${FAKE_HOST_DIR}/.env" "${FAKE_HOST_DIR}/.env.saved"
-printf 'DATABASE_URL=postgresql://fresh\nEMAIL_DELIVERY_ENABLED=true\n' > "${FAKE_HOST_DIR}/.env"
+printf 'DATABASE_URL=postgresql://fresh\nEMAIL_DELIVERY_ENABLED=true\nO365_CLIENT_ID=host-client-id\n' > "${FAKE_HOST_DIR}/.env"
 : > "${CALL_LOG}"
 run_monitor --dry-run 134.122.29.15
 check "fresh-host monitor dry run exits 0" test "${MONITOR_RC}" -eq 0
@@ -340,6 +376,37 @@ check "monitor preflight failure names the sqlite refusal" \
 check "monitor preflight failure copied nothing" \
   bash -c "! grep -q '^scp ' '${CALL_LOG}'"
 mv "${FAKE_HOST_DIR}/.env.saved" "${FAKE_HOST_DIR}/.env"
+
+# 12b. Monitor-ON host with O365_EMAIL nowhere (not local, no env file, not on
+#      host): abort naming the missing credential (task 509 guard).
+mv "${FAKE_HOST_DIR}/.env" "${FAKE_HOST_DIR}/.env.saved"
+printf 'DATABASE_URL=postgresql://x\nO365_CLIENT_ID=host-client-id\n' > "${FAKE_HOST_DIR}/.env"
+: > "${CALL_LOG}"
+MONITOR_O365_EMAIL="" run_monitor --dry-run 134.122.29.15
+check "monitor-on host without O365_EMAIL anywhere aborts" test "${MONITOR_RC}" -ne 0
+check "O365_EMAIL abort names the credential" \
+  grep -q 'O365_EMAIL is required' "${WORK}/monitor-stderr"
+check "O365_EMAIL abort copied nothing" \
+  bash -c "! grep -q '^scp ' '${CALL_LOG}'"
+
+# 12c. Monitor-ON credential-less host without any env file: the O365_CLIENT_ID
+#      guard refuses the built-in default (task 509 guard).
+printf 'DATABASE_URL=postgresql://x\nO365_EMAIL=host-monitor@example.invalid\n' > "${FAKE_HOST_DIR}/.env"
+: > "${CALL_LOG}"
+run_monitor --dry-run 134.122.29.15
+check "monitor credential-less host without env file aborts" test "${MONITOR_RC}" -ne 0
+check "monitor credential abort names the refused default" \
+  grep -q 'Refusing to deploy the built-in default' "${WORK}/monitor-stderr"
+mv "${FAKE_HOST_DIR}/.env.saved" "${FAKE_HOST_DIR}/.env"
+
+# 12d. Monitor-OFF host (staging): no mailbox credential is demanded — the
+#      guard keys off the EFFECTIVE monitor state, so a worktree dry-run
+#      against staging works without O365_EMAIL (axon friction 4963).
+: > "${CALL_LOG}"
+MONITOR_O365_EMAIL="" run_monitor --dry-run 134.122.29.15
+check "monitor-off host dry run succeeds without O365_EMAIL" test "${MONITOR_RC}" -eq 0
+check "monitor-off dry run announces nothing applied" \
+  grep -q 'DRY RUN: nothing was copied or applied' "${WORK}/monitor-stdout"
 
 # 13. --env cross-check for the monitor deploy.
 : > "${CALL_LOG}"

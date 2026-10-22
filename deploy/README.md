@@ -34,6 +34,31 @@ host) and guarantees:
   `157.230.227.28` are auto-detected) and `--env staging|prod` aborts on a
   mismatch.
 
+## Deploying from a worktree (task 509)
+
+Deploy worktrees carry no `.env`. Both scripts handle that:
+
+- `--env-file <path>` reads credentials/config from an explicit file instead
+  of `<repo>/.env` (a missing path is a hard error, never a silent skip);
+- without the flag, a repo with no `.env` falls back to the **canonical
+  checkout's** `.env`, located via the shared git common dir (a `NOTE:` line
+  names the file used);
+- built-in defaults (`O365_CLIENT_ID`, `O365_SCOPES`, `LLM_PROVIDER`,
+  `QUOTE_ARTIFACT_DIR`) are host-aware: an existing host value is preserved
+  by omitting the key from the fragment, and a default only ever fills a key
+  no side has. With **no** env file and a host that lacks `O365_CLIENT_ID`
+  (or `O365_EMAIL`, for a monitor-on deploy) the scripts **abort** instead of
+  shipping the built-in default;
+- `deploy.sh`'s credential guard keys off the *effective* monitor state (the
+  host's `ENABLE_MONITOR` wins when set), so a staging dry-run never demands
+  mailbox credentials the merge would strip anyway.
+
+`tools/send_test_rfqs.py` similarly resolves its corpus via `--corpus-root`,
+then `$AE_TEST_CORPUS_ROOT`, then `<repo>/data/test-corpus`, then the
+canonical checkout's `data/test-corpus`; a candidate is only used when it
+contains every requested sample, and an explicit choice that lacks them is an
+error rather than a silent fallback.
+
 Note for fresh monitor-on hosts: the delivery-off credential strip means
 mailbox credentials only persist on a host whose `.env` already says
 `EMAIL_DELIVERY_ENABLED=true`. On a brand-new prod host, set that manually
