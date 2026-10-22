@@ -164,8 +164,17 @@ host_env_has() {
   grep -q "^$1=" "${HOST_ENV_SNAPSHOT}"
 }
 
+# The host's ENABLE_MONITOR is authoritative in the merge, so the credential
+# guard keys off the EFFECTIVE value: a monitor-off host (staging) must not
+# demand mailbox credentials the merge would strip anyway.
 monitor_enabled() {
-  [[ "${ENABLE_MONITOR,,}" != "false" && "${ENABLE_MONITOR,,}" != "0" && "${ENABLE_MONITOR,,}" != "no" ]]
+  local effective="${ENABLE_MONITOR}"
+  local host_value
+  host_value="$(sed -n 's/^ENABLE_MONITOR=//p' "${HOST_ENV_SNAPSHOT}" | head -n1)"
+  if [[ -n "${host_value}" ]]; then
+    effective="${host_value}"
+  fi
+  [[ "${effective,,}" != "false" && "${effective,,}" != "0" && "${effective,,}" != "no" ]]
 }
 
 if monitor_enabled; then
