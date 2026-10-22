@@ -2,19 +2,25 @@
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 [--dry-run] [--env staging|prod] <host-or-ip>" >&2
+  echo "Usage: $0 [--dry-run] [--env staging|prod] [--env-file <path>] <host-or-ip>" >&2
   echo "  --dry-run   print the resulting host .env diff and apply nothing" >&2
   echo "  --env       assert the deploy target; aborts if it contradicts the known host map" >&2
+  echo "  --env-file  read credentials/config from this file instead of <repo>/.env" >&2
+  echo "              (deploy worktrees have no .env; without this flag the canonical" >&2
+  echo "              checkout's .env is used when one can be located)" >&2
 }
 
 DRY_RUN=false
 TARGET_ENV=""
+ENV_FILE_ARG=""
 POSITIONAL=()
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run) DRY_RUN=true; shift ;;
     --env) TARGET_ENV="${2:-}"; shift 2 ;;
     --env=*) TARGET_ENV="${1#--env=}"; shift ;;
+    --env-file) ENV_FILE_ARG="${2:-}"; shift 2 ;;
+    --env-file=*) ENV_FILE_ARG="${1#--env-file=}"; shift ;;
     -h|--help) usage; exit 0 ;;
     -*) echo "Unknown option: $1" >&2; usage; exit 1 ;;
     *) POSITIONAL+=("$1"); shift ;;
@@ -35,6 +41,29 @@ SERVICE_NAME="aedwards-web"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DOTENV_FILE="${ROOT_DIR}/.env"
 SERVICE_FILE="${ROOT_DIR}/deploy/aedwards-web.service"
+
+# Credential env file resolution (task 509). Deploy worktrees have no .env by
+# design, and deploying without one must never substitute built-in defaults
+# over real host values. --env-file is explicit; otherwise, when the repo has
+# no .env, fall back to the canonical checkout's .env (the file a main-checkout
+# deploy would read), located via the shared git common dir.
+if [[ -n "${ENV_FILE_ARG}" ]]; then
+  if [[ ! -f "${ENV_FILE_ARG}" ]]; then
+    echo "--env-file not found: ${ENV_FILE_ARG}" >&2
+    exit 1
+  fi
+  DOTENV_FILE="${ENV_FILE_ARG}"
+elif [[ ! -f "${DOTENV_FILE}" ]]; then
+  GIT_COMMON_DIR="$(git -C "${ROOT_DIR}" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+  if [[ -n "${GIT_COMMON_DIR}" && -f "$(dirname "${GIT_COMMON_DIR}")/.env" ]]; then
+    DOTENV_FILE="$(dirname "${GIT_COMMON_DIR}")/.env"
+    echo "NOTE: no .env in ${ROOT_DIR}; using the canonical checkout's env file ${DOTENV_FILE} (override with --env-file)." >&2
+  fi
+fi
+HAVE_ENV_FILE=false
+if [[ -f "${DOTENV_FILE}" ]]; then
+  HAVE_ENV_FILE=true
+fi
 NGINX_FILE="${ROOT_DIR}/deploy/nginx-aedwards-web.conf"
 MERGE_ENV_FILE="${ROOT_DIR}/deploy/merge_env.sh"
 MERGE_NGINX_TIMEOUTS_FILE="${ROOT_DIR}/deploy/merge_nginx_timeouts.sh"
@@ -117,10 +146,15 @@ fi
 # docs/runbooks/postgres-cutover.md). A value here is only used when the host
 # has none, and there is deliberately NO sqlite fallback: a deploy with no
 # DATABASE_URL anywhere fails before touching the host.
-QUOTE_ARTIFACT_DIR="${QUOTE_ARTIFACT_DIR:-${APP_DIR}/instance/quote_versions}"
-O365_CLIENT_ID="${O365_CLIENT_ID:-d3590ed6-52b3-4102-aeff-aad2292ab01c}"
-O365_SCOPES="${O365_SCOPES:-https://graph.microsoft.com/.default}"
-LLM_PROVIDER="${LLM_PROVIDER:-claude}"
+#
+# Built-in defaults (O365_CLIENT_ID, O365_SCOPES, LLM_PROVIDER,
+# QUOTE_ARTIFACT_DIR) are applied host-aware, AFTER the host .env snapshot is
+# fetched: an explicit local value always wins; a key with no local value but
+# an existing host value is omitted from the fragment so the host value is
+# preserved; a default is written only for a host that has never set the key.
+# For the credential key O365_CLIENT_ID the default additionally requires that
+# a local env file was actually resolved — with no env file and no host value
+# the deploy aborts rather than silently shipping the default (task 509).
 
 if [[ ! -f "${KEY_PATH}" ]]; then
   echo "SSH key not found: ${KEY_PATH}" >&2
@@ -144,19 +178,60 @@ SRC_TARBALL="${TMP_DIR}/aedwards-src.tgz"
 ENV_FILE="${TMP_DIR}/.env"
 RENDERED_NGINX_FILE="${TMP_DIR}/${SERVICE_NAME}.nginx"
 
+SSH_OPTS=(-i "${KEY_PATH}" -o StrictHostKeyChecking=accept-new)
+
+# Fetch the host's current .env BEFORE building the deploy fragment so default
+# substitution can be host-aware (and the preflight merge below reuses it).
+HOST_ENV_SNAPSHOT="${TMP_DIR}/host.env"
+# shellcheck disable=SC2029  # APP_DIR expanding client-side is intentional
+ssh "${SSH_OPTS[@]}" "${SSH_USER}@${HOST}" "cat ${APP_DIR}/.env 2>/dev/null || true" > "${HOST_ENV_SNAPSHOT}"
+
+host_env_has() {
+  grep -q "^$1=" "${HOST_ENV_SNAPSHOT}"
+}
+
+if [[ -z "${O365_CLIENT_ID}" ]] && ! host_env_has O365_CLIENT_ID; then
+  if [[ "${HAVE_ENV_FILE}" == true ]]; then
+    O365_CLIENT_ID="d3590ed6-52b3-4102-aeff-aad2292ab01c"
+  else
+    echo "ABORT: O365_CLIENT_ID is not set, no local env file was found, and ${HOST} has no existing value." >&2
+    echo "Refusing to deploy the built-in default over a credential-less host. Pass --env-file <path> (e.g. the canonical checkout's .env) or export O365_CLIENT_ID." >&2
+    exit 1
+  fi
+fi
+if [[ -z "${O365_SCOPES}" ]] && ! host_env_has O365_SCOPES; then
+  O365_SCOPES="https://graph.microsoft.com/.default"
+fi
+if [[ -z "${LLM_PROVIDER}" ]] && ! host_env_has LLM_PROVIDER; then
+  LLM_PROVIDER="claude"
+fi
+if [[ -z "${QUOTE_ARTIFACT_DIR}" ]] && ! host_env_has QUOTE_ARTIFACT_DIR; then
+  QUOTE_ARTIFACT_DIR="${APP_DIR}/instance/quote_versions"
+fi
+
 {
   # No EMAIL_DELIVERY_ENABLED line here, ever: the host value governs delivery
   # and merge_env.sh would ignore it anyway (defaulting an absent key to false).
   if [[ -n "${DATABASE_URL}" ]]; then
     echo "DATABASE_URL=${DATABASE_URL}"
   fi
-  echo "QUOTE_ARTIFACT_DIR=${QUOTE_ARTIFACT_DIR}"
+  if [[ -n "${QUOTE_ARTIFACT_DIR}" ]]; then
+    echo "QUOTE_ARTIFACT_DIR=${QUOTE_ARTIFACT_DIR}"
+  fi
   if [[ -n "${SECRET_KEY}" ]]; then
     echo "SECRET_KEY=${SECRET_KEY}"
   fi
-  echo "O365_CLIENT_ID=${O365_CLIENT_ID}"
-  echo "O365_SCOPES=${O365_SCOPES}"
-  echo "LLM_PROVIDER=${LLM_PROVIDER}"
+  # Empty keys are omitted (not written as empty) so the host's values survive
+  # the merge untouched.
+  if [[ -n "${O365_CLIENT_ID}" ]]; then
+    echo "O365_CLIENT_ID=${O365_CLIENT_ID}"
+  fi
+  if [[ -n "${O365_SCOPES}" ]]; then
+    echo "O365_SCOPES=${O365_SCOPES}"
+  fi
+  if [[ -n "${LLM_PROVIDER}" ]]; then
+    echo "LLM_PROVIDER=${LLM_PROVIDER}"
+  fi
   if [[ "${BUNDLE_MAIL_CREDS}" == true && -n "${O365_EMAIL}" ]]; then
     echo "O365_EMAIL=${O365_EMAIL}"
   fi
@@ -206,15 +281,10 @@ RENDERED_NGINX_FILE="${TMP_DIR}/${SERVICE_NAME}.nginx"
 
 sed "s|__SERVER_NAME__|${SERVER_NAME}|g" "${NGINX_FILE}" > "${RENDERED_NGINX_FILE}"
 
-SSH_OPTS=(-i "${KEY_PATH}" -o StrictHostKeyChecking=accept-new)
-
-# Preflight: fetch the host's current .env and run the same merge the host
-# will run. This fails BEFORE any remote change when the merge would (e.g. no
+# Preflight: run the same merge the host will run against the snapshot fetched
+# above. This fails BEFORE any remote change when the merge would (e.g. no
 # DATABASE_URL anywhere), and gives --dry-run its diff.
-HOST_ENV_SNAPSHOT="${TMP_DIR}/host.env"
 MERGED_PREVIEW="${TMP_DIR}/merged-preview.env"
-# shellcheck disable=SC2029  # APP_DIR expanding client-side is intentional
-ssh "${SSH_OPTS[@]}" "${SSH_USER}@${HOST}" "cat ${APP_DIR}/.env 2>/dev/null || true" > "${HOST_ENV_SNAPSHOT}"
 bash "${MERGE_ENV_FILE}" "${HOST_ENV_SNAPSHOT}" "${ENV_FILE}" "${MERGED_PREVIEW}"
 
 echo ""

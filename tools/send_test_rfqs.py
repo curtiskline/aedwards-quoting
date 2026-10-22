@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import re
 import subprocess
 import sys
@@ -15,8 +16,58 @@ from pathlib import Path
 
 
 SHARED_PROJECT_ROOT = Path(__file__).resolve().parents[1]
-EMAILS_DIR = SHARED_PROJECT_ROOT / "data" / "test-corpus" / "emails"
+CORPUS_ROOT_ENV_VAR = "AE_TEST_CORPUS_ROOT"
 DEFAULT_TO = "AEResponder@allanedwards.com"
+
+
+def candidate_corpus_roots(explicit: str | None) -> list[tuple[Path, str]]:
+    """List corpus-root candidates in resolution order, each with its source.
+
+    Deploy worktrees intentionally carry no data/test-corpus (task 509) — or
+    carry a hollow one with a stray file or two — so the repo-relative path is
+    only trustworthy from the canonical checkout, and a candidate is only used
+    when it actually contains the curated sample files. An explicit choice
+    (--corpus-root or AE_TEST_CORPUS_ROOT) is never silently overridden: it is
+    the sole candidate, and missing files there are an error. Implicit order:
+    <this repo>/data/test-corpus, then the canonical checkout's
+    data/test-corpus located from a linked worktree via the shared git common
+    dir.
+    """
+    if explicit:
+        return [(Path(explicit).expanduser(), "--corpus-root")]
+    env_value = os.environ.get(CORPUS_ROOT_ENV_VAR)
+    if env_value:
+        return [(Path(env_value).expanduser(), f"${CORPUS_ROOT_ENV_VAR}")]
+    local = SHARED_PROJECT_ROOT / "data" / "test-corpus"
+    candidates = [(local, "repo-local")]
+    completed = subprocess.run(
+        ["git", "-C", str(SHARED_PROJECT_ROOT), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if completed.returncode == 0:
+        canonical_root = Path(completed.stdout.strip()).parent
+        candidate = canonical_root / "data" / "test-corpus"
+        if candidate != local:
+            candidates.append((candidate, "canonical checkout (via git common dir)"))
+    return candidates
+
+
+def select_corpus_root(explicit: str | None, filenames: list[str]) -> tuple[Path, str] | None:
+    """Pick the first candidate whose emails/ holds every requested sample."""
+    candidates = candidate_corpus_roots(explicit)
+    for root, source in candidates:
+        emails_dir = root / "emails"
+        missing = [name for name in filenames if not (emails_dir / name).is_file()]
+        if not missing:
+            return root, source
+        print(
+            f"Corpus candidate {root} (via {source}) is missing "
+            f"{len(missing)}/{len(filenames)} sample emails (e.g. {missing[0]}).",
+            file=sys.stderr,
+        )
+    return None
 TEST_SUBJECT_PREFIX = "[TEST] "
 
 
@@ -59,8 +110,8 @@ def _decode_part(part) -> str:
     return str(content)
 
 
-def load_email(filename: str) -> tuple[str, str]:
-    path = EMAILS_DIR / filename
+def load_email(emails_dir: Path, filename: str) -> tuple[str, str]:
+    path = emails_dir / filename
     with path.open("rb") as handle:
         message = BytesParser(policy=policy.default).parse(handle)
 
@@ -141,17 +192,32 @@ def main() -> int:
     parser.add_argument("--limit", type=int, default=len(SAMPLE_EMAILS), help="Number of curated samples to send")
     parser.add_argument("--account", default=None, help="Optional gog gmail account override")
     parser.add_argument("--client", default=None, help="Optional gog gmail OAuth client override")
+    parser.add_argument(
+        "--corpus-root",
+        default=None,
+        help=(
+            f"Test-corpus root containing emails/ (default: ${CORPUS_ROOT_ENV_VAR}, "
+            "then <repo>/data/test-corpus, then the canonical checkout's "
+            "data/test-corpus when run from a worktree that has none)"
+        ),
+    )
     args = parser.parse_args()
 
-    if not EMAILS_DIR.exists():
-        print(f"Historical corpus directory not found: {EMAILS_DIR}", file=sys.stderr)
-        return 1
-
     selected = SAMPLE_EMAILS[: max(args.limit, 0)]
+
+    resolved = select_corpus_root(args.corpus_root, [sample.filename for sample in selected])
+    if resolved is None:
+        print("No corpus candidate contains all requested sample emails.", file=sys.stderr)
+        print(f"Pass --corpus-root <dir> or set {CORPUS_ROOT_ENV_VAR}.", file=sys.stderr)
+        return 1
+    corpus_root, corpus_source = resolved
+    emails_dir = corpus_root / "emails"
+    print(f"Corpus root: {corpus_root} (via {corpus_source})", file=sys.stderr)
+
     results: list[dict[str, str]] = []
 
     for idx, sample in enumerate(selected, start=1):
-        subject, body = load_email(sample.filename)
+        subject, body = load_email(emails_dir, sample.filename)
         send_subject = subject if subject.startswith(TEST_SUBJECT_PREFIX) else f"{TEST_SUBJECT_PREFIX}{subject}"
         timestamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
