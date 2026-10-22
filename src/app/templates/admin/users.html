@@ -1,33 +1,23 @@
 {% extends "layout.html" %}
-{% block title %}User Admin{% endblock %}
+{% block title %}Users &amp; account · Settings{% endblock %}
 {% block body %}
-  <h1>User Admin</h1>
-  <p>All users have full access. Add or remove users below.</p>
+  {% include "partials/settings_chrome.html" %}
 
-  <section class="panel">
-    <h2>Add User</h2>
-    <form
-      method="post"
-      action="{{ url_for('admin.create_user') }}"
-      hx-post="{{ url_for('admin.create_user') }}"
-      hx-target="#user-list"
-      hx-swap="innerHTML"
-      class="stack"
-    >
-      <label>Name
-        <input type="text" name="name" required />
-      </label>
-      <label>Email
-        <input type="email" name="email" required />
-      </label>
-      <label>Password
-        <input type="password" name="password" required />
-      </label>
-      <button type="submit">Add User</button>
-    </form>
+  <p class="crumb"><a href="{{ url_for('main.settings_home') }}">Settings</a> / Users &amp; account</p>
+
+  <header class="page-heading">
+    <h1>Users &amp; account</h1>
+    <p class="page-sub">Everyone listed here can sign in and do everything. There are no permission levels.</p>
+  </header>
+
+  <section class="settings-card">
+    <h2>Your account</h2>
+    <div class="settings-actions">
+      <a href="{{ url_for('auth.set_password') }}">Change your password</a>
+    </div>
   </section>
 
-  <section class="panel">
+  <section class="settings-card">
     <h2>Users</h2>
     <table>
       <thead>
@@ -42,5 +32,28 @@
         {% include "partials/user_rows.html" %}
       </tbody>
     </table>
+  </section>
+
+  <section class="settings-card">
+    <h2>Add a user</h2>
+    <form
+      method="post"
+      action="{{ url_for('admin.create_user') }}"
+      hx-post="{{ url_for('admin.create_user') }}"
+      hx-target="#user-list"
+      hx-swap="innerHTML"
+      class="stack"
+    >{{ csrf_field() }}
+      <label>Name
+        <input type="text" name="name" required />
+      </label>
+      <label>Email
+        <input type="email" name="email" required />
+      </label>
+      <label>Password
+        <input type="password" name="password" required />
+      </label>
+      <button type="submit">Add user</button>
+    </form>
   </section>
 {% endblock %}

@@ -57,6 +57,11 @@ from allenedwards.ship_to import SHIP_TO_KEYS, is_domestic_ship_to, normalize_sh
 
 from . import on_site_fill, price_adjustments, send_service
 from . import reparse as reparse_service
+from .catalog_resolution import (
+    apply_catalog_identity,
+    catalog_status_message,
+    catalog_status_needs_review,
+)
 from .confidence import (
     SIGNAL_LABELS,
     active_trust_tier,
@@ -80,6 +85,7 @@ from .models import (
     AutoSendClaim,
     Contact,
     Customer,
+    FailedIntake,
     PricingTable,
     ProductCatalog,
     ProductType,
@@ -91,6 +97,7 @@ from .models import (
     SendHold,
     ShippingConfig,
     ShipToAddress,
+    StockItem,
     User,
 )
 from .orders import order_for_quote
@@ -116,7 +123,23 @@ QUOTE_EDITOR_HIDDEN_PRODUCT_TYPES = {"shipping"}
 @main_bp.get("/")
 @login_required
 def dashboard():
-    return redirect("/quotes/")
+    """Home is the work queue (T514 slice 2): what needs doing, by whom."""
+    from .work_queue import GROUP_CUSTOMER, GROUP_US, GROUP_VENDOR, build_work_queue
+
+    view = (request.args.get("view") or "us").strip().lower()
+    if view not in {"us", "customer", "vendor", "all"}:
+        view = "us"
+    queue = build_work_queue()
+    group_for_view = {"us": GROUP_US, "customer": GROUP_CUSTOMER, "vendor": GROUP_VENDOR}
+    rows = queue["rows"]
+    if view != "all":
+        rows = [row for row in rows if row["group"] == group_for_view[view]]
+    return render_template(
+        "work_queue.html",
+        rows=rows,
+        counts=queue["counts"],
+        view=view,
+    )
 
 
 _PRODUCT_TYPE_LABELS = {
@@ -268,11 +291,11 @@ CATALOG_FILTERS = {"all", "active", "inactive"}
 
 def _catalog_filter(value: str | None = None) -> str:
     catalog_filter = (
-        (value if value is not None else request.args.get("catalog_filter") or "active")
+        (value if value is not None else request.args.get("catalog_filter") or "all")
         .strip()
         .lower()
     )
-    return catalog_filter if catalog_filter in CATALOG_FILTERS else "active"
+    return catalog_filter if catalog_filter in CATALOG_FILTERS else "all"
 
 
 def _catalog_items(
@@ -402,6 +425,46 @@ def _get_active_quote_or_404(quote_id: int) -> Quote:
     if quote.deleted_at is not None:
         abort(404)
     return quote
+
+
+# Statuses whose quote CONTENT may still change. A sent quote's content is
+# the record the customer received — changing it is only allowed by creating
+# a revision (audit T515 M2); archived quotes are unarchived first.
+EDITABLE_QUOTE_STATUSES = {
+    QuoteStatus.NEW,
+    QuoteStatus.IN_REVIEW,
+    QuoteStatus.NEEDS_PRICING,
+    QuoteStatus.READY,
+}
+
+_READ_ONLY_QUOTE_MESSAGES = {
+    QuoteStatus.SENT: (
+        "This quote was sent, so its content is read-only. "
+        "Press Revise to change it as a new version."
+    ),
+    QuoteStatus.REPLACED: (
+        "This quote was replaced by a revision, so its content is read-only. "
+        "Edit the replacing quote instead."
+    ),
+    QuoteStatus.ARCHIVED: (
+        "This quote is archived, so its content is read-only. "
+        "Press Unarchive to work on it again."
+    ),
+}
+
+
+def _quote_is_editable(quote: Quote) -> bool:
+    return quote.status in EDITABLE_QUOTE_STATUSES
+
+
+def _require_editable_quote(quote: Quote) -> None:
+    """Refuse content edits on sent/replaced/archived quotes (T515 M2).
+
+    The editor renders these quotes read-only; this is the backstop so a
+    stale tab or direct POST cannot silently rewrite a sent record either.
+    """
+    if not _quote_is_editable(quote):
+        abort(409, description=_READ_ONLY_QUOTE_MESSAGES[quote.status])
 
 
 def _current_user() -> User | None:
@@ -1150,6 +1213,10 @@ def _line_item_view(item: QuoteLineItem) -> dict:
         "unit_price": unit_price,
         "line_total": line_total,
         "part_number": item.part_number,
+        "catalog_id": item.catalog_id,
+        "catalog_match_status": item.catalog_match_status,
+        "catalog_match_message": catalog_status_message(item.catalog_match_status),
+        "catalog_needs_review": catalog_status_needs_review(item.catalog_match_status),
         "specs": specs,
         **{key: getattr(item, key) for key in on_site_fill.LOCATION_FIELDS},
         "fill_history": on_site_fill.history(item.on_site_city, item.on_site_state, item.quote_id) if item.product_type == on_site_fill.TYPE else [],
@@ -1236,6 +1303,10 @@ def _quote_context(quote: Quote) -> dict:
         "shipping_amount": totals["shipping"],
         "tax_amount": totals["tax"],
         "quote_needs_pricing": _quote_needs_pricing(quote),
+        "quote_editable": _quote_is_editable(quote),
+        "quote_read_only_message": (
+            None if _quote_is_editable(quote) else _READ_ONLY_QUOTE_MESSAGES[quote.status]
+        ),
         "pricing_block_reasons": quote_pricing_block_reasons(quote),
         "revision_chain": _revision_chain(quote),
         "recommendation": quote_recommendation(quote),
@@ -1581,6 +1652,60 @@ _LIFECYCLE_LOCKED_STATUSES = frozenset(
     {QuoteStatus.SENT, QuoteStatus.REPLACED, QuoteStatus.ARCHIVED}
 )
 
+# The quote state machine, modeled on ORDER_TRANSITIONS (orders.py) and
+# PICK_LIST_SEQUENCE (fulfillment.py). Every status write that acts on a
+# caller-chosen target must pass through this table:
+#   - quote_update_status checks its in_review/ready/archived targets here;
+#   - quote_send/quote_send_form check "may this status become SENT" here
+#     (re-sending a SENT quote is deliberate — versioning records each send);
+#   - quote_revise's REPLACED write is covered by its own already-replaced
+#     guard, and the pricing sync only runs outside _LIFECYCLE_LOCKED_STATUSES.
+# SENT and REPLACED record completed lifecycle events a customer may be
+# acting on: the only way out of SENT is Revise (or a deliberate re-send),
+# and REPLACED is terminal — its successor revision is the live quote.
+# ARCHIVED is reversible (back to review) but can never be emailed.
+QUOTE_STATUS_TRANSITIONS: dict[QuoteStatus, set[QuoteStatus]] = {
+    QuoteStatus.NEW: {
+        QuoteStatus.IN_REVIEW,
+        QuoteStatus.NEEDS_PRICING,
+        QuoteStatus.READY,
+        QuoteStatus.ARCHIVED,
+        QuoteStatus.SENT,
+        QuoteStatus.REPLACED,
+    },
+    QuoteStatus.IN_REVIEW: {
+        QuoteStatus.IN_REVIEW,
+        QuoteStatus.NEEDS_PRICING,
+        QuoteStatus.READY,
+        QuoteStatus.ARCHIVED,
+        QuoteStatus.SENT,
+        QuoteStatus.REPLACED,
+    },
+    QuoteStatus.NEEDS_PRICING: {
+        QuoteStatus.IN_REVIEW,
+        QuoteStatus.NEEDS_PRICING,
+        QuoteStatus.READY,
+        QuoteStatus.ARCHIVED,
+        QuoteStatus.SENT,
+        QuoteStatus.REPLACED,
+    },
+    QuoteStatus.READY: {
+        QuoteStatus.IN_REVIEW,
+        QuoteStatus.NEEDS_PRICING,
+        QuoteStatus.READY,
+        QuoteStatus.ARCHIVED,
+        QuoteStatus.SENT,
+        QuoteStatus.REPLACED,
+    },
+    QuoteStatus.SENT: {QuoteStatus.SENT, QuoteStatus.REPLACED},
+    QuoteStatus.REPLACED: set(),
+    QuoteStatus.ARCHIVED: {QuoteStatus.IN_REVIEW, QuoteStatus.REPLACED},
+}
+
+
+def _quote_may_transition(quote: Quote, new_status: QuoteStatus) -> bool:
+    return new_status in QUOTE_STATUS_TRANSITIONS.get(quote.status, set())
+
 
 def _sync_quote_pricing_status(quote: Quote) -> bool:
     """Sync pricing-driven status, then recompute the quote's confidence row.
@@ -1607,6 +1732,11 @@ def _attempt_auto_send(quote: Quote) -> None:
     never send it) nor at revise/duplicate creation (those start a human
     editing workflow). No-op below Tier 2; never raises.
     """
+    # Any QuoteVersion means a customer already received this quote. Whatever
+    # its live status says (legacy demotions predate the transition table),
+    # auto-send must never re-email it — only a human re-send is deliberate.
+    if quote.versions:
+        return
     send_service.maybe_auto_send(quote)
 
 
@@ -1707,6 +1837,8 @@ def _copy_line_item(item: QuoteLineItem, new_quote_id: int) -> QuoteLineItem:
         line_total=item.line_total,
         specs_json=copy.deepcopy(item.specs_json) if item.specs_json is not None else None,
         part_number=item.part_number,
+        catalog_id=item.catalog_id,
+        catalog_match_status=item.catalog_match_status,
         sort_order=item.sort_order,
         **{key: getattr(item, key) for key in on_site_fill.LOCATION_FIELDS},
         on_site_priced_at=item.on_site_priced_at,
@@ -1897,6 +2029,7 @@ def quote_duplicate(quote_id: int):
 @main_bp.post("/quotes/<int:quote_id>/meta")
 def quote_update_meta(quote_id: int):
     quote = _get_active_quote_or_404(quote_id)
+    _require_editable_quote(quote)
     quote.quote_number = (
         request.form.get("quote_number") or quote.quote_number
     ).strip() or quote.quote_number
@@ -1911,6 +2044,7 @@ def quote_update_meta(quote_id: int):
 @main_bp.post("/quotes/<int:quote_id>/customer")
 def quote_update_customer(quote_id: int):
     quote = _get_active_quote_or_404(quote_id)
+    _require_editable_quote(quote)
     _update_quote_customer_from_request(quote)
     _apply_auto_shipping_line_item(quote)
     _sync_quote_pricing_status(quote)
@@ -1952,8 +2086,18 @@ def quote_update_status(quote_id: int):
     }
     if raw_status not in status_map:
         abort(400, description="Invalid status")
-    if raw_status == "ready" and quote.status in {QuoteStatus.SENT, QuoteStatus.REPLACED}:
-        abort(409, description="A sent or replaced quote cannot be marked ready.")
+    new_status = status_map[raw_status]
+    if not _quote_may_transition(quote, new_status):
+        current = quote.status.value.replace("_", " ")
+        target = new_status.value.replace("_", " ")
+        abort(
+            409,
+            description=(
+                f"A {current} quote cannot be changed to {target}. "
+                "Sent and replaced quotes record a completed lifecycle event — "
+                "use Revise to make changes."
+            ),
+        )
 
     if raw_status == "ready":
         _clear_stale_tbd_part_numbers(quote)
@@ -1996,6 +2140,7 @@ def quote_update_status(quote_id: int):
 @main_bp.post("/quotes/<int:quote_id>/totals")
 def quote_update_totals(quote_id: int):
     quote = _get_active_quote_or_404(quote_id)
+    _require_editable_quote(quote)
     if "price_adjustment_pct" in request.form:
         try:
             quote.price_adjustment_pct = price_adjustments.parse_percentage(request.form["price_adjustment_pct"])
@@ -2095,6 +2240,7 @@ def quote_update_totals(quote_id: int):
 @main_bp.post("/quotes/<int:quote_id>/line-items/add")
 def quote_add_line_item(quote_id: int):
     quote = _get_active_quote_or_404(quote_id)
+    _require_editable_quote(quote)
     _normalize_sort_orders(quote)
     product_type = _resolve_product_type(request.form.get("product_type"), "sleeve")
     if product_type == on_site_fill.TYPE:
@@ -2137,6 +2283,7 @@ def quote_add_line_item(quote_id: int):
             line_item.line_total = 0
     if product_type == on_site_fill.TYPE:
         on_site_fill.apply_form(line_item, request.form)
+    apply_catalog_identity(line_item)
     db.session.add(line_item)
     _apply_auto_shipping_line_item(quote)
     _sync_quote_pricing_status(quote)
@@ -2200,6 +2347,7 @@ def quote_calc_line_item_total(quote_id: int, item_id: int):
 @main_bp.post("/quotes/<int:quote_id>/line-items/<int:item_id>/update")
 def quote_update_line_item(quote_id: int, item_id: int):
     quote = _get_active_quote_or_404(quote_id)
+    _require_editable_quote(quote)
     item = db.get_or_404(QuoteLineItem, item_id)
     if item.quote_id != quote.id:
         abort(404)
@@ -2393,6 +2541,7 @@ def quote_update_line_item(quote_id: int, item_id: int):
         for key in on_site_fill.LOCATION_FIELDS:
             setattr(item, key, None)
         item.on_site_priced_at = None
+    apply_catalog_identity(item)
     _apply_auto_shipping_line_item(quote)
     _sync_quote_pricing_status(quote)
 
@@ -2418,7 +2567,11 @@ def product_catalog_search():
     like = f"%{query.lower()}%"
     rows = (
         db.session.query(ProductCatalog)
-        .filter(ProductCatalog.is_active.is_(True))
+        .filter(
+            ProductCatalog.is_active.is_(True),
+            ProductCatalog.part_number.isnot(None),
+            func.trim(ProductCatalog.part_number) != "",
+        )
         .filter(
             or_(
                 func.lower(ProductCatalog.part_number).like(like),
@@ -2435,6 +2588,7 @@ def product_catalog_search():
                 "part_number": row.part_number,
                 "description": row.description,
                 "product_type": row.product_type,
+                "is_active": row.is_active,
             }
             for row in rows
         ]
@@ -2443,21 +2597,26 @@ def product_catalog_search():
 
 @main_bp.get("/api/product-catalog/lookup/<string:part_number>")
 def product_catalog_lookup(part_number: str):
-    row = (
+    rows = (
         db.session.query(ProductCatalog)
         .filter(
             ProductCatalog.is_active.is_(True),
             func.lower(ProductCatalog.part_number) == part_number.lower(),
         )
-        .one_or_none()
+        .order_by(ProductCatalog.id.asc())
+        .all()
     )
-    if row is None:
+    if not rows:
         abort(404)
+    if len(rows) > 1:
+        abort(409, description="Part number is ambiguous in the Product Catalog.")
+    row = rows[0]
     return jsonify(
         {
             "part_number": row.part_number,
             "description": row.description,
             "product_type": row.product_type,
+            "is_active": row.is_active,
         }
     )
 
@@ -2465,6 +2624,7 @@ def product_catalog_lookup(part_number: str):
 @main_bp.post("/quotes/<int:quote_id>/line-items/<int:item_id>/delete")
 def quote_delete_line_item(quote_id: int, item_id: int):
     quote = _get_active_quote_or_404(quote_id)
+    _require_editable_quote(quote)
     item = db.get_or_404(QuoteLineItem, item_id)
     if item.quote_id != quote.id:
         abort(404)
@@ -2480,6 +2640,7 @@ def quote_delete_line_item(quote_id: int, item_id: int):
 @main_bp.post("/quotes/<int:quote_id>/line-items/<int:item_id>/move")
 def quote_move_line_item(quote_id: int, item_id: int):
     quote = _get_active_quote_or_404(quote_id)
+    _require_editable_quote(quote)
     direction = (request.form.get("direction") or "").strip().lower()
     _normalize_sort_orders(quote)
     items = _sorted_line_items(quote)
@@ -2502,24 +2663,75 @@ def quote_move_line_item(quote_id: int, item_id: int):
     return _render_line_items(quote)
 
 
+# Settings sections (T514, from the T485 mockup). Order here is the tab order.
+# Labels are plain statements of what the page holds — no clever wording.
+SETTINGS_TABS = {
+    "trust": {
+        "label": "Sending policy",
+        "sub": "Who sends quotes: a person every time, or the app for quotes that pass every safety check.",
+    },
+    "pricing": {
+        "label": "Pricing catalog",
+        "sub": "The rates used to price each product type.",
+    },
+    "catalog": {
+        "label": "Product catalog",
+        "sub": "The products that can be put on a quote: part numbers, descriptions and vendors.",
+    },
+    "types": {
+        "label": "Product types",
+        "sub": "Which product types exist and the order they appear in.",
+    },
+    "shipping": {
+        "label": "Shipping defaults",
+        "sub": "How the automatic shipping & handling line on a quote is calculated.",
+    },
+}
+
+
+@main_bp.get("/settings")
+@login_required
+def settings_home():
+    """Settings hub: occasional configuration, kept separate from daily work."""
+    return render_template(
+        "settings.html",
+        active_tier=active_trust_tier(),
+        send_holds_count=db.session.query(SendHold).count(),
+        outstanding_intakes=FailedIntake.query.filter(
+            FailedIntake.resolved_at.is_(None)
+        ).count(),
+        user_count=User.query.count(),
+    )
+
+
 @main_bp.get("/admin/pricing")
 @login_required
 def pricing_admin():
-    sections = _group_pricing_rows()
     active_tab = (request.args.get("tab") or "shipping").strip().lower()
-    if active_tab not in {"shipping", "pricing", "catalog", "types", "trust"}:
+    if active_tab not in SETTINGS_TABS:
         active_tab = "shipping"
-    catalog_filter = _catalog_filter()
+    # Only the active section is rendered, so only its data is loaded.
+    context: dict = {}
+    if active_tab == "shipping":
+        context["shipping_config"] = _shipping_config_form_data(_shipping_config())
+    elif active_tab == "pricing":
+        context["sections"] = _group_pricing_rows()
+    elif active_tab == "catalog":
+        catalog_filter = _catalog_filter()
+        context.update(
+            catalog_items=_catalog_items(catalog_filter),
+            catalog_filter=catalog_filter,
+            catalog_product_types=_catalog_type_choices(),
+        )
+    elif active_tab == "types":
+        context.update(_product_types_admin_data())
+    else:
+        context.update(_trust_ramp_admin_data())
     return render_template(
         "pricing_admin.html",
-        sections=sections,
-        shipping_config=_shipping_config_form_data(_shipping_config()),
-        catalog_items=_catalog_items(catalog_filter),
-        catalog_filter=catalog_filter,
-        catalog_product_types=_catalog_type_choices(),
         active_tab=active_tab,
-        **_product_types_admin_data(),
-        **_trust_ramp_admin_data(),
+        settings_tabs=SETTINGS_TABS,
+        **context,
     )
 
 
@@ -2724,6 +2936,42 @@ def _resolve_catalog_product_type(raw: str | None) -> str | None:
     return slug
 
 
+def _catalog_range_fields(product_type: str | None) -> dict[str, Decimal | None]:
+    """Parse and validate optional inclusive catalog dimension ranges."""
+    parsed: dict[str, Decimal | None] = {}
+    for field in (
+        "diameter_min",
+        "diameter_max",
+        "wall_thickness_min",
+        "wall_thickness_max",
+    ):
+        raw = (request.form.get(field) or "").strip()
+        if not raw:
+            parsed[field] = None
+            continue
+        try:
+            value = Decimal(raw)
+        except InvalidOperation:
+            abort(400, description=f"Invalid {field.replace('_', ' ')}")
+        if not value.is_finite() or value < 0:
+            abort(400, description=f"Invalid {field.replace('_', ' ')}")
+        parsed[field] = value
+
+    for prefix in ("diameter", "wall_thickness"):
+        minimum = parsed[f"{prefix}_min"]
+        maximum = parsed[f"{prefix}_max"]
+        if (minimum is None) != (maximum is None):
+            abort(400, description=f"{prefix.replace('_', ' ').title()} needs both min and max")
+        if minimum is not None and maximum is not None and minimum > maximum:
+            abort(400, description=f"{prefix.replace('_', ' ').title()} min cannot exceed max")
+
+    if parsed["wall_thickness_min"] is not None and parsed["diameter_min"] is None:
+        abort(400, description="A wall thickness range requires a diameter range")
+    if parsed["diameter_min"] is not None and not product_type:
+        abort(400, description="A dimensional range requires a product type")
+    return parsed
+
+
 def _catalog_row_label(item: ProductCatalog) -> str:
     """Human label for flash messages: part number if present, else description."""
     return item.part_number or item.description
@@ -2735,6 +2983,7 @@ def add_catalog_item():
     part_number = (request.form.get("part_number") or "").strip() or None
     description = (request.form.get("description") or "").strip()
     product_type = _resolve_catalog_product_type(request.form.get("product_type"))
+    range_fields = _catalog_range_fields(product_type)
     if not description:
         abort(400, description="Description is required")
     if (
@@ -2751,14 +3000,16 @@ def add_catalog_item():
             description=description,
             product_type=product_type,
             vendor=(request.form.get("vendor") or "").strip() or None,
+            **range_fields,
             is_active=True,
         )
     )
     db.session.commit()
+    catalog_filter = _catalog_filter(request.form.get("catalog_filter"))
     return render_template(
         "partials/product_catalog_table.html",
-        catalog_items=_catalog_items("active"),
-        catalog_filter="active",
+        catalog_items=_catalog_items(catalog_filter),
+        catalog_filter=catalog_filter,
         catalog_product_types=_catalog_type_choices(),
         catalog_just_saved=True,
     )
@@ -2773,6 +3024,7 @@ def update_catalog_item(item_id: int):
     part_number = (request.form.get("part_number") or "").strip() or None
     description = (request.form.get("description") or "").strip()
     product_type = _resolve_catalog_product_type(request.form.get("product_type"))
+    range_fields = _catalog_range_fields(product_type)
     if not description:
         abort(400, description="Description is required")
     if part_number is not None:
@@ -2790,26 +3042,16 @@ def update_catalog_item(item_id: int):
     item.description = description
     item.product_type = product_type
     item.vendor = (request.form.get("vendor") or "").strip() or None
+    for field, value in range_fields.items():
+        setattr(item, field, value)
     catalog_filter = _catalog_filter(request.form.get("catalog_filter"))
-    was_active = item.is_active
-    item.is_active = request.form.get("is_active") == "on"
     db.session.commit()
-    transition_note = None
-    if was_active != item.is_active and catalog_filter != "all":
-        destination = "Active" if item.is_active else "Inactive"
-        transition_note = (
-            f"{_catalog_row_label(item)} moved to {destination}; "
-            "it will leave this view after the next reload."
-        )
     return render_template(
         "partials/product_catalog_table.html",
-        catalog_items=_catalog_items(
-            catalog_filter, include_item_id=item.id if transition_note else None
-        ),
+        catalog_items=_catalog_items(catalog_filter),
         catalog_filter=catalog_filter,
         catalog_product_types=_catalog_type_choices(),
         catalog_just_saved=True,
-        catalog_transition_note=transition_note,
     )
 
 
@@ -2837,6 +3079,150 @@ def delete_catalog_item(item_id: int):
             else None
         ),
     )
+
+
+@main_bp.post("/admin/catalog/<int:item_id>/activate")
+@login_required
+def activate_catalog_item(item_id: int):
+    item = db.session.get(ProductCatalog, item_id)
+    if item is None:
+        abort(404)
+    catalog_filter = _catalog_filter(request.form.get("catalog_filter"))
+    item.is_active = True
+    db.session.commit()
+    return render_template(
+        "partials/product_catalog_table.html",
+        catalog_items=_catalog_items(
+            catalog_filter,
+            include_item_id=item.id if catalog_filter == "inactive" else None,
+        ),
+        catalog_filter=catalog_filter,
+        catalog_product_types=_catalog_type_choices(),
+        catalog_just_saved=True,
+        catalog_transition_note=(
+            f"{_catalog_row_label(item)} moved to Active; "
+            "it will leave this view after the next reload."
+            if catalog_filter == "inactive"
+            else None
+        ),
+    )
+
+
+def _catalog_stock_item_ids(catalog_ids: list[int]) -> set[int]:
+    """Catalog ids that have a stock record and therefore cannot be deleted."""
+    if not catalog_ids:
+        return set()
+    rows = (
+        db.session.query(StockItem.catalog_id)
+        .filter(StockItem.catalog_id.in_(catalog_ids))
+        .all()
+    )
+    return {row[0] for row in rows}
+
+
+def _render_catalog_partial(catalog_filter: str, note: str | None = None):
+    return render_template(
+        "partials/product_catalog_table.html",
+        catalog_items=_catalog_items(catalog_filter),
+        catalog_filter=catalog_filter,
+        catalog_product_types=_catalog_type_choices(),
+        catalog_transition_note=note,
+    )
+
+
+@main_bp.post("/admin/catalog/<int:item_id>/hard-delete")
+@login_required
+def hard_delete_catalog_item(item_id: int):
+    """Permanently delete an INACTIVE catalog item (Chip, 2026-10-19 sync).
+
+    Making a product inactive is the reversible first step; deletion is only
+    offered on already-inactive rows, so there is no confirmation dialog.
+    A product with stock records is never deleted.
+    """
+    item = db.session.get(ProductCatalog, item_id)
+    if item is None:
+        abort(404)
+    catalog_filter = _catalog_filter(request.form.get("catalog_filter"))
+    if item.is_active:
+        abort(400, description="Make the product inactive first, then delete it.")
+    if _catalog_stock_item_ids([item.id]):
+        return _render_catalog_partial(
+            catalog_filter,
+            note=(
+                f"{_catalog_row_label(item)} was not deleted: it has stock "
+                "records. It stays inactive instead."
+            ),
+        )
+    label = _catalog_row_label(item)
+    db.session.delete(item)
+    db.session.commit()
+    return _render_catalog_partial(
+        catalog_filter, note=f"{label} was deleted permanently."
+    )
+
+
+@main_bp.post("/admin/catalog/bulk")
+@login_required
+def bulk_catalog_action():
+    """Apply one action to many checked rows (Chip's bulk cleanup ask).
+
+    'deactivate' makes every checked product inactive (reversible).
+    'delete' permanently removes checked INACTIVE products; checked active
+    products and products with stock records are kept, and the note says so.
+    """
+    action = (request.form.get("bulk_action") or "").strip()
+    catalog_filter = _catalog_filter(request.form.get("catalog_filter"))
+    ids = [int(raw) for raw in request.form.getlist("item_ids") if raw.isdigit()]
+    items = (
+        db.session.query(ProductCatalog).filter(ProductCatalog.id.in_(ids)).all()
+        if ids
+        else []
+    )
+    if not items:
+        return _render_catalog_partial(
+            catalog_filter, note="Nothing was checked, so nothing changed."
+        )
+
+    if action == "deactivate":
+        changed = 0
+        for item in items:
+            if item.is_active:
+                item.is_active = False
+                changed += 1
+        db.session.commit()
+        note = f"Made {changed} product{'' if changed == 1 else 's'} inactive."
+        if changed < len(items):
+            note += f" {len(items) - changed} already were."
+        return _render_catalog_partial(catalog_filter, note=note)
+
+    if action == "delete":
+        with_stock = _catalog_stock_item_ids([item.id for item in items])
+        deleted = 0
+        kept_active = 0
+        kept_stock = 0
+        for item in items:
+            if item.is_active:
+                kept_active += 1
+            elif item.id in with_stock:
+                kept_stock += 1
+            else:
+                db.session.delete(item)
+                deleted += 1
+        db.session.commit()
+        parts = [f"Deleted {deleted} product{'' if deleted == 1 else 's'} permanently."]
+        if kept_active:
+            parts.append(
+                f"{kept_active} still active product{' was' if kept_active == 1 else 's were'} "
+                "kept: make a product inactive first, then delete it."
+            )
+        if kept_stock:
+            parts.append(
+                f"{kept_stock} product{' was' if kept_stock == 1 else 's were'} "
+                "kept because they have stock records."
+            )
+        return _render_catalog_partial(catalog_filter, note=" ".join(parts))
+
+    abort(400, description="Pick an action: deactivate or delete.")
 
 
 @main_bp.post("/admin/shipping-config")
@@ -2958,18 +3344,24 @@ def _db_quote_to_pricing_quote(quote: Quote) -> PricingQuote:
         if li.product_type == "shipping":
             continue
         unit_price, line_total = price_adjustments.line_prices(quote, li)
+        specs = dict(li.specs_json or {})
+        physical_quantity = int(math.ceil(float(li.quantity)))
+        requested_quantity = _parse_int(str(specs.get("original_qty", "")))
+        if requested_quantity is None:
+            requested_quantity = physical_quantity
         pricing_items.append(
             PricingLineItem(
                 sort_order=len(pricing_items) + 1,
                 product_type=li.product_type,
                 part_number=li.part_number or "",
                 description=li.description,
-                quantity=int(math.ceil(float(li.quantity))),
+                quantity=requested_quantity,
                 unit_price=unit_price,
                 total=line_total,
+                pricing_quantity=physical_quantity,
                 # Carry the provenance note pricing wrote. The PDF renders only
                 # the customer-facing subset of it (allenedwards.line_notes).
-                notes=dict(li.specs_json or {}).get("notes"),
+                notes=specs.get("notes"),
             )
         )
     subtotal = _quantize_money(sum((item.total for item in pricing_items), Decimal("0.00")))
@@ -3043,6 +3435,13 @@ def quote_preview_pdf(quote_id: int):
 def quote_send_form(quote_id: int):
     """Return the send confirmation form as an HTMX partial."""
     quote = _get_active_quote_or_404(quote_id)
+    if not _quote_may_transition(quote, QuoteStatus.SENT):
+        return render_template(
+            "quotes/_send_result.html",
+            success=False,
+            error=_send_status_block_message(quote),
+            quote=quote,
+        )
     if _invalidate_stale_ready_override(quote):
         db.session.commit()
     structural_reasons = quote_structural_block_reasons(quote)
@@ -3063,6 +3462,22 @@ def quote_send_form(quote_id: int):
             quote=quote,
         )
     return _render_send_form(quote)
+
+
+def _send_status_block_message(quote: Quote) -> str:
+    """Why this quote's status forbids emailing it (REPLACED/ARCHIVED)."""
+    if quote.status == QuoteStatus.REPLACED:
+        successor = quote.replaced_by
+        suffix = (
+            f" — send revision {successor.quote_number} instead."
+            if successor
+            else " — send the current revision instead."
+        )
+        return f"This quote was replaced{suffix}"
+    return (
+        f"A {quote.status.value.replace('_', ' ')} quote cannot be sent. "
+        "Return it to review first."
+    )
 
 
 def _render_send_form(quote: Quote, *, error: str | None = None):
@@ -3092,6 +3507,13 @@ def quote_send(quote_id: int):
     """Generate PDF, send email via Graph API, update quote status."""
     quote = _get_active_quote_or_404(quote_id)
     user = _current_user()
+
+    # Status guard (audit T515 H2): REPLACED/ARCHIVED are not sendable — a
+    # replaced quote emailed again would flip back to SENT and make two
+    # revisions separately acceptable. Re-sending a SENT quote stays allowed;
+    # each send is recorded as its own QuoteVersion.
+    if not _quote_may_transition(quote, QuoteStatus.SENT):
+        abort(409, description=_send_status_block_message(quote))
 
     if _invalidate_stale_ready_override(quote):
         db.session.commit()

@@ -5,7 +5,7 @@
   <p>No users exist yet. Create the initial account for this workspace.</p>
 
   <section class="panel">
-    <form method="post" action="{{ url_for('auth.bootstrap_user') }}" class="stack">
+    <form method="post" action="{{ url_for('auth.bootstrap_user') }}" class="stack">{{ csrf_field() }}
       <label>Name
         <input type="text" name="name" required autocomplete="name" />
       </label>

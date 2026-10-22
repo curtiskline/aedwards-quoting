@@ -1,0 +1,76 @@
+{% extends "layout.html" %}
+{% block title %}Settings{% endblock %}
+{% block body %}
+  {% include "partials/settings_chrome.html" %}
+
+  <header class="page-heading">
+    <h1>Settings</h1>
+    <p class="page-sub">Occasional configuration, kept separate from daily work.</p>
+  </header>
+
+  <section class="settings-card">
+    <h2>Sending policy</h2>
+    {% if active_tier == 2 %}
+      <div class="settings-callout danger">
+        <strong>Auto-send is ON.</strong><br>
+        Quotes that pass every safety check are emailed to the customer without a person clicking send.
+        Everything else still waits for a person.
+      </div>
+    {% elif active_tier == 0 %}
+      <div class="settings-callout">
+        <strong>Auto-send is OFF — fully manual.</strong><br>
+        The app never sends a quote and makes no recommendations. A person sends every quote.
+      </div>
+    {% else %}
+      <div class="settings-callout">
+        <strong>Auto-send is OFF — assisted.</strong><br>
+        The app recommends quotes it thinks are ready. A person reviews and sends every quote.
+      </div>
+    {% endif %}
+    <p class="page-sub">
+      {% if send_holds_count %}
+        {{ send_holds_count }} send hold{{ '' if send_holds_count == 1 else 's' }} active: matching quotes are never recommended or auto-sent.
+      {% else %}
+        No send holds are active.
+      {% endif %}
+    </p>
+    <div class="settings-actions">
+      <a href="{{ url_for('main.pricing_admin', tab='trust') }}">Change sending policy</a>
+    </div>
+  </section>
+
+  <section class="settings-card">
+    <h2>Pricing &amp; products</h2>
+    <div class="settings-grid">
+      <div>
+        <h3><a href="{{ url_for('main.pricing_admin', tab='pricing') }}">Pricing catalog</a></h3>
+        <p>The rates used to price each product type.</p>
+      </div>
+      <div>
+        <h3><a href="{{ url_for('main.pricing_admin', tab='catalog') }}">Product catalog</a></h3>
+        <p>The products that can be put on a quote: part numbers, descriptions and vendors.</p>
+      </div>
+      <div>
+        <h3><a href="{{ url_for('main.pricing_admin', tab='types') }}">Product types</a></h3>
+        <p>Which product types exist and the order they appear in.</p>
+      </div>
+      <div>
+        <h3><a href="{{ url_for('main.pricing_admin', tab='shipping') }}">Shipping defaults</a></h3>
+        <p>How the automatic shipping &amp; handling line on a quote is calculated.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="settings-card">
+    <h2>People &amp; intake</h2>
+    <div class="settings-actions">
+      <a href="{{ url_for('admin.users_page') }}">Users &amp; account ({{ user_count }})</a>
+      <a href="{{ url_for('admin.failed_intakes') }}">Failed intake{% if outstanding_intakes %}<span class="settings-count">{{ outstanding_intakes }}</span>{% endif %}</a>
+      <a href="{{ url_for('admin.rejected_emails') }}">Rejected emails</a>
+    </div>
+    <p class="page-sub" style="margin-top:0.75rem;">
+      Everyone with a sign-in can do everything; there are no permission levels.
+      Failed intake is also in the top navigation because it is work, not configuration.
+    </p>
+  </section>
+{% endblock %}

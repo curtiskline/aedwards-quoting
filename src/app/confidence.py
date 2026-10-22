@@ -25,6 +25,7 @@ from statistics import median
 
 from allenedwards.ship_to import normalize_ship_to
 
+from .catalog_resolution import catalog_status_message, catalog_status_needs_review
 from .extensions import db
 from .models import (
     Customer,
@@ -133,6 +134,8 @@ def quote_pricing_block_reasons(quote: Quote) -> list[str]:
             reasons.append(f"“{label}” has “{item.part_number}” as its part number — replace or clear it.")
         if "tbd" in str(item.description or "").lower():
             reasons.append(f"“{label}” still says TBD in its description — reword it.")
+        if catalog_status_needs_review(item.catalog_match_status):
+            reasons.append(f"“{label}”: {catalog_status_message(item.catalog_match_status)}.")
     return reasons
 
 
@@ -163,6 +166,8 @@ def quote_ready_fingerprint(quote: Quote) -> str:
                 "id": item.id,
                 "product_type": item.product_type,
                 "part_number": item.part_number,
+                "catalog_id": item.catalog_id,
+                "catalog_match_status": item.catalog_match_status,
                 "description": item.description,
                 "quantity": item.quantity,
                 "unit_price": item.unit_price,
@@ -224,11 +229,15 @@ def _signal_decode_clean(quote: Quote) -> tuple[str, dict]:
         specs = dict(item.specs_json or {})
         if line_item_has_tbd_marker(item):
             reasons.append(f"{label}: TBD marker")
+        if catalog_status_needs_review(item.catalog_match_status):
+            reasons.append(f"{label}: {catalog_status_message(item.catalog_match_status)}")
         if specs.get("price_stale"):
             reasons.append(f"{label}: price flagged stale")
         notes = str(specs.get("notes") or "")
         if "default" in notes.lower():
             reasons.append(f"{label}: defaults applied ({notes})")
+        if "source validation:" in notes.lower() or "needs a person" in notes.lower():
+            reasons.append(f"{label}: source text needs review ({notes})")
     if quote.status == QuoteStatus.NEEDS_PRICING:
         reasons.append("quote status is needs_pricing")
     if reasons:
@@ -776,6 +785,10 @@ def auto_send_evaluation(quote: Quote) -> dict:
     if tier != AUTO_SEND_TIER:
         reasons.append(f"trust ramp is at Tier {tier}: auto-send requires Tier {AUTO_SEND_TIER}")
     reasons.extend(recommendation["reasons"])
+    if quote.versions:
+        reasons.append(
+            "quote already has a sent version — auto-send never re-emails a quote"
+        )
     if quote.price_adjustment_pct:
         reasons.append("manual price adjustment requires a human send")
     if (quote.email_message or "").strip():

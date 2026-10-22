@@ -87,16 +87,17 @@ def seed_quotes(app):
         return quotes
 
 
-def test_dashboard_redirects_to_quotes(client):
+def test_home_renders_work_queue(client):
     resp = client.get("/")
-    assert resp.status_code == 302
-    assert "/quotes/" in resp.headers["Location"]
+    assert resp.status_code == 200
+    assert b"Work queue" in resp.data
 
 
 def test_queue_page_loads(client, seed_quotes):
     resp = client.get("/quotes/")
     assert resp.status_code == 200
-    assert b"Quote Queue" in resp.data
+    assert b"Quotes" in resp.data
+    assert b"Requests become priced quotes here." in resp.data
 
 
 def test_queue_shows_all_quotes(client, seed_quotes):

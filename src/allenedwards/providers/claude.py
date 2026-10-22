@@ -18,6 +18,10 @@ class ClaudeProvider(LLMProvider):
     # tokens (an 11-line order overflowed in prod on 2026-08-13), so JSON
     # completions get a much larger budget, with one doubled retry on overflow.
     JSON_MAX_TOKENS = 16384
+    # Extraction/classification should be as repeatable as the model permits.
+    # Anthropic's API default is not a deterministic setting, so pin it rather
+    # than relying on a provider default that can change independently of us.
+    TEMPERATURE = 0.0
 
     def __init__(self, api_key: str | None = None):
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY")
@@ -34,6 +38,7 @@ class ClaudeProvider(LLMProvider):
         kwargs: dict[str, Any] = {
             "model": self.MODEL,
             "max_tokens": max_tokens,
+            "temperature": self.TEMPERATURE,
             "messages": [{"role": "user", "content": prompt}],
         }
         if system:

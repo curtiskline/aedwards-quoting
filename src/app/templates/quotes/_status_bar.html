@@ -41,27 +41,39 @@
     {% endif %}
   </div>
   {% if quote.status.value != 'replaced' %}
+  {# Lifecycle-locked statuses (sent/archived) hide the demotion buttons:
+     leaving SENT happens only via Revise, and the /status endpoint refuses
+     these transitions anyway (see QUOTE_STATUS_TRANSITIONS in routes.py). #}
   <div class="quote-editor-status-actions">
-    <form method="post" action="/quotes/{{ quote.id }}/status" hx-post="/quotes/{{ quote.id }}/status" hx-target="#editor-status-bar" hx-swap="outerHTML">
+    {% if quote.status.value not in ('sent', 'archived') %}
+    <form method="post" action="/quotes/{{ quote.id }}/status" hx-post="/quotes/{{ quote.id }}/status" hx-target="#editor-status-bar" hx-swap="outerHTML">{{ csrf_field() }}
       <input type="hidden" name="status" value="in_review" />
       <button type="submit">Mark In Review</button>
     </form>
-    <form method="post" action="/quotes/{{ quote.id }}/status" hx-post="/quotes/{{ quote.id }}/status" hx-target="#editor-status-bar" hx-swap="outerHTML">
+    <form method="post" action="/quotes/{{ quote.id }}/status" hx-post="/quotes/{{ quote.id }}/status" hx-target="#editor-status-bar" hx-swap="outerHTML">{{ csrf_field() }}
       <input type="hidden" name="status" value="ready" />
       <button type="submit">Mark Ready</button>
     </form>
-    <form method="post" action="/quotes/{{ quote.id }}/status" hx-post="/quotes/{{ quote.id }}/status" hx-target="#editor-status-bar" hx-swap="outerHTML">
+    <form method="post" action="/quotes/{{ quote.id }}/status" hx-post="/quotes/{{ quote.id }}/status" hx-target="#editor-status-bar" hx-swap="outerHTML">{{ csrf_field() }}
       <input type="hidden" name="status" value="archived" />
       <button type="submit">Archive</button>
     </form>
+    {% elif quote.status.value == 'archived' %}
+    <form method="post" action="/quotes/{{ quote.id }}/status" hx-post="/quotes/{{ quote.id }}/status" hx-target="#editor-status-bar" hx-swap="outerHTML">{{ csrf_field() }}
+      <input type="hidden" name="status" value="in_review" />
+      <button type="submit">Unarchive</button>
+    </form>
+    {% endif %}
     <a href="/quotes/{{ quote.id }}/preview-pdf" target="_blank"
        onclick="event.preventDefault(); window.open(this.href, '_blank', 'width=900,height=700,scrollbars=yes,resizable=yes')">
       <button type="button">Preview PDF</button>
     </a>
+    {% if quote.status.value != 'archived' %}
     <button type="button"
             hx-get="/quotes/{{ quote.id }}/send-form"
             hx-target="body"
-            hx-swap="beforeend">Send Quote</button>
+            hx-swap="beforeend">{% if quote.status.value == 'sent' %}Re-send Quote{% else %}Send Quote{% endif %}</button>
+    {% endif %}
     {% if quote.status.value == 'sent' and not quote_order %}
     <button type="button"
             style="background:#16a34a;color:#fff;border-color:#16a34a;"
@@ -74,11 +86,11 @@
             hx-target="body"
             hx-swap="beforeend">Duplicate</button>
     <form method="post" action="/quotes/{{ quote.id }}/revise"
-          onsubmit="return confirm('Create a revised quote? This quote will close as replaced.');">
+          onsubmit="return confirm('Create a revised quote? This quote will close as replaced.');">{{ csrf_field() }}
       <button type="submit">Revise</button>
     </form>
     <form method="post" action="/quotes/{{ quote.id }}/delete"
-          onsubmit="return confirm('Delete quote {{ quote.quote_number }}? It will be removed from the quote list.');">
+          onsubmit="return confirm('Delete quote {{ quote.quote_number }}? It will be removed from the quote list.');">{{ csrf_field() }}
       <button type="submit" class="danger">Delete</button>
     </form>
   </div>

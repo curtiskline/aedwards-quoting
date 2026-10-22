@@ -182,18 +182,28 @@ def quote_line_items_snapshot(quote: Quote) -> list[dict[str, object]]:
     """Return JSON-safe, point-in-time copies of every priced line item."""
     import copy
 
-    snapshot = [
-        {
+    snapshot = []
+    for item in quote.line_items:
+        specs = copy.deepcopy(item.specs_json) or {}
+        physical_quantity = str(item.quantity)
+        requested_quantity = str(specs.get("original_qty") or item.quantity)
+        snapshot.append({
             "id": item.id,
             "product_type": item.product_type,
             "description": item.description,
-            "quantity": str(item.quantity),
+            # ``quantity`` stays backward-compatible as the physical amount;
+            # the explicit fields make the accepted ask/pricing split durable.
+            "quantity": physical_quantity,
+            "requested_quantity": requested_quantity,
+            "physical_quantity": physical_quantity,
             "unit_price": str(price_adjustments.line_prices(quote, item)[0]),
             "line_total": str(price_adjustments.line_prices(quote, item)[1]),
             # Includes all original dimensions and pricing basis fields, not
             # only the subset currently rendered by the quote editor.
-            "specs_json": copy.deepcopy(item.specs_json),
+            "specs_json": specs or None,
             "part_number": item.part_number,
+            "catalog_id": item.catalog_id,
+            "catalog_match_status": item.catalog_match_status,
             "sort_order": item.sort_order,
             **({
                 "on_site_label": item.on_site_label,
@@ -202,9 +212,7 @@ def quote_line_items_snapshot(quote: Quote) -> list[dict[str, object]]:
                 "on_site_price_source": item.on_site_price_source,
                 "on_site_priced_at": item.on_site_priced_at.isoformat() if item.on_site_priced_at else None,
             } if item.product_type == "on_site_fill" else {}),
-        }
-        for item in quote.line_items
-    ]
+        })
 
     # These records feed downstream order documents: keep final prices only.
     # Physical specs remain for picking; unadjusted pricing provenance must

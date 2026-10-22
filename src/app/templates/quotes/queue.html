@@ -1,5 +1,5 @@
 {% extends "layout.html" %}
-{% block title %}Quote Queue{% endblock %}
+{% block title %}Quotes{% endblock %}
 {% block body %}
 <style>
   .queue-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
@@ -73,11 +73,17 @@
 </style>
 
 <div class="queue-header">
-  <h1 style="margin:0">Quote Queue Dashboard</h1>
-  <form method="post" action="/quotes/">
-    <button type="submit" style="padding:0.45rem 1rem;background:var(--accent);color:#fff;border:none;border-radius:6px;font-size:0.9rem;font-weight:600;cursor:pointer;">+ New Quote</button>
+  <div>
+    <h1 style="margin:0 0 0.3rem">Quotes</h1>
+    <p style="margin:0;color:#6b7280;">Requests become priced quotes here.</p>
+  </div>
+  <form method="post" action="/quotes/">{{ csrf_field() }}
+    <button type="submit" style="padding:0.45rem 1rem;background:var(--accent);color:#fff;border:none;border-radius:6px;font-size:0.9rem;font-weight:600;cursor:pointer;">+ New quote</button>
   </form>
 </div>
+
+{% set flow_current = 'quote' %}
+{% include "partials/flow_strip.html" %}
 
 <div id="queue-container"
      hx-get="/quotes/?status={{ active_status }}&q={{ search }}&rec={{ rec_filter }}&sort={{ sort }}"
@@ -123,7 +129,7 @@
         <option value="confidence" {% if sort == "confidence" %}selected{% endif %}>Recommended / confidence first</option>
       </select>
     </label>
-    <span class="tier-note">Trust ramp: Tier {{ active_tier }}{% if active_tier == 0 %} (kill-switch — all recommendations suspended){% elif active_tier >= 2 %} (auto-send — threshold {{ (auto_send_dials.threshold * 100) | round | int }}%, ceiling ${{ '%.2f' | format(auto_send_dials.dollar_ceiling) }}, tolerance &plusmn;{{ (auto_send_dials.tolerance_pct * 100) | round | int }}%){% else %} (assisted — every send stays human-clicked){% endif %}</span>
+    <span class="tier-note">{% if active_tier == 0 %}Auto-send is off and recommendations are suspended (Tier 0). A person sends every quote.{% elif active_tier >= 2 %}Auto-send is ON (Tier {{ active_tier }}) — threshold {{ (auto_send_dials.threshold * 100) | round | int }}%, ceiling ${{ '%.2f' | format(auto_send_dials.dollar_ceiling) }}, tolerance &plusmn;{{ (auto_send_dials.tolerance_pct * 100) | round | int }}%. Quotes passing every safety check email themselves.{% else %}Auto-send is off (Tier 1). The app recommends; a person sends every quote.{% endif %}</span>
   </div>
 
   <input type="search" name="q" value="{{ search }}" placeholder="Search by customer or quote number..."

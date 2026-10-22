@@ -93,14 +93,7 @@ def test_full_rfq_to_quote_flow():
 
 
 def test_price_verification():
-    """Verify pricing against the sample quote from the data model spec.
-
-    From the sample PDF:
-    - S-12.34-38-50 (12-3/4" ID, 3/8" w/t, GR50)
-    - Quantity: 5
-    - Unit Price: $678.48
-    - Total: $3,392.40
-    """
+    """Verify sleeve pricing against the October 2026 source-sheet rate."""
     from allenedwards.pricing import calculate_sleeve_price
 
     # 12.75" ID (12-3/4"), 3/8" (0.375) wall, GR50, 10' long
@@ -111,13 +104,10 @@ def test_price_verification():
         length_ft=10,
     )
 
-    # The sample shows $678.48 per unit
-    # Our calculation should be close (may differ slightly due to rounding)
-    # weight_per_ft = 10.69 * ((12.75 + 0.375) * 0.375) / 2 = 26.30
-    # unit_price = 26.30 * 2.57 * 10 = 675.91
-
-    # Allow 5% tolerance for rounding differences
-    assert abs(float(unit_price) - 678.48) / 678.48 < 0.05
+    # October 2026: 3/8" GR50 sleeves are $3.31/lb.
+    assert price_per_lb == Decimal("3.31")
+    assert weight_per_ft == Decimal("26.31")
+    assert unit_price == Decimal("870.86")
 
 
 def test_multi_quote_rfq_to_pdf_flow():

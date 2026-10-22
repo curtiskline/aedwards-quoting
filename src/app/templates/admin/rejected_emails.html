@@ -1,8 +1,17 @@
 {% extends "layout.html" %}
-{% block title %}Rejected Emails{% endblock %}
+{% block title %}Rejected emails{% endblock %}
 {% block body %}
-  <h1>Rejected Emails</h1>
-  <p>Emails that were classified as non-RFQ and silently dropped.</p>
+  {% include "partials/settings_chrome.html" %}
+
+  <p class="crumb"><a href="{{ url_for('main.settings_home') }}">Settings</a> / Rejected emails</p>
+
+  <header class="page-heading">
+    <h1>Rejected emails</h1>
+    <p class="page-sub">
+      Emails the app decided were not quote requests, so it did nothing with them.
+      Nothing here needs action; this list exists so you can check its judgment.
+    </p>
+  </header>
 
   {% if rejected_emails %}
     <table>

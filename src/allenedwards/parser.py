@@ -29,6 +29,10 @@ from .units import (
 # Stock piece length per product, used only to interpret a metric length against
 # the nearest standard piece (see units.METRIC_LENGTH_POLICY).
 STANDARD_PIECE_LENGTH_FT = {"sleeve": 10.0, "girth_weld": 6.0}
+# Source validation is a deterministic reason for the existing low-confidence
+# UI to appear; do not let the model place the same conflict on either side of
+# that UI's 0.7 threshold across otherwise identical parses.
+SOURCE_VALIDATION_CONFIDENCE = 0.5
 
 QUOTE_NUMBER_PATTERN = re.compile(r"\b(?:QUO|SO|INV)-\d+-\d+\b", re.IGNORECASE)
 
@@ -244,8 +248,12 @@ If no grade is specified at all, default to "50" (A572 GR50 is the most common).
 
 IMPORTANT: grade and length_ft must ALWAYS be provided for each item — never return null.
 - If grade is not explicitly stated, infer it from context or default to "50".
-- UNITS: length_ft is the length of ONE sleeve piece (standard sleeves are 10 ft
-  pieces, 10 ft max — never longer). quantity is the NUMBER OF PIECES, never a footage.
+- UNITS: length_ft is the length of ONE sleeve piece. Standard sleeves are 10 ft
+  pieces and 10 ft is the manufacturing maximum. However, NEVER silently
+  replace an explicitly requested per-piece length: if the customer asks for a
+  12 ft long sleeve, return length_ft = 12 exactly. The system will flag the
+  nonstandard request for a person to review. quantity is the NUMBER OF PIECES,
+  never a footage.
 - If a customer requests a TOTAL linear footage of sleeve (e.g. "20 ft of sleeve",
   "150 LF", "need 30 feet"), convert it to pieces: set length_ft = 10 and
   quantity = ceil(total_ft / 10). Examples: "20 ft" -> quantity 2, length_ft 10;
@@ -742,7 +750,7 @@ def _is_metadata_item(item_data: dict) -> bool:
 
 
 def _resolve_item_dimensions(
-    item_data: dict, product_type: str
+    item_data: dict, product_type: str, *, source_text: str = ""
 ) -> tuple[float | None, float | None, float | None, list[str]]:
     """Resolve diameter / wall thickness / length from a raw LLM item.
 
@@ -753,9 +761,10 @@ def _resolve_item_dimensions(
     fallback. Returns the three dimensions plus notes for any conversion made.
     """
     standard_length = STANDARD_PIECE_LENGTH_FT.get(product_type)
-    source_text = " ".join(
+    dimension_text = " ".join(
         str(item_data.get(key) or "") for key in ("description", "notes")
     )
+    literal_length_text = source_text or dimension_text
 
     notes: list[str] = []
 
@@ -764,7 +773,7 @@ def _resolve_item_dimensions(
         if value is None:
             # The LLM returned nothing usable for this dimension; recover it from
             # the preserved description if the RFQ stated it in metric.
-            value, note = finder(source_text)
+            value, note = finder(dimension_text)
         if note:
             notes.append(note)
         return value
@@ -785,7 +794,72 @@ def _resolve_item_dimensions(
         lambda text: find_metric_length(text, standard_length),
     )
 
+    if product_type == "sleeve":
+        explicit_length = _explicit_sleeve_piece_length(literal_length_text)
+        if explicit_length is not None:
+            if length_ft != explicit_length:
+                notes.append(
+                    "Source validation: customer asked for "
+                    f"{explicit_length:g} ft per sleeve; corrected extracted "
+                    f"{length_ft:g} ft."
+                    if length_ft is not None
+                    else "Source validation: customer asked for "
+                    f"{explicit_length:g} ft per sleeve; restored missing length."
+                )
+                length_ft = explicit_length
+            if explicit_length > STANDARD_PIECE_LENGTH_FT["sleeve"]:
+                notes.append(
+                    f"Customer asked for {explicit_length:g} ft. Standard sleeve is "
+                    f'{STANDARD_PIECE_LENGTH_FT["sleeve"]:g} ft max — needs a person.'
+                )
+
     return diameter, wall_thickness, length_ft, notes
+
+
+_SLEEVE_PIECE_LENGTH_PATTERNS = (
+    # "12ft long", "12 feet each", "12' lengths"
+    re.compile(
+        r"(?P<value>\d+(?:\.\d+)?)\s*(?:'|ft\.?|feet|foot)\s*"
+        r"(?:[- ]?long|lengths?|each)\b",
+        re.IGNORECASE,
+    ),
+    # "12\" x 12ft" or a longer dimension chain ending in a foot value.
+    re.compile(
+        r"[x×]\s*(?P<value>\d+(?:\.\d+)?)\s*(?:'|ft\.?|feet|foot)\b",
+        re.IGNORECASE,
+    ),
+    # "sleeve length: 12 ft"
+    re.compile(
+        r"\b(?:sleeve\s+)?length\s*[:=]?\s*(?P<value>\d+(?:\.\d+)?)\s*"
+        r"(?:'|ft\.?|feet|foot)\b",
+        re.IGNORECASE,
+    ),
+)
+
+
+def _explicit_sleeve_piece_length(text: str) -> float | None:
+    """Return one unambiguous literal per-sleeve length from RFQ text.
+
+    Bare footage such as ``20 ft of sleeve`` is intentionally excluded because
+    it describes total footage, not a piece length. Conflicting explicit lengths
+    also fail closed so one line can never borrow another line's dimensions.
+    """
+    lengths = {
+        float(match.group("value"))
+        for pattern in _SLEEVE_PIECE_LENGTH_PATTERNS
+        for match in pattern.finditer(text or "")
+        if float(match.group("value")) > 0
+    }
+    return next(iter(lengths)) if len(lengths) == 1 else None
+
+
+def _confidence_after_source_validation(confidence: float, items: list[ParsedItem]) -> float:
+    needs_review = any(
+        "source validation:" in note.lower() or "needs a person" in note.lower()
+        for item in items
+        for note in item.unit_notes
+    )
+    return SOURCE_VALIDATION_CONFIDENCE if needs_review else confidence
 
 
 def _api_5l_designations(text: str) -> set[str]:
@@ -834,8 +908,16 @@ def _parse_items(items_data: list, *, source_text: str = "") -> list[ParsedItem]
             continue
         raw_product_type = str(item_data.get("product_type", "sleeve")).strip() or "sleeve"
         product_type = "sleeve" if raw_product_type == "oversleeve" else raw_product_type
+        item_source = " ".join(
+            str(item_data.get(key) or "") for key in ("description", "notes")
+        )
+        # A one-line RFQ can recover from the literal source even when the LLM
+        # also rewrites its description. Multi-line requests only use their own
+        # item text so dimensions cannot bleed between lines.
+        if len(items_data) == 1 and _explicit_sleeve_piece_length(item_source) is None:
+            item_source = source_text
         diameter, wall_thickness, length_ft, unit_notes = _resolve_item_dimensions(
-            item_data, product_type
+            item_data, product_type, source_text=item_source
         )
         item = ParsedItem(
             product_type=product_type,
@@ -928,8 +1010,8 @@ def _split_bag_empty_and_fill_options(items: list[ParsedItem]) -> list[ParsedIte
     return normalized
 
 
-def _load_active_sku_prompt_block() -> str:
-    """Build prompt context for active catalog SKUs when app/DB context is available."""
+def _load_catalog_prompt_block() -> str:
+    """Build prompt context from active exact and range catalog identities."""
     if not has_app_context():
         return ""
     try:
@@ -941,25 +1023,26 @@ def _load_active_sku_prompt_block() -> str:
 
         rows = (
             db.session.query(ProductCatalog)
-            .filter(
-                ProductCatalog.is_active.is_(True),
-                ProductCatalog.part_number.isnot(None),
-            )
-            .order_by(ProductCatalog.part_number.asc())
+            .filter(ProductCatalog.is_active.is_(True))
+            .order_by(ProductCatalog.part_number.asc(), ProductCatalog.id.asc())
             .all()
         )
-        # Name-only rows (blank part number) have nothing for the model to match.
-        rows = [row for row in rows if (row.part_number or "").strip()]
         if not rows:
             return ""
 
-        lines = "\n".join(f"- {row.part_number}: {row.description}" for row in rows)
+        lines = "\n".join(
+            f"- {row.part_number}: {row.description}"
+            if (row.part_number or "").strip()
+            else f"- [range; no part number]: {row.description}"
+            for row in rows
+        )
         return (
-            "\n\nCANONICAL PART NUMBER LIST (active catalog entries):\n"
+            "\n\nCANONICAL PRODUCT LIST (active Product Catalog entries):\n"
             f"{lines}\n"
             'If a line item clearly matches a part number, include "sku": "<part number>" '
             "in its JSON item.\n"
-            'If uncertain, set "sku" to null.'
+            'For range products without a part number, set "sku" to null. '
+            "Never create or infer a part number."
         )
     except Exception:
         return ""
@@ -987,7 +1070,7 @@ _DEFAULT_PRODUCT_TYPES_FOR_PROMPT: tuple[tuple[str, str], ...] = (
 def _active_product_types_for_prompt() -> list[tuple[str, str]]:
     """Active (name, display_label) product types from the editable table.
 
-    Mirrors the guard style of _load_active_sku_prompt_block: reads the live
+    Mirrors the guard style of _load_catalog_prompt_block: reads the live
     ProductType table when app/DB context exists, else falls back to a sane
     default. Ordered by sort_order so the prompt matches the UI ordering.
     """
@@ -1033,7 +1116,7 @@ def _parse_system_prompt() -> str:
         PARSE_SYSTEM_PROMPT.replace(_PRODUCT_TYPE_ENUM_PLACEHOLDER, enum)
         + '\n\nEach line item may include optional field "sku": string|null.'
         + _product_type_prompt_block(types)
-        + _load_active_sku_prompt_block()
+        + _load_catalog_prompt_block()
     )
 
 
@@ -1320,7 +1403,7 @@ in the "quotes" array."""
                 items=items,
                 urgency=urgency,
                 notes=combined_notes,
-                confidence=confidence,
+                confidence=_confidence_after_source_validation(confidence, items),
                 project_line=project_line,
                 message_id=message_id,
                 subject=subject,
@@ -1350,7 +1433,7 @@ in the "quotes" array."""
             items=items,
             urgency=urgency,
             notes=general_notes,
-            confidence=confidence,
+            confidence=_confidence_after_source_validation(confidence, items),
             message_id=message_id,
             subject=subject,
             raw_body=body,

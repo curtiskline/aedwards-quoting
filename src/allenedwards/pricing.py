@@ -233,6 +233,11 @@ class QuoteLineItem:
     quantity: int
     unit_price: Decimal
     total: Decimal
+    # Customer-facing quantity. ``quantity`` always echoes the ask; this
+    # optional value records how many physical pieces the packaging rule
+    # actually priced.  Keeping the two explicit prevents a pallet/bundle
+    # minimum from leaking into the customer's procurement quantity.
+    pricing_quantity: int | None = None
     is_note: bool = False
 
     # Optional details
@@ -963,8 +968,10 @@ def _match_omegawrap_key(description: str) -> str | None:
         for kw in keywords:
             if kw in desc_lower:
                 return key
-    # Default to carbon if no variant specified
-    return "omegawrap_carbon"
+    # An unspecified composite is not necessarily Carbon. Failing closed keeps
+    # the line on the existing TBD path for human review instead of inventing
+    # a saleable variant that the customer never requested.
+    return None
 
 
 def _match_other_pricing_key(description: str, keyword_map: dict[str, list[str]]) -> str | None:
@@ -977,13 +984,89 @@ def _match_other_pricing_key(description: str, keyword_map: dict[str, list[str]]
     return None
 
 
+# STANDARD LINE-ITEM DESCRIPTION FORMAT (Chip, 2026-10-19):
+# Every customer-facing description is short and product-shaped — a product
+# label plus the key dimensions — never the raw RFQ prose. The parser keeps the
+# full raw spec text on ParsedItem.description for dimension decoding, and the
+# original request survives verbatim in QuoteSourceSnapshot; the quote line only
+# carries the standardized form. For bags, the description states the size the
+# customer asked for, never the priced range (the ranged part number is the part
+# number's job and stays as-is).
+_PRODUCT_LABELS: dict[str, str] = {
+    "sleeve": "Half Sole",
+    "oversleeve": "Oversleeve",
+    "girth_weld": "Girth Weld Sleeve",
+    "bag": "Geotextile Bag Weight",
+    "compression": "Compression Sleeve",
+    "composite": "OmegaWrap",
+    "accessory": "Accessory",
+    "service": "Service",
+}
+
+_TBD_DESCRIPTION_MAX_CHARS = 80
+
+
+def _first_request_clause(text: str) -> str:
+    """First sentence/line of raw request text, capped at a word boundary."""
+    text = " ".join((text or "").split())
+    if not text:
+        return ""
+    for separator in (". ", "; "):
+        head, sep, _ = text.partition(separator)
+        if sep:
+            text = head
+    text = text.rstrip(".;")
+    if len(text) <= _TBD_DESCRIPTION_MAX_CHARS:
+        return text
+    cut = text[:_TBD_DESCRIPTION_MAX_CHARS]
+    head, sep, _ = cut.rpartition(" ")
+    return (head if sep else cut).rstrip(",;:") + "…"
+
+
+def _standard_tbd_description(item: ParsedItem) -> str:
+    """Standardized description for an unpriceable line.
+
+    Product label plus key dimensions when the parser extracted them; otherwise
+    the first clause of the request, capped — never the whole RFQ paragraph.
+    """
+    label = _PRODUCT_LABELS.get(
+        item.product_type, (item.product_type or "item").replace("_", " ").title()
+    )
+    # Dimensions identify a product only when the pipe size is known; a stray
+    # grade or wall thickness alone reads worse than the customer's own words.
+    if item.diameter is not None:
+        dims = [f'{item.diameter:g}" pipe']
+        if item.wall_thickness is not None:
+            dims.append(f'{decimal_to_fraction(item.wall_thickness)}" w/t')
+        if item.grade is not None:
+            dims.append(f"GR{item.grade}")
+        return f"{label}, {', '.join(dims)}"
+    summary = _first_request_clause(item.description or "")
+    if summary and summary.lower() != label.lower():
+        return summary
+    return label
+
+
+def _echo_requested_bag_size(catalog_desc: str, diameter: float) -> str:
+    """Replace a catalog range token with the size the customer asked for.
+
+    Shared with the catalog identity freeze so pricing previews and frozen
+    quote lines render the requested size identically.
+    """
+    # Lazy import: app.catalog_resolution pulls in the Flask app package, which
+    # imports this module at its own top level.
+    from app.catalog_resolution import echo_requested_size
+
+    return echo_requested_size(catalog_desc, diameter)
+
+
 def _tbd_line_item(item: ParsedItem, sort_order: int) -> QuoteLineItem:
     """Create a $0.00 line item with TBD note for unpriceable items."""
     return QuoteLineItem(
         sort_order=sort_order,
         product_type=item.product_type,
         part_number="TBD",
-        description=item.description or item.product_type,
+        description=_standard_tbd_description(item),
         quantity=item.quantity,
         unit_price=Decimal("0.00"),
         total=Decimal("0.00"),
@@ -1068,6 +1151,7 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
                 bundle_note = f"Priced as {bundle_count} bundle{'s' if bundle_count != 1 else ''} ({bundle_count * pieces_per_bundle} pcs / {bundle_count * pieces_per_bundle * item.length_ft:.0f} ft)"
                 notes = f"{bundle_note}; {notes}" if notes else bundle_note
             
+            pricing_quantity = bundle_count * pieces_per_bundle
             return QuoteLineItem(
                 sort_order=sort_order,
                 product_type="sleeve",
@@ -1080,9 +1164,10 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
                     item.painting,
                 ),
                 description=description,
-                quantity=bundle_count * pieces_per_bundle,
+                quantity=item.quantity,
                 unit_price=unit_price,
                 total=total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+                pricing_quantity=pricing_quantity,
                 weight_per_ft=weight_per_ft,
                 price_per_lb=price_per_lb,
                 notes=notes,
@@ -1265,7 +1350,9 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
         part_number, pieces_per_pallet, price_per_bag = bag_entry
         rounded_qty, num_pallets = pallet_round(item.quantity, pieces_per_pallet)
         total = price_per_bag * Decimal(str(rounded_qty))
-        desc = f'Geotextile Bag, {part_number}, {int(item.diameter)}" pipe'
+        # The description states the size the customer asked for — never the
+        # priced range. The range lives in the part number, which stays as-is.
+        desc = f'Geotextile Bag Weight, {item.diameter:g}" pipe ({pieces_per_pallet}/pallet)'
         if "empty" in item.description.lower():
             desc += " (Empty)"
         notes = None
@@ -1276,9 +1363,10 @@ def _price_item_core(item: ParsedItem, sort_order: int) -> QuoteLineItem | None:
             product_type="bag",
             part_number=part_number,
             description=desc,
-            quantity=rounded_qty,
+            quantity=item.quantity,
             unit_price=price_per_bag,
             total=total.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+            pricing_quantity=rounded_qty,
             notes=notes,
             diameter=item.diameter,
         )
@@ -1422,13 +1510,8 @@ def _build_rfq_contact_text(rfq: ParsedRFQ) -> str | None:
 def generate_quote(rfq: ParsedRFQ, quote_number: str) -> Quote:
     """Generate a complete quote from a parsed RFQ."""
     line_items: list[QuoteLineItem] = []
-    quantity_warnings: list[str] = []
-
     default_notes: list[str] = []
     for i, item in enumerate(rfq.items, start=1):
-        _, warning = _quote_quantity_and_warning(item)
-        if warning:
-            quantity_warnings.append(warning)
         priced = price_item(item, i)
         if priced:
             if item.sku:
@@ -1436,9 +1519,22 @@ def generate_quote(rfq: ParsedRFQ, quote_number: str) -> Quote:
                 catalog_desc = _catalog_description_for_part_number(item.sku)
                 if catalog_desc:
                     priced.description = catalog_desc
+                    if priced.product_type == "bag" and item.diameter is not None:
+                        priced.description = _echo_requested_bag_size(
+                            catalog_desc, item.diameter
+                        )
             line_items.append(priced)
             if priced.notes:
-                default_notes.append(f"Item {i}: {priced.notes}")
+                # Reuse the customer-note allowlist here as well as in the PDF
+                # line cell.  Otherwise a bundle/pallet note filtered from the
+                # line would leak back as a separate "Defaults applied" row.
+                from .line_notes import customer_note
+
+                customer_notes = customer_note(
+                    priced.notes, priced=priced.unit_price > 0
+                )
+                if customer_notes:
+                    default_notes.append(f"Item {i}: {customer_notes}")
         else:
             desc = item.description or item.product_type
             logger.warning(
@@ -1466,20 +1562,6 @@ def generate_quote(rfq: ParsedRFQ, quote_number: str) -> Quote:
                 product_type="note",
                 part_number="",
                 description=rfq_contact_text,
-                quantity=0,
-                unit_price=Decimal("0.00"),
-                total=Decimal("0.00"),
-                is_note=True,
-            )
-        )
-
-    for warning in quantity_warnings:
-        line_items.append(
-            QuoteLineItem(
-                sort_order=len(line_items) + 1,
-                product_type="note",
-                part_number="",
-                description=warning,
                 quantity=0,
                 unit_price=Decimal("0.00"),
                 total=Decimal("0.00"),
@@ -1563,7 +1645,10 @@ def _catalog_description_for_part_number(part_number: str) -> str | None:
 
         row = (
             db.session.query(ProductCatalog)
-            .filter(func.lower(ProductCatalog.part_number) == part_number.lower())
+            .filter(
+                ProductCatalog.is_active.is_(True),
+                func.lower(ProductCatalog.part_number) == part_number.lower(),
+            )
             .one_or_none()
         )
         return row.description if row else None

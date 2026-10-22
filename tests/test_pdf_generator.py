@@ -9,6 +9,40 @@ from allenedwards.pdf_generator import QuotePDFBuilder, generate_quote_pdf
 from allenedwards.pricing import Quote, QuoteLineItem
 
 
+def test_mismatched_bulk_price_shows_requested_quantity_without_unit_price():
+    line_item = QuoteLineItem(
+        sort_order=1,
+        product_type="sleeve",
+        part_number="S-12.34-38-50-10",
+        description="Sleeve, Sealing",
+        quantity=1,
+        pricing_quantity=5,
+        unit_price=Decimal("100.00"),
+        total=Decimal("500.00"),
+    )
+    quote = Quote(
+        quote_number="126-518",
+        customer_name="Automated Buyer",
+        contact_name=None,
+        contact_email=None,
+        contact_phone=None,
+        ship_to=None,
+        line_items=[line_item],
+        subtotal=Decimal("500.00"),
+        shipping_amount=None,
+        tax_amount=Decimal("0.00"),
+        total=Decimal("500.00"),
+        notes=None,
+    )
+
+    table = QuotePDFBuilder(quote, Path("/tmp/unused.pdf"))._build_line_items_table()[0]
+    row = table._cellvalues[1]
+
+    assert row[2].text == "1"
+    assert row[3].text == ""
+    assert row[4].text == "$500.00"
+
+
 def test_generate_quote_pdf():
     """Test generating a quote PDF."""
     # Create a sample quote

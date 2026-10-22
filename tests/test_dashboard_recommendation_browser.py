@@ -211,4 +211,4 @@ def test_dashboard_shows_tier_note(live_app, browser_page):
     page.wait_for_load_state("networkidle")
     note = page.locator(".tier-note").inner_text()
     assert "Tier 1" in note
-    assert "human" in note
+    assert "a person sends every quote" in note

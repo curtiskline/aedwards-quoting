@@ -1,11 +1,11 @@
 <section id="product-catalog-card" class="quote-editor-section">
-  <h2>Product Catalog</h2>
-  <p class="field-help">Add the products your team can select while building quotes. Removing an item makes it inactive and preserves quote history.</p>
+  <h2>Product catalog</h2>
+  <p class="field-help">Add the products your team can select while building quotes. Making a product inactive hides it from quoting and preserves quote history; an inactive product can then be deleted permanently (unless it has stock records).</p>
 
   <div class="catalog-controls">
     <div class="catalog-filter-pills" aria-label="Catalog status filter">
       {% for value, label in [('all', 'All'), ('active', 'Active'), ('inactive', 'Inactive')] %}
-        <a href="/admin/pricing?tab=catalog&amp;catalog_filter={{ value }}" class="catalog-filter-pill {% if catalog_filter == value %}active{% endif %}">{{ label }}</a>
+        <a href="/admin/pricing?tab=catalog&amp;catalog_filter={{ value }}" class="catalog-filter-pill {% if catalog_filter == value %}active{% endif %}" {% if catalog_filter == value %}aria-current="page"{% endif %}>{{ label }}</a>
       {% endfor %}
     </div>
     <label class="catalog-search-label">Search catalog
@@ -13,13 +13,23 @@
     </label>
   </div>
 
+  <p class="catalog-filter-status">
+    {% if catalog_filter == 'active' %}
+      Showing active products only. Inactive products are hidden.
+    {% elif catalog_filter == 'inactive' %}
+      Showing inactive products only. Active products are hidden.
+    {% else %}
+      Showing all products: active and inactive.
+    {% endif %}
+  </p>
+
   {% if catalog_transition_note %}
     <p class="catalog-transition-note" role="status">{{ catalog_transition_note }}</p>
   {% endif %}
 
   <details class="catalog-add-form" {% if not catalog_items %}open{% endif %}>
     <summary>Add product</summary>
-    <form method="post" action="/admin/catalog/add" hx-post="/admin/catalog/add" hx-target="#product-catalog-card" hx-swap="outerHTML" class="catalog-form">
+    <form method="post" action="/admin/catalog/add" hx-post="/admin/catalog/add" hx-target="#product-catalog-card" hx-swap="outerHTML" class="catalog-form">{{ csrf_field() }}
       <input type="hidden" name="catalog_filter" value="{{ catalog_filter }}" />
       <label>Part Number
         <input name="part_number" maxlength="255" placeholder="Optional" />
@@ -28,7 +38,7 @@
         <input name="description" maxlength="1000" required />
       </label>
       <label>Type
-        <select name="product_type">
+        <select id="catalog-add-product-type" name="product_type">
           <option value="">— none —</option>
           {% for pt in catalog_product_types %}
             <option value="{{ pt.name }}">{{ pt.label }}</option>
@@ -38,48 +48,128 @@
       <label>Vendor
         <input name="vendor" maxlength="255" placeholder="e.g. AE MFG" />
       </label>
+      <fieldset class="catalog-add-measurement" data-catalog-add-measurement="diameter" hidden>
+        <legend id="catalog-add-diameter-label">Fits pipe diameter (in)</legend>
+        <label>Min
+          <input name="diameter_min" type="number" min="0" step="0.0001" placeholder="Optional" disabled />
+        </label>
+        <label>Max
+          <input name="diameter_max" type="number" min="0" step="0.0001" placeholder="Optional" disabled />
+        </label>
+      </fieldset>
+      <fieldset class="catalog-add-measurement" data-catalog-add-measurement="wall" hidden>
+        <legend>Wall thickness (in)</legend>
+        <label>Min
+          <input name="wall_thickness_min" type="number" min="0" step="0.0001" placeholder="Optional" disabled />
+        </label>
+        <label>Max
+          <input name="wall_thickness_max" type="number" min="0" step="0.0001" placeholder="Optional" disabled />
+        </label>
+      </fieldset>
       <button type="submit" class="save-btn">Add product</button>
       {% if catalog_just_saved %}<span class="save-confirmation">Saved</span>{% endif %}
     </form>
+    <p class="field-help catalog-range-help">Leave both ranges blank when the product is not range-priced.</p>
   </details>
 
   {% if not catalog_items %}
     <p>No catalog products yet.</p>
   {% else %}
+    <form method="post" action="/admin/catalog/bulk" hx-post="/admin/catalog/bulk" hx-target="#product-catalog-card" hx-swap="outerHTML" id="catalog-bulk-form" class="catalog-bulk-bar">{{ csrf_field() }}
+      <input type="hidden" name="catalog_filter" value="{{ catalog_filter }}" />
+      <label class="checkbox-row"><input type="checkbox" id="catalog-check-all" /> Check all shown</label>
+      <span id="catalog-bulk-count" role="status">0 checked</span>
+      <button type="submit" name="bulk_action" value="deactivate" class="save-btn">Make checked inactive</button>
+      <button type="submit" name="bulk_action" value="delete" class="delete-btn">Delete checked permanently</button>
+    </form>
     <div class="catalog-scroll">
-      <table class="pricing-table">
+      <table class="pricing-table catalog-table">
+        <colgroup>
+          <col class="catalog-col-part" />
+          <col class="catalog-col-description" />
+          <col class="catalog-col-type" />
+          <col class="catalog-col-vendor" />
+          <col class="catalog-col-range" />
+          <col class="catalog-col-range" />
+          <col class="catalog-col-status" />
+          <col class="catalog-col-actions" />
+        </colgroup>
         <thead>
           <tr>
             <th>Part Number</th>
             <th>Description</th>
             <th>Type</th>
             <th>Vendor</th>
-            <th>Active</th>
-            <th></th>
+            <th colspan="2">Measurements<small>Min–max; blank = not range-priced</small></th>
+            <th>Status</th>
+            <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {% for item in catalog_items %}
             <tr id="catalog-item-{{ item.id }}" class="{% if not item.is_active %}catalog-inactive{% endif %}" data-catalog-search="{{ (item.part_number or '')|lower }} {{ item.description|lower }} {{ (item.vendor or '')|lower }}">
-              <td colspan="6">
-                <form method="post" action="/admin/catalog/{{ item.id }}/update" hx-post="/admin/catalog/{{ item.id }}/update" hx-target="#product-catalog-card" hx-swap="outerHTML" class="catalog-form catalog-form-row">
+              <td class="catalog-part-number-cell">
+                <input type="checkbox" class="catalog-row-check" name="item_ids" value="{{ item.id }}" form="catalog-bulk-form" aria-label="Check {{ item.part_number or item.description }}" />
+                <input form="catalog-update-{{ item.id }}" name="part_number" value="{{ item.part_number or '' }}" aria-label="Part Number" maxlength="255" placeholder="Optional" />
+              </td>
+              <td>
+                <input form="catalog-update-{{ item.id }}" name="description" value="{{ item.description }}" aria-label="Description" maxlength="1000" required />
+              </td>
+              <td>
+                <select form="catalog-update-{{ item.id }}" name="product_type" aria-label="Type" class="catalog-row-type">
+                  <option value="">— none —</option>
+                  {% for pt in catalog_product_types %}
+                    <option value="{{ pt.name }}" {% if item.product_type == pt.name %}selected{% endif %}>{{ pt.label }}</option>
+                  {% endfor %}
+                </select>
+              </td>
+              <td>
+                <input form="catalog-update-{{ item.id }}" name="vendor" value="{{ item.vendor or '' }}" aria-label="Vendor" maxlength="255" placeholder="e.g. AE MFG" />
+              </td>
+              <td>
+                {% set diameter_applies = item.product_type in ('sleeve', 'girth_weld', 'bag') %}
+                {% set diameter_label = 'Pipe size (in)' if item.product_type == 'bag' else 'Fits pipe diameter (in)' %}
+                <div data-catalog-row-measurement="diameter" {% if not diameter_applies %}hidden{% endif %}>
+                  <span class="catalog-measurement-label">{{ diameter_label }}</span>
+                  <div class="catalog-range-inputs">
+                    <input form="catalog-update-{{ item.id }}" name="diameter_min" value="{{ item.diameter_min if item.diameter_min is not none else '' }}" aria-label="{{ diameter_label }} minimum" type="number" min="0" step="0.0001" placeholder="Min" {% if not diameter_applies %}disabled{% endif %} />
+                    <span aria-hidden="true">–</span>
+                    <input form="catalog-update-{{ item.id }}" name="diameter_max" value="{{ item.diameter_max if item.diameter_max is not none else '' }}" aria-label="{{ diameter_label }} maximum" type="number" min="0" step="0.0001" placeholder="Max" {% if not diameter_applies %}disabled{% endif %} />
+                  </div>
+                </div>
+              </td>
+              <td>
+                {% set wall_applies = item.product_type in ('sleeve', 'girth_weld') %}
+                <div data-catalog-row-measurement="wall" {% if not wall_applies %}hidden{% endif %}>
+                  <span class="catalog-measurement-label">Wall thickness (in)</span>
+                  <div class="catalog-range-inputs">
+                    <input form="catalog-update-{{ item.id }}" name="wall_thickness_min" value="{{ item.wall_thickness_min if item.wall_thickness_min is not none else '' }}" aria-label="Wall thickness (in) minimum" type="number" min="0" step="0.0001" placeholder="Min" {% if not wall_applies %}disabled{% endif %} />
+                    <span aria-hidden="true">–</span>
+                    <input form="catalog-update-{{ item.id }}" name="wall_thickness_max" value="{{ item.wall_thickness_max if item.wall_thickness_max is not none else '' }}" aria-label="Wall thickness (in) maximum" type="number" min="0" step="0.0001" placeholder="Max" {% if not wall_applies %}disabled{% endif %} />
+                  </div>
+                </div>
+              </td>
+              <td>
+                <span class="catalog-status-badge {% if item.is_active %}is-active{% else %}is-inactive{% endif %}">{{ "Active" if item.is_active else "Inactive" }}</span>
+              </td>
+              <td class="catalog-actions-cell">
+                <form id="catalog-update-{{ item.id }}" method="post" action="/admin/catalog/{{ item.id }}/update" hx-post="/admin/catalog/{{ item.id }}/update" hx-target="#product-catalog-card" hx-swap="outerHTML" class="catalog-update-form">{{ csrf_field() }}
                   <input type="hidden" name="catalog_filter" value="{{ catalog_filter }}" />
-                  <input name="part_number" value="{{ item.part_number or '' }}" aria-label="Part Number" maxlength="255" placeholder="Optional" />
-                  <input name="description" value="{{ item.description }}" aria-label="Description" maxlength="1000" required />
-                  <select name="product_type" aria-label="Type">
-                    <option value="">— none —</option>
-                    {% for pt in catalog_product_types %}
-                      <option value="{{ pt.name }}" {% if item.product_type == pt.name %}selected{% endif %}>{{ pt.label }}</option>
-                    {% endfor %}
-                  </select>
-                  <input name="vendor" value="{{ item.vendor or '' }}" aria-label="Vendor" maxlength="255" placeholder="e.g. AE MFG" />
-                  <label class="checkbox-row"><input type="checkbox" name="is_active" {% if item.is_active %}checked{% endif %} /> Active</label>
                   <button type="submit" class="save-btn">Save</button>
                 </form>
                 {% if item.is_active %}
-                  <form method="post" action="/admin/catalog/{{ item.id }}/delete" hx-post="/admin/catalog/{{ item.id }}/delete" hx-target="#product-catalog-card" hx-swap="outerHTML" class="catalog-remove-form" onsubmit="return confirm('Remove {{ item.part_number or item.description }} from the active product catalog? Existing quotes will not change.');">
+                  <form method="post" action="/admin/catalog/{{ item.id }}/delete" hx-post="/admin/catalog/{{ item.id }}/delete" hx-target="#product-catalog-card" hx-swap="outerHTML" class="catalog-remove-form">{{ csrf_field() }}
                     <input type="hidden" name="catalog_filter" value="{{ catalog_filter }}" />
-                    <button type="submit" class="delete-btn">Remove</button>
+                    <button type="submit" class="delete-btn">Make inactive</button>
+                  </form>
+                {% else %}
+                  <form method="post" action="/admin/catalog/{{ item.id }}/activate" hx-post="/admin/catalog/{{ item.id }}/activate" hx-target="#product-catalog-card" hx-swap="outerHTML" class="catalog-activate-form">{{ csrf_field() }}
+                    <input type="hidden" name="catalog_filter" value="{{ catalog_filter }}" />
+                    <button type="submit" class="save-btn">Make active</button>
+                  </form>
+                  <form method="post" action="/admin/catalog/{{ item.id }}/hard-delete" hx-post="/admin/catalog/{{ item.id }}/hard-delete" hx-target="#product-catalog-card" hx-swap="outerHTML" class="catalog-remove-form">{{ csrf_field() }}
+                    <input type="hidden" name="catalog_filter" value="{{ catalog_filter }}" />
+                    <button type="submit" class="delete-btn">Delete permanently</button>
                   </form>
                 {% endif %}
               </td>
@@ -100,28 +190,113 @@
   .catalog-filter-pill.active { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
   .catalog-search-label { display: grid; gap: 0.25rem; font-size: 0.9rem; }
   .catalog-search-label input { min-height: 2.2rem; padding: 0.35rem 0.45rem; border: 1px solid #cbd5e1; border-radius: 6px; }
+  .catalog-filter-status { margin: -0.5rem 0 1rem; font-weight: 600; }
   .catalog-transition-note { background: #eff6ff; border-left: 4px solid #2563eb; margin: 0.75rem 0; padding: 0.6rem 0.75rem; }
   .catalog-form { display: flex; flex-wrap: wrap; align-items: end; gap: 0.6rem; margin: 0.7rem 0; }
   .catalog-form label { display: grid; gap: 0.25rem; }
   .catalog-form input, .catalog-form select { min-height: 2.2rem; padding: 0.35rem 0.45rem; border: 1px solid #cbd5e1; border-radius: 6px; }
-  .catalog-form-row { margin: 0; }
-  .catalog-form-row input[name="description"] { flex: 1 1 250px; }
-  .catalog-remove-form { display: inline-block; margin: 0.25rem 0 0; }
+  .catalog-add-measurement { display: flex; gap: 0.4rem; margin: 0; padding: 0.3rem 0.5rem 0.5rem; border: 1px solid #cbd5e1; border-radius: 6px; }
+  .catalog-add-measurement[hidden] { display: none; }
+  .catalog-add-measurement legend { padding: 0 0.2rem; font-size: 0.9rem; font-weight: 600; }
+  .catalog-add-measurement label { font-size: 0.78rem; }
+  .catalog-add-measurement input { width: 5rem; }
+  .catalog-range-help { margin-top: -0.25rem; }
+  .catalog-table { min-width: 1020px; table-layout: fixed; }
+  .catalog-table .catalog-col-part { width: 12%; }
+  .catalog-table .catalog-col-description { width: 21%; }
+  .catalog-table .catalog-col-type { width: 10%; }
+  .catalog-table .catalog-col-vendor { width: 11%; }
+  .catalog-table .catalog-col-range { width: 14%; }
+  .catalog-table .catalog-col-status { width: 7%; }
+  .catalog-table .catalog-col-actions { width: 11%; }
+  .catalog-table th, .catalog-table td { padding: 0.45rem; vertical-align: top; }
+  .catalog-table th small { display: block; margin-top: 0.2rem; color: #64748b; font-size: 0.72rem; font-weight: 500; line-height: 1.2; }
+  .catalog-table td > input, .catalog-table td > select { box-sizing: border-box; min-height: 2.2rem; min-width: 0; padding: 0.35rem 0.45rem; width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; }
+  .catalog-part-number-cell { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.35rem; align-items: center; }
+  .catalog-row-check { margin: 0; width: 1rem; height: 1rem; }
+  .catalog-measurement-label { display: block; min-height: 2.2em; margin-bottom: 0.25rem; font-size: 0.75rem; font-weight: 700; line-height: 1.1; }
+  .catalog-range-inputs { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 0.2rem; align-items: center; }
+  .catalog-range-inputs input { box-sizing: border-box; min-height: 2.2rem; min-width: 0; padding: 0.35rem 0.3rem; width: 100%; border: 1px solid #cbd5e1; border-radius: 6px; }
+  .catalog-status-badge { display: inline-block; border-radius: 999px; padding: 0.25rem 0.45rem; font-size: 0.78rem; font-weight: 700; }
+  .catalog-status-badge.is-active { background: #dcfce7; color: #166534; }
+  .catalog-status-badge.is-inactive { background: #f1f5f9; color: #475569; }
+  .catalog-actions-cell form { margin: 0 0 0.35rem; }
+  .catalog-actions-cell button { width: 100%; }
   .catalog-inactive { opacity: 0.6; }
   .delete-btn { border: 1px solid #b91c1c; background: #fff; color: #b91c1c; border-radius: 6px; padding: 0.35rem 0.7rem; cursor: pointer; }
   .catalog-scroll { overflow-x: auto; }
-  @media (max-width: 640px) { .catalog-form-row { min-width: 650px; } }
+  .catalog-bulk-bar {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem;
+    border: 1px solid #e5e7eb; border-radius: 6px; background: #f9fafb;
+    padding: 0.5rem 0.75rem; margin: 0 0 0.75rem;
+  }
+  .catalog-bulk-bar span { color: #6b7280; font-size: 0.85rem; }
 </style>
 <script>
   (function() {
     const search = document.getElementById("catalog-search");
-    if (!search) return;
     const rows = document.querySelectorAll("#product-catalog-card [data-catalog-search]");
-    search.addEventListener("input", () => {
-      const query = search.value.trim().toLowerCase();
-      rows.forEach((row) => {
-        row.hidden = Boolean(query) && !row.dataset.catalogSearch.includes(query);
-      });
+    const addType = document.getElementById("catalog-add-product-type");
+    const addDiameter = document.querySelector('[data-catalog-add-measurement="diameter"]');
+    const addWall = document.querySelector('[data-catalog-add-measurement="wall"]');
+    const addDiameterLabel = document.getElementById("catalog-add-diameter-label");
+    const updateAddMeasurements = () => {
+      if (!addType || !addDiameter || !addWall || !addDiameterLabel) return;
+      const type = addType.value;
+      addDiameter.hidden = !["sleeve", "girth_weld", "bag"].includes(type);
+      addWall.hidden = !["sleeve", "girth_weld"].includes(type);
+      addDiameterLabel.textContent = type === "bag" ? "Pipe size (in)" : "Fits pipe diameter (in)";
+      addDiameter.querySelectorAll("input").forEach((input) => { input.disabled = addDiameter.hidden; });
+      addWall.querySelectorAll("input").forEach((input) => { input.disabled = addWall.hidden; });
+    };
+    if (addType) {
+      addType.addEventListener("change", updateAddMeasurements);
+      updateAddMeasurements();
+    }
+    document.querySelectorAll("#product-catalog-card .catalog-row-type").forEach((typeSelect) => {
+      const updateRowMeasurements = () => {
+        const row = typeSelect.closest("tr");
+        if (!row) return;
+        const diameter = row.querySelector('[data-catalog-row-measurement="diameter"]');
+        const wall = row.querySelector('[data-catalog-row-measurement="wall"]');
+        if (!diameter || !wall) return;
+        const type = typeSelect.value;
+        diameter.hidden = !["sleeve", "girth_weld", "bag"].includes(type);
+        wall.hidden = !["sleeve", "girth_weld"].includes(type);
+        const diameterLabel = diameter.querySelector(".catalog-measurement-label");
+        if (diameterLabel) diameterLabel.textContent = type === "bag" ? "Pipe size (in)" : "Fits pipe diameter (in)";
+        diameter.querySelectorAll("input").forEach((input) => { input.disabled = diameter.hidden; });
+        wall.querySelectorAll("input").forEach((input) => { input.disabled = wall.hidden; });
+      };
+      typeSelect.addEventListener("change", updateRowMeasurements);
+      updateRowMeasurements();
     });
+    if (search) {
+      search.addEventListener("input", () => {
+        const query = search.value.trim().toLowerCase();
+        rows.forEach((row) => {
+          row.hidden = Boolean(query) && !row.dataset.catalogSearch.includes(query);
+        });
+      });
+    }
+
+    const checkAll = document.getElementById("catalog-check-all");
+    const counter = document.getElementById("catalog-bulk-count");
+    const rowChecks = Array.from(document.querySelectorAll("#product-catalog-card .catalog-row-check"));
+    const updateCount = () => {
+      if (!counter) return;
+      const checked = rowChecks.filter((box) => box.checked).length;
+      counter.textContent = checked + " checked";
+    };
+    rowChecks.forEach((box) => box.addEventListener("change", updateCount));
+    if (checkAll) {
+      checkAll.addEventListener("change", () => {
+        rowChecks.forEach((box) => {
+          const row = box.closest("tr");
+          if (!row || !row.hidden) box.checked = checkAll.checked;
+        });
+        updateCount();
+      });
+    }
   })();
 </script>

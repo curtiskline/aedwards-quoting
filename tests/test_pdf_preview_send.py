@@ -606,6 +606,8 @@ def test_send_quote_success(mock_outlook_class, db_url, tmp_path):
                 "product_type": "sleeve",
                 "description": '12" x 0.250 GR3 10ft Sleeve',
                 "quantity": "10.00",
+                "requested_quantity": "10.00",
+                "physical_quantity": "10.00",
                 "unit_price": "150.00",
                 "line_total": "1500.00",
                 "specs_json": {
@@ -615,6 +617,8 @@ def test_send_quote_success(mock_outlook_class, db_url, tmp_path):
                     "length_ft": "10",
                 },
                 "part_number": "HM120253G10",
+                "catalog_id": None,
+                "catalog_match_status": "unchecked",
                 "sort_order": 1,
             },
             {
@@ -622,10 +626,14 @@ def test_send_quote_success(mock_outlook_class, db_url, tmp_path):
                 "product_type": "bag",
                 "description": 'GTW Bag 12"',
                 "quantity": "10.00",
+                "requested_quantity": "10.00",
+                "physical_quantity": "10.00",
                 "unit_price": "5.00",
                 "line_total": "50.00",
                 "specs_json": {"diameter": "12"},
                 "part_number": "BAG-12",
+                "catalog_id": None,
+                "catalog_match_status": "unchecked",
                 "sort_order": 2,
             },
         ]

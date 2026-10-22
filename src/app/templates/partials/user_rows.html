@@ -11,7 +11,7 @@
           hx-post="{{ url_for('admin.delete_user', user_id=user.id) }}"
           hx-target="#user-list"
           hx-swap="innerHTML"
-        >
+        >{{ csrf_field() }}
           <button type="submit" class="danger" {% if current_user.id == user.id %}disabled{% endif %}>Remove</button>
         </form>
       </td>

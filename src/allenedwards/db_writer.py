@@ -14,6 +14,7 @@ from difflib import SequenceMatcher
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 
+from app.catalog_resolution import UNMATCHED, apply_catalog_identity
 from app.confidence import sync_quote_confidence
 from app.extensions import db
 from app.models import (
@@ -354,11 +355,20 @@ def build_db_line_item(quote_id: int, li) -> DBQuoteLineItem:
     if li.notes:
         specs["notes"] = li.notes
 
-    return DBQuoteLineItem(
+    # The ORM quantity remains the physical quantity used by freight,
+    # fulfillment, and stock decrement.  The customer-facing quantity is
+    # retained separately so the editor/PDF can echo the literal RFQ ask.
+    physical_quantity = getattr(li, "pricing_quantity", None)
+    if physical_quantity is None:
+        physical_quantity = li.quantity
+    if physical_quantity != li.quantity:
+        specs["original_qty"] = str(li.quantity)
+
+    db_item = DBQuoteLineItem(
         quote_id=quote_id,
         product_type=li.product_type,
         description=li.description,
-        quantity=float(li.quantity),
+        quantity=float(physical_quantity),
         unit_price=float(li.unit_price),
         line_total=float(li.total),
         specs_json=specs or None,
@@ -367,6 +377,26 @@ def build_db_line_item(quote_id: int, li) -> DBQuoteLineItem:
         part_number=(li.part_number or li.sku or None),
         sort_order=li.sort_order,
     )
+    # An LLM-extracted catalog part number is only a candidate. Exact catalog
+    # resolution, not model output, supplies identity and canonical text.
+    candidate_part = li.sku or li.part_number or None
+    has_generated_fallback = bool(
+        li.sku
+        and li.part_number
+        and li.sku.strip().casefold() != li.part_number.strip().casefold()
+    )
+    result = apply_catalog_identity(
+        db_item,
+        candidate_part_number=candidate_part,
+        enforce_policy=not has_generated_fallback,
+    )
+    if result.row is None and has_generated_fallback:
+        # A bad extracted SKU must not hide a valid deterministic part number
+        # produced by the pricing engine.
+        fallback = apply_catalog_identity(db_item, candidate_part_number=li.part_number)
+        if fallback.status == UNMATCHED and result.status != UNMATCHED:
+            db_item.catalog_match_status = result.status
+    return db_item
 
 
 def write_quote_to_db(

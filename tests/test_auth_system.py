@@ -60,7 +60,7 @@ def test_bootstrap_first_user(client, app) -> None:
         follow_redirects=True,
     )
     assert signed_in.status_code == 200
-    assert b"Dashboard" in signed_in.data
+    assert b"Work queue" in signed_in.data
 
 
 def test_password_login_required_dashboard(client, app) -> None:
@@ -78,7 +78,7 @@ def test_password_login_required_dashboard(client, app) -> None:
     )
     assert signed_in.status_code == 200
     assert b"Signed in successfully" in signed_in.data
-    assert b"Dashboard" in signed_in.data
+    assert b"Work queue" in signed_in.data
 
 
 def test_authenticated_user_can_set_password_and_use_it_to_sign_in(client, app) -> None:
@@ -99,7 +99,9 @@ def test_authenticated_user_can_set_password_and_use_it_to_sign_in(client, app) 
     )
     assert set_password.status_code == 200
     assert b"Password set" in set_password.data
-    assert b"Set password" in set_password.data
+    # The password-change link lives on Users & account now (T514).
+    users_page = client.get("/admin/users")
+    assert b"Change your password" in users_page.data
 
     with app.app_context():
         user = db.session.get(User, user_id)
@@ -114,7 +116,7 @@ def test_authenticated_user_can_set_password_and_use_it_to_sign_in(client, app) 
         follow_redirects=True,
     )
     assert signed_in.status_code == 200
-    assert b"Dashboard" in signed_in.data
+    assert b"Work queue" in signed_in.data
 
 
 @pytest.mark.parametrize(
@@ -187,7 +189,7 @@ def test_magic_link_login(client, app, monkeypatch) -> None:
     path = urlparse(delivered["link"]).path
     consume_response = client.get(path, follow_redirects=True)
     assert consume_response.status_code == 200
-    assert b"Dashboard" in consume_response.data
+    assert b"Work queue" in consume_response.data
 
     with app.app_context():
         token = AuthToken.query.first()
@@ -228,7 +230,7 @@ def test_magic_link_polling_cross_device(client, app, monkeypatch) -> None:
     # Desktop should now be logged in — can access dashboard
     dash = client.get("/", follow_redirects=True)
     assert dash.status_code == 200
-    assert b"Dashboard" in dash.data
+    assert b"Work queue" in dash.data
 
 
 def test_magic_link_expired_token(client, app, monkeypatch) -> None:

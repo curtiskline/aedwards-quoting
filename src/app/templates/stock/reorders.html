@@ -1,5 +1,5 @@
 {% extends "layout.html" %}
-{% block title %}Reorders{% endblock %}
+{% block title %}Vendor orders{% endblock %}
 {% block body %}
 <style>
   /* Shop-floor use, same coarse layout as the pick-list queue. */
@@ -45,7 +45,10 @@
   .received-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
   .page-links { margin-bottom: 1rem; display: flex; gap: 1rem; }
 </style>
-<h1 style="margin:0 0 0.5rem;">Reorders</h1>
+<header class="page-heading" style="margin-bottom:0.5rem;">
+  <h1 style="margin:0 0 0.3rem;">Vendor orders</h1>
+  <p style="margin:0;color:#6b7280;">Purchase orders to vendors. No vendor email is sent automatically — print or send each PO yourself.</p>
+</header>
 <div class="page-links">
   <a href="/pick-lists/">Shop queue</a>
   <a href="{{ url_for('stock.stock_list') }}">Stock list</a>
@@ -76,11 +79,11 @@
     <div class="actions">
       <a class="sheet-link" href="{{ url_for('stock.reorder_sheet', reorder_id=r.id) }}" target="_blank" rel="noopener">PO sheet</a>
       {% if r.status.value == 'open' %}
-      <form class="sent-form" method="post" action="{{ url_for('stock.reorder_mark_sent', reorder_id=r.id) }}">
+      <form class="sent-form" method="post" action="{{ url_for('stock.reorder_mark_sent', reorder_id=r.id) }}">{{ csrf_field() }}
         <button type="submit" class="sent-btn">Mark PO sent</button>
       </form>
       {% endif %}
-      <form class="receive-form" method="post" action="{{ url_for('stock.reorder_receive', reorder_id=r.id) }}">
+      <form class="receive-form" method="post" action="{{ url_for('stock.reorder_receive', reorder_id=r.id) }}">{{ csrf_field() }}
         <input type="number" name="received_qty" min="0" placeholder="qty received" required />
         <button type="submit" class="receive-btn">Mark received</button>
       </form>

@@ -187,11 +187,48 @@ def test_decode_clean_fails_on_defaults_applied_note(app):
     assert _signal(quote, "decode_clean") == FAIL
 
 
+def test_decode_clean_fails_on_source_validation_note(app):
+    quote = _make_quote(_make_customer())
+    _add_line(
+        quote,
+        specs={
+            **SPECS,
+            "notes": "Customer asked for 12 ft. Standard sleeve is 10 ft max — needs a person.",
+        },
+    )
+    score, components = compute_quote_confidence(quote)
+
+    assert components["decode_clean"]["status"] == FAIL
+    assert "source text needs review" in components["decode_clean"]["detail"]["reasons"][0]
+    assert score < Decimal("1.0")
+
+
 def test_decode_clean_fails_on_needs_pricing_status(app):
     quote = _make_quote(_make_customer())
     _add_line(quote, specs=SPECS)
     quote.status = QuoteStatus.NEEDS_PRICING
     assert _signal(quote, "decode_clean") == FAIL
+
+
+def test_decode_clean_fails_on_unmatched_catalog_identity(app):
+    quote = _make_quote(_make_customer())
+    line = _add_line(quote)
+    line.catalog_match_status = "unmatched"
+    _db.session.flush()
+    assert _signal(quote, "decode_clean") == FAIL
+
+
+def test_decode_clean_inactive_catalog_policy_is_configurable(app):
+    quote = _make_quote(_make_customer())
+    line = _add_line(quote)
+    line.catalog_match_status = "inactive"
+    _db.session.flush()
+
+    app.config["CATALOG_ALLOW_INACTIVE_MATCHES"] = False
+    assert _signal(quote, "decode_clean") == FAIL
+
+    app.config["CATALOG_ALLOW_INACTIVE_MATCHES"] = True
+    assert _signal(quote, "decode_clean") == PASS
 
 
 # ---------------------------------------------------------------------------
@@ -431,7 +468,8 @@ def test_monitor_write_creates_confidence_row(app):
     from allenedwards.db_writer import write_quote_to_db
     from allenedwards.email_provider import EmailMessage
     from allenedwards.parser import ParsedRFQ
-    from allenedwards.pricing import Quote as PricingQuote, QuoteLineItem as PricingLineItem
+    from allenedwards.pricing import Quote as PricingQuote
+    from allenedwards.pricing import QuoteLineItem as PricingLineItem
 
     msg = EmailMessage(
         id="msg-conf-1",

@@ -312,7 +312,7 @@ def test_queue_shows_recommendation_and_confidence(app, client):
     assert "100% confidence" in page
     assert "signal-dot signal-pass" in page
     assert "signal-dot signal-fail" in page
-    assert "Trust ramp: Tier 1" in page
+    assert "Auto-send is off (Tier 1)" in page
 
 
 def test_queue_filter_recommended(app, client):
@@ -427,7 +427,8 @@ def test_send_form_not_recommended_still_sendable(app, client):
 
 def test_admin_trust_tab_renders(app, client):
     page = client.get("/admin/pricing?tab=trust").get_data(as_text=True)
-    assert "Trust Ramp" in page
+    assert "Sending policy" in page
+    assert "Auto-send is OFF" in page
     assert "Tier 1" in page
     assert "Send holds" in page
 

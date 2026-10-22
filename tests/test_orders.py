@@ -434,11 +434,17 @@ def test_order_detail_renders_real_producer_snapshot(app, client):
 
     with app.app_context():
         quote = _make_sent_quote(number="126-422")
+        line = _db.session.query(QuoteLineItem).filter_by(quote_id=quote.id).one()
+        line.quantity = 5
+        line.line_total = 500
+        line.specs_json = {"original_qty": "1", "diameter": "12", "length_ft": "10"}
         version = acceptable_version(quote)
         version.line_items_snapshot = quote_line_items_snapshot(quote)
         _db.session.commit()
         # Producer really does emit strings — the shape this test exists for.
         assert isinstance(version.line_items_snapshot[0]["unit_price"], str)
+        assert version.line_items_snapshot[0]["requested_quantity"] == "1"
+        assert version.line_items_snapshot[0]["physical_quantity"] == "5"
         order, _ = create_order_from_acceptance(
             version, source=AcceptanceSource.EXPLICIT_CLICK, actor=_owner()
         )
@@ -447,7 +453,9 @@ def test_order_detail_renders_real_producer_snapshot(app, client):
     resp = client.get(f"/orders/{order_id}")
     assert resp.status_code == 200
     assert b"$100.00" in resp.data
-    assert b"$200.00" in resp.data
+    assert b"$500.00" in resp.data
+    assert b"Customer qty" in resp.data
+    assert b"Physical qty" in resp.data
 
 
 def test_orders_queue_lists_and_filters(app, client):

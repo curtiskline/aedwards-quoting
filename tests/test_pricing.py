@@ -27,6 +27,7 @@ from allenedwards.pricing import (
     generate_sleeve_part_number,
     get_girth_weld_price,
     get_price_per_lb,
+    lookup_bag_pricing,
     normalize_nominal_od,
     pallet_round,
     price_item,
@@ -47,13 +48,13 @@ def test_weight_per_ft_calculation():
 def test_price_per_lb_lookup():
     """Test price per pound lookup."""
     # GR50, 1/4" wall
-    assert get_price_per_lb(0.25, 50) == Decimal("3.01")
+    assert get_price_per_lb(0.25, 50) == Decimal("4.45")
     # GR65, 1/4" wall
-    assert get_price_per_lb(0.25, 65) == Decimal("3.11")
+    assert get_price_per_lb(0.25, 65) == Decimal("4.62")
     # GR50, 3/8" wall
-    assert get_price_per_lb(0.375, 50) == Decimal("2.65")
+    assert get_price_per_lb(0.375, 50) == Decimal("3.31")
     # GR65, 1/2" wall (tier for >= 0.5)
-    assert get_price_per_lb(0.5, 65) == Decimal("2.69")
+    assert get_price_per_lb(0.5, 65) == Decimal("3.57")
 
 
 def test_sleeve_price_calculation():
@@ -71,10 +72,10 @@ def test_sleeve_price_calculation():
     assert weight_per_ft == expected_weight.quantize(Decimal("0.01"))
 
     # Verify price per lb
-    assert price_per_lb == Decimal("3.01")
+    assert price_per_lb == Decimal("4.45")
 
     # Verify unit price = weight_per_ft * price_per_lb * length
-    expected_unit = expected_weight.quantize(Decimal("0.01")) * Decimal("3.01") * 10
+    expected_unit = expected_weight.quantize(Decimal("0.01")) * Decimal("4.45") * 10
     assert unit_price == expected_unit.quantize(Decimal("0.01"))
 
 
@@ -158,24 +159,26 @@ def test_sleeve_description_uses_fraction_fallback_for_nonstandard_dimensions():
 
 def test_girth_weld_price_lookup():
     """Test girth weld price lookup by diameter tier."""
-    # 2-18" tier = $300
-    assert get_girth_weld_price(2) == Decimal("300")
-    assert get_girth_weld_price(8.625) == Decimal("300")
-    assert get_girth_weld_price(18) == Decimal("300")
+    # 2-16" tier = $325
+    assert get_girth_weld_price(2) == Decimal("325")
+    assert get_girth_weld_price(8.625) == Decimal("325")
+    assert get_girth_weld_price(16) == Decimal("325")
 
-    # 20-30" tier = $500
-    assert get_girth_weld_price(20) == Decimal("500")
-    assert get_girth_weld_price(24) == Decimal("500")
-    assert get_girth_weld_price(30) == Decimal("500")
+    # 18-30" tier = $550 (Chip, 2026-10-19: 18 moved into middle)
+    assert get_girth_weld_price(18) == Decimal("550")
+    assert get_girth_weld_price(20) == Decimal("550")
+    assert get_girth_weld_price(24) == Decimal("550")
+    assert get_girth_weld_price(30) == Decimal("550")
 
-    # 32-44" tier = $800
-    assert get_girth_weld_price(32) == Decimal("800")
-    assert get_girth_weld_price(36) == Decimal("800")
-    assert get_girth_weld_price(44) == Decimal("800")
+    # 32-44" tier = $875
+    assert get_girth_weld_price(32) == Decimal("875")
+    assert get_girth_weld_price(36) == Decimal("875")
+    assert get_girth_weld_price(44) == Decimal("875")
 
     # Gap diameters now covered
-    assert get_girth_weld_price(19) == Decimal("300")
-    assert get_girth_weld_price(31) == Decimal("500")
+    assert get_girth_weld_price(17) is None
+    assert get_girth_weld_price(19) == Decimal("550")
+    assert get_girth_weld_price(31) is None
 
     # Outside ranges returns None
     assert get_girth_weld_price(1) is None
@@ -220,7 +223,7 @@ def test_oversleeve_description_rounds_nonstandard_dimensions_to_fractions():
 
 def test_price_item_girth_weld():
     """Test price_item handles girth_weld product type."""
-    # 8-5/8" ID girth weld sleeve (in 2-18" tier = $300/set)
+    # 8-5/8" ID girth weld sleeve (in 2-16" tier = $325/set)
     item = ParsedItem(
         product_type="girth_weld",
         quantity=4,
@@ -236,14 +239,14 @@ def test_price_item_girth_weld():
     assert result is not None
     assert result.product_type == "girth_weld"
     assert result.part_number == "G-8.58-38-50"
-    assert result.unit_price == Decimal("300")  # Per set
-    assert result.total == Decimal("1200")  # 4 sets * $300
+    assert result.unit_price == Decimal("325")  # Per set
+    assert result.total == Decimal("1300")  # 4 sets * $325
     assert result.quantity == 4
 
 
 def test_price_item_girth_weld_different_tiers():
     """Test girth weld pricing across different diameter tiers."""
-    # 24" diameter (20-30" tier = $500)
+    # 24" diameter (18-30" tier = $550)
     item_24 = ParsedItem(
         product_type="girth_weld",
         quantity=2,
@@ -255,10 +258,10 @@ def test_price_item_girth_weld_different_tiers():
     )
     result = price_item(item_24, sort_order=1)
     assert result is not None
-    assert result.unit_price == Decimal("500")
-    assert result.total == Decimal("1000")
+    assert result.unit_price == Decimal("550")
+    assert result.total == Decimal("1100")
 
-    # 36" diameter (32-44" tier = $800)
+    # 36" diameter (32-44" tier = $875)
     item_36 = ParsedItem(
         product_type="girth_weld",
         quantity=3,
@@ -270,8 +273,8 @@ def test_price_item_girth_weld_different_tiers():
     )
     result = price_item(item_36, sort_order=2)
     assert result is not None
-    assert result.unit_price == Decimal("800")
-    assert result.total == Decimal("2400")
+    assert result.unit_price == Decimal("875")
+    assert result.total == Decimal("2625")
 
 
 def test_price_item_girth_weld_missing_data():
@@ -324,13 +327,13 @@ def test_price_item_girth_weld_no_wall_thickness():
     result = price_item(item, sort_order=1)
     assert result is not None
     assert result.product_type == "girth_weld"
-    assert result.unit_price == Decimal("500")  # 20-31" tier
-    assert result.total == Decimal("1000.00")
+    assert result.unit_price == Decimal("550")  # 18-30" tier
+    assert result.total == Decimal("1100.00")
     assert "wall thickness defaulted" in result.notes
 
 
-def test_price_item_converts_bundle_count_to_piece_count_for_standard_sleeves():
-    """Bundle sleeves show piece count (not bundle count) with per-piece pricing."""
+def test_price_item_preserves_requested_bundle_count_for_standard_sleeves():
+    """The quote echoes the requested bundle count while pricing all pieces."""
     item = ParsedItem(
         product_type="sleeve",
         quantity=2,
@@ -344,8 +347,29 @@ def test_price_item_converts_bundle_count_to_piece_count_for_standard_sleeves():
     result = price_item(item, sort_order=1)
 
     assert result is not None
-    assert result.quantity == 10  # 10 pieces (2 bundles × 5), not 2 bundles
+    assert result.quantity == 2
+    assert result.pricing_quantity == 10  # 2 bundles × 5 physical pieces
     assert "bundle" in result.notes.lower()
+
+
+def test_one_piece_sleeve_echoes_ask_but_prices_five_piece_minimum():
+    item = ParsedItem(
+        product_type="sleeve",
+        quantity=1,
+        description='1 pc 12-3/4" sleeve',
+        diameter=12.75,
+        wall_thickness=0.375,
+        grade=50,
+        length_ft=10,
+    )
+
+    result = price_item(item, sort_order=1)
+
+    assert result is not None
+    assert result.quantity == 1
+    assert result.pricing_quantity == 5
+    assert result.total == result.unit_price * 5
+    assert "1 pc" not in result.description.lower()
 
 
 def test_price_item_defaults_sleeve_length_to_10ft():
@@ -453,7 +477,7 @@ def test_price_item_sleeve_footage_with_no_spec_prices_with_defaults():
 
 def test_price_item_bag():
     """Test bag pricing by diameter range with pallet rounding."""
-    # 36" pipe -> GTW 30-36 range, $155.00/bag, 30 pcs/pallet
+    # 36" pipe -> GTW 30-36 range, $139.50/bag, 30 pcs/pallet
     # 10 pcs rounds up to 1 pallet = 30 pcs
     item = ParsedItem(
         product_type="bag",
@@ -465,9 +489,10 @@ def test_price_item_bag():
     assert result is not None
     assert result.product_type == "bag"
     assert result.part_number == "GTW 30-36"
-    assert result.unit_price == Decimal("155.00")
-    assert result.quantity == 30  # rounded up to 1 pallet
-    assert result.total == Decimal("4650.00")  # 30 * $155
+    assert result.unit_price == Decimal("139.50")
+    assert result.quantity == 10  # exact customer ask
+    assert result.pricing_quantity == 30  # one physical pallet
+    assert result.total == Decimal("4185.00")  # 30 * $139.50
 
 
 def test_price_item_bag_exact_pallet():
@@ -482,7 +507,8 @@ def test_price_item_bag_exact_pallet():
     result = price_item(item, sort_order=1)
     assert result is not None
     assert result.quantity == 30
-    assert result.total == Decimal("4650.00")
+    assert result.pricing_quantity == 30
+    assert result.total == Decimal("4185.00")  # April 2026 sheet: 30 x $139.50
     assert result.notes is None  # no rounding note
 
 
@@ -499,14 +525,14 @@ def test_price_item_empty_bag_option_is_labeled_and_priced():
 
     assert result is not None
     assert result.part_number == "GTW 16"
-    assert result.unit_price == Decimal("80.77")
+    assert result.unit_price == Decimal("72.69")
     assert "(Empty)" in result.description
 
 
 def test_price_item_bag_small():
     """Test bag pricing for small diameter with pallet rounding."""
-    # 12" pipe -> GTW 10-12 range, $52.08/bag, 110 pcs/pallet
-    # 5 pcs rounds up to 1 pallet = 110 pcs
+    # 12" pipe -> GTW 10-12 range, $46.87/bag, 48 pcs/pallet
+    # 5 pcs rounds up to 1 pallet = 48 pcs
     item = ParsedItem(
         product_type="bag",
         quantity=5,
@@ -515,9 +541,45 @@ def test_price_item_bag_small():
     )
     result = price_item(item, sort_order=1)
     assert result is not None
-    assert result.unit_price == Decimal("52.08")
-    assert result.quantity == 110  # rounded up to 1 pallet
-    assert result.total == Decimal("5728.80")  # 110 * $52.08
+    assert result.unit_price == Decimal("46.87")
+    assert result.quantity == 5  # exact customer ask
+    assert result.pricing_quantity == 48  # rounded physical pallet quantity
+    assert result.total == Decimal("2249.76")  # 48 * $46.87
+
+
+def test_gtw_10_12_is_48_per_pallet_never_110():
+    """Regression, T517: GTW 10-12 is 48 pcs/pallet on the April 2026 sheet.
+
+    An older list said 110 and kept resurfacing (code defaults + the
+    20260406_0003 seed). Pin the pallet count across the whole 10-13" range
+    so a reintroduced 110 fails loudly.
+    """
+    from allenedwards.pricing_catalog import DEFAULT_BAG_PRICING
+
+    gtw_10_12 = [row for row in DEFAULT_BAG_PRICING if row[2] == "GTW 10-12"]
+    assert len(gtw_10_12) == 1
+    assert gtw_10_12[0][3] == 48
+
+    for diameter in (10, 11, 12, 13):
+        entry = lookup_bag_pricing(diameter)
+        assert entry is not None
+        part_number, pieces_per_pallet, _price = entry
+        assert part_number == "GTW 10-12"
+        assert pieces_per_pallet == 48
+
+    # 49 bags must round to 2 pallets of 48, not fit inside one pallet of 110.
+    item = ParsedItem(
+        product_type="bag",
+        quantity=49,
+        description="geotextile bags 12\"",
+        diameter=12,
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.quantity == 49
+    assert result.pricing_quantity == 96
+    assert "(48/pallet)" in result.description
+    assert "110" not in result.description
 
 
 def test_price_item_bag_missing_diameter():
@@ -617,8 +679,8 @@ def test_price_item_omegawrap_magnum():
     assert result.total == Decimal("390.00")
 
 
-def test_price_item_omegawrap_default_carbon():
-    """Composite defaults to carbon when no variant specified."""
+def test_price_item_unknown_omegawrap_variant_is_tbd_not_carbon():
+    """An unspecified composite must not be invented as Carbon."""
     item = ParsedItem(
         product_type="composite",
         quantity=1,
@@ -626,7 +688,10 @@ def test_price_item_omegawrap_default_carbon():
     )
     result = price_item(item, sort_order=1)
     assert result is not None
-    assert result.unit_price == Decimal("680")
+    assert result.part_number == "TBD"
+    assert result.unit_price == Decimal("0.00")
+    assert result.total == Decimal("0.00")
+    assert "Pricing TBD" in result.notes
 
 
 def test_price_item_accessory_resin():
@@ -858,7 +923,7 @@ def test_bag_pricing_gap_diameter_13():
     )
     result = price_item(item, sort_order=1)
     assert result is not None
-    assert result.unit_price == Decimal("52.08")
+    assert result.unit_price == Decimal("46.87")
 
 
 def test_bag_pricing_gap_diameter_19():
@@ -871,7 +936,7 @@ def test_bag_pricing_gap_diameter_19():
     )
     result = price_item(item, sort_order=1)
     assert result is not None
-    assert result.unit_price == Decimal("80.77")
+    assert result.unit_price == Decimal("72.69")
 
 
 def test_bag_pricing_gap_diameter_27():
@@ -884,7 +949,7 @@ def test_bag_pricing_gap_diameter_27():
     )
     result = price_item(item, sort_order=1)
     assert result is not None
-    assert result.unit_price == Decimal("138.24")
+    assert result.unit_price == Decimal("124.41")
 
 
 def test_bag_pricing_gap_diameter_39():
@@ -897,7 +962,7 @@ def test_bag_pricing_gap_diameter_39():
     )
     result = price_item(item, sort_order=1)
     assert result is not None
-    assert result.unit_price == Decimal("155.00")
+    assert result.unit_price == Decimal("139.50")
 
 
 def test_generate_quote_rounds_up_standard_bundle_sleeve():
@@ -926,13 +991,19 @@ def test_generate_quote_rounds_up_standard_bundle_sleeve():
 
     quote = generate_quote(rfq, "126-ROUND")
 
-    # Quantity should be 10 pieces (2 bundles × 5), not 2 bundles
+    # The customer-facing quantity remains the literal ask; pricing still uses
+    # two complete bundles.
     sleeve_items = [item for item in quote.line_items if item.product_type == "sleeve"]
     assert len(sleeve_items) == 1
-    assert sleeve_items[0].quantity == 10  # 10 pieces, not 2 bundles
+    assert sleeve_items[0].quantity == 7
+    assert sleeve_items[0].pricing_quantity == 10
 
     # Bundle pricing note should be in the sleeve item notes, not a separate note
     assert "bundle" in sleeve_items[0].notes.lower()
+    assert not any(
+        item.is_note and "bundle" in item.description.lower()
+        for item in quote.line_items
+    )
 
 
 def test_price_lookup_uses_db_override_in_app_context(tmp_path: Path):
@@ -1013,7 +1084,8 @@ def test_total_footage_in_quantity_converts_to_pieces_and_bundles():
     result = price_item(_sleeve_footage_item(quantity=20, length_ft=10), sort_order=1)
 
     assert result is not None
-    assert result.quantity == 5  # 2 pcs rounded up to 1 bundle (5 pcs), NOT 20
+    assert result.quantity == 2  # normalized requested pieces, not the 5-piece minimum
+    assert result.pricing_quantity == 5
     assert "20 ft" in result.notes
     assert "bundle" in result.notes.lower()
 
@@ -1023,7 +1095,8 @@ def test_total_footage_in_length_converts_to_pieces():
     result = price_item(_sleeve_footage_item(quantity=1, length_ft=20), sort_order=1)
 
     assert result is not None
-    assert result.quantity == 5  # 2 pcs of 10 ft -> 1 bundle
+    assert result.quantity == 2  # 2 pcs of 10 ft requested
+    assert result.pricing_quantity == 5
     assert "20 ft" in result.notes
 
 
@@ -1032,7 +1105,8 @@ def test_correct_footage_extraction_is_unchanged():
     result = price_item(_sleeve_footage_item(quantity=2, length_ft=10), sort_order=1)
 
     assert result is not None
-    assert result.quantity == 5  # still rounds to a bundle
+    assert result.quantity == 2
+    assert result.pricing_quantity == 5
     # No spurious footage-normalization note when quantity was already correct.
     assert "→" not in (result.notes or "")
 
@@ -1046,6 +1120,7 @@ def test_explicit_piece_count_is_not_treated_as_footage():
 
     assert result is not None
     assert result.quantity == 20  # unchanged — explicit piece count trusted
+    assert result.pricing_quantity == 20
 
 
 def test_large_footage_request_converts_to_piece_count():
@@ -1057,6 +1132,7 @@ def test_large_footage_request_converts_to_piece_count():
 
     assert result is not None
     assert result.quantity == 15  # ceil(150/10), NOT 150 pcs
+    assert result.pricing_quantity == 15
     assert "150 ft" in result.notes
 
 
@@ -1106,3 +1182,141 @@ def test_price_item_girth_weld_carries_effective_specs():
     assert result.diameter == 12.75
     assert result.wall_thickness == 0.375
     assert result.grade == 50
+
+
+# --- Standardized line-item descriptions (T512, Chip 2026-10-19) ---
+
+
+def test_bag_description_echoes_requested_size_not_range():
+    """A 36in bag ask shows 36 in the description, never the priced range."""
+    item = ParsedItem(
+        product_type="bag",
+        quantity=30,
+        description='need (30) 36" geotextile bags for a crossing near Tulsa',
+        diameter=36,
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.part_number == "GTW 30-36"  # part number keeps the range (Chip: perfect)
+    assert '36" pipe' in result.description
+    assert "30-36" not in result.description
+    assert "Tulsa" not in result.description  # raw RFQ prose never enters the description
+
+
+def test_echo_requested_bag_size_rewrites_catalog_range():
+    """Catalog bag descriptions have their range token replaced by the asked size."""
+    from app.catalog_resolution import echo_requested_size as _echo_requested_bag_size
+
+    catalog = "Geotextile Bag Weight 30-38in Pipe MAX 9K Fill  (30/pallet)"
+    assert (
+        _echo_requested_bag_size(catalog, 36.0)
+        == "Geotextile Bag Weight 36in Pipe MAX 9K Fill  (30/pallet)"
+    )
+    # En-dash variant, same unit formatting preserved
+    assert (
+        _echo_requested_bag_size("Geotextile Bag Weight 42–48in Pipe MAX 14K Fill", 48.0)
+        == "Geotextile Bag Weight 48in Pipe MAX 14K Fill"
+    )
+    # A range that does not contain the requested size is left alone
+    assert _echo_requested_bag_size(catalog, 12.0) == catalog
+    # Text without a range token is returned unchanged
+    plain = "Geotextile Bag Weight 36in Pipe MAX 9K Fill"
+    assert _echo_requested_bag_size(plain, 36.0) == plain
+
+
+def test_generate_quote_catalog_bag_sku_echoes_requested_size(monkeypatch):
+    """SKU-matched bags get the catalog wording with the asked size, not the range."""
+    from allenedwards import pricing
+
+    monkeypatch.setattr(
+        pricing,
+        "_catalog_description_for_part_number",
+        lambda part_number: "Geotextile Bag Weight 30-38in Pipe MAX 9K Fill  (30/pallet)",
+    )
+    rfq = ParsedRFQ(
+        customer_name="Test Co",
+        contact_name=None,
+        contact_email=None,
+        contact_phone=None,
+        ship_to=None,
+        po_number=None,
+        quote_number=None,
+        items=[
+            ParsedItem(
+                product_type="bag",
+                quantity=30,
+                description='(30) 36" bag weights',
+                diameter=36,
+                sku="GTW 30-38in (9K)",
+            )
+        ],
+        confidence=1.0,
+    )
+
+    quote = generate_quote(rfq, "126-BAGS")
+
+    bag_items = [item for item in quote.line_items if item.product_type == "bag"]
+    assert len(bag_items) == 1
+    assert bag_items[0].description == "Geotextile Bag Weight 36in Pipe MAX 9K Fill  (30/pallet)"
+    assert bag_items[0].sku == "GTW 30-38in (9K)"
+
+
+def test_tbd_line_item_does_not_cram_raw_rfq_text():
+    """Unpriceable lines get a short product-shaped description, not the RFQ paragraph."""
+    raw = (
+        "Concrete Coating services for Enbridge TET Line 31 Expansion Project. "
+        "Scope includes approximately 10.2 miles of 36-inch pipeline and approximately "
+        "1.7 miles of 16-inch pipeline lateral in Madison County, MS. Tentative "
+        "construction start 7/15/27, end by 5/30/28."
+    )
+    item = ParsedItem(
+        product_type="service",
+        quantity=1,
+        description=raw,
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.part_number == "TBD"
+    # First clause only, capped — plain product language
+    assert result.description == (
+        "Concrete Coating services for Enbridge TET Line 31 Expansion Project"
+    )
+    assert "Madison County" not in result.description
+    assert len(result.description) <= 85
+
+
+def test_tbd_description_prefers_structured_dims():
+    """When the parser extracted dims, the TBD line is label + dims."""
+    item = ParsedItem(
+        product_type="bag",
+        quantity=5,
+        description="Buoyancy control bags for approximately 21 miles of laterals, Nevada.",
+        diameter=60,  # out of priced range -> TBD
+    )
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.part_number == "TBD"
+    assert result.description == 'Geotextile Bag Weight, 60" pipe'
+
+
+def test_tbd_description_caps_long_single_clause_at_word_boundary():
+    """A single overlong clause is cut at a word boundary with an ellipsis."""
+    raw = (
+        "10-inch split casing on 6-inch pipeline extension - material list "
+        "(excluding items P-007 and P-008) with Buy America requirements applying throughout"
+    )
+    item = ParsedItem(product_type="accessory", quantity=1, description=raw)
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.part_number == "TBD"
+    assert result.description.endswith("…")
+    assert len(result.description) <= 85
+    assert result.description.startswith("10-inch split casing on 6-inch pipeline extension")
+
+
+def test_tbd_description_falls_back_to_label_when_no_text():
+    """No raw text and no dims still yields a readable product label."""
+    item = ParsedItem(product_type="service", quantity=1, description="")
+    result = price_item(item, sort_order=1)
+    assert result is not None
+    assert result.description == "Service"

@@ -6,28 +6,33 @@ from decimal import Decimal
 
 # Price per pound lookup table: wall_thickness -> (GR50 price, GR65 price)
 DEFAULT_PRICE_PER_LB: dict[str, tuple[Decimal, Decimal]] = {
-    "0.25": (Decimal("3.01"), Decimal("3.11")),
-    "0.3125": (Decimal("2.86"), Decimal("2.96")),
-    "0.375": (Decimal("2.65"), Decimal("2.75")),
-    "0.5": (Decimal("2.59"), Decimal("2.69")),
+    "0.25": (Decimal("4.45"), Decimal("4.62")),
+    "0.3125": (Decimal("3.84"), Decimal("4.01")),
+    "0.375": (Decimal("3.31"), Decimal("3.48")),
+    "0.5": (Decimal("3.40"), Decimal("3.57")),
     "0.625": (Decimal("2.52"), Decimal("2.62")),
     "0.75": (Decimal("2.52"), Decimal("2.62")),
 }
 
 # Girth weld pricing by diameter range: (min_diameter, max_diameter, price_per_set)
 DEFAULT_GIRTH_WELD_PRICING: list[tuple[int, int, Decimal]] = [
-    (2, 19, Decimal("300")),
-    (20, 31, Decimal("500")),
-    (32, 44, Decimal("800")),
+    (2, 16, Decimal("325")),
+    (18, 30, Decimal("550")),
+    (32, 44, Decimal("875")),
 ]
 
 # Bag pricing: (pipe_size_min, pipe_size_max, part_number, pieces_per_pallet, price_per_bag)
+# April 2026 bag price sheet (Chip, gmail 1a154fe052a05a20). Pallet counts come from
+# that sheet; per-bag prices are the sheet's pallet price divided by the pallet count,
+# rounded to cents, matching the rows Chip set in production on 2026-07-20.
+# GTW 10-12 is 48/pallet — an older list said 110, which kept resurfacing from these
+# defaults and the 20260406_0003 seed after the price sheet moved on (T517).
 DEFAULT_BAG_PRICING: list[tuple[int, int, str, int, Decimal]] = [
-    (10, 13, "GTW 10-12", 110, Decimal("52.08")),
-    (14, 19, "GTW 16", 52, Decimal("80.77")),
-    (20, 27, "GTW 20-24", 34, Decimal("138.24")),
-    (28, 39, "GTW 30-36", 30, Decimal("155.00")),
-    (40, 48, "GTW 42-48", 21, Decimal("214.29")),
+    (10, 13, "GTW 10-12", 48, Decimal("46.87")),
+    (14, 19, "GTW 16", 52, Decimal("72.69")),
+    (20, 27, "GTW 20-24", 34, Decimal("124.41")),
+    (28, 39, "GTW 30-36", 30, Decimal("139.50")),
+    (40, 48, "GTW 42-48", 21, Decimal("192.85")),
 ]
 
 # Flat and accessory/service style rates: key -> (price, unit)

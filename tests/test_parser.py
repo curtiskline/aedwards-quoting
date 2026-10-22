@@ -12,16 +12,16 @@ from allenedwards import parser
 from allenedwards.parser import (
     CLASSIFY_SYSTEM_PROMPT,
     PARSE_SYSTEM_PROMPT,
+    _extract_quote_number,
+    _resolve_quote_number,
     classify_rfq,
     extract_email_text,
     parse_rfq,
     parse_rfq_multi,
-    _extract_quote_number,
-    _resolve_quote_number,
 )
 from allenedwards.pricing import generate_quote
 from allenedwards.providers.base import LLMProvider
-from allenedwards.providers.mock import MockProvider, SAMPLE_MULTI_QUOTE_RESPONSE
+from allenedwards.providers.mock import SAMPLE_MULTI_QUOTE_RESPONSE, MockProvider
 
 
 def test_extract_email_text():
@@ -1083,6 +1083,70 @@ def _parse_body(body: str, response: dict, from_header: str = "buyer@bp.com"):
             eml_path.unlink()
 
 
+def test_explicit_overlength_sleeve_is_preserved_and_flagged():
+    """Regression: the same RFQ previously flipped between 10 ft and 12 ft."""
+    rfq = _parse_body(
+        'Four (two sets) 12” x 12ft long repair sleeves (including backing strips)',
+        {
+            "quotes": [
+                {
+                    "items": [
+                        {
+                            **SLEEVE_ITEM,
+                            "quantity": 4,
+                            "diameter": "12.75",
+                            "length_ft": 10,
+                            # Exercise the full-source fallback: the model also
+                            # failed to retain the literal dimensions here.
+                            "description": "repair sleeves with backing strips",
+                        }
+                    ]
+                }
+            ],
+            "confidence": 0.98,
+        },
+    )
+
+    item = rfq.items[0]
+    assert item.length_ft == 12
+    assert item.quantity == 4
+    assert rfq.confidence == 0.5
+    assert any(
+        note == "Customer asked for 12 ft. Standard sleeve is 10 ft max — needs a person."
+        for note in item.unit_notes
+    )
+    assert any("corrected extracted 10 ft" in note for note in item.unit_notes)
+
+    quote = generate_quote(rfq, "126-TEST")
+    line = quote.line_items[0]
+    assert line.quantity == 4
+    assert line.part_number == "S-12.34-38-50-12"
+    assert "needs a person" in (line.notes or "")
+
+
+def test_total_sleeve_footage_is_not_mistaken_for_piece_length():
+    rfq = _parse_body(
+        "Please quote 20 ft of sleeve for 12 inch pipe.",
+        {
+            "quotes": [
+                {
+                    "items": [
+                        {
+                            **SLEEVE_ITEM,
+                            "quantity": 2,
+                            "diameter": "12",
+                            "description": "20 ft of sleeve for 12 inch pipe",
+                        }
+                    ]
+                }
+            ]
+        },
+    )
+
+    assert rfq.items[0].length_ft == 10
+    assert not rfq.items[0].unit_notes
+
+
 def test_signature_address_does_not_populate_ship_to():
     """Chip: an address from the sender's signature is a bill-to, never a ship-to.
 
@@ -1371,6 +1435,7 @@ def _fake_claude_message(text: str, stop_reason: str = "end_turn"):
 def _claude_provider_with_responses(responses: list, calls: list):
     """Build an uninitialized ClaudeProvider whose _create_message pops canned messages."""
     from unittest.mock import patch
+
     from allenedwards.providers.claude import ClaudeProvider
 
     def fake_create_message(self, prompt, system, max_tokens):
@@ -1396,6 +1461,25 @@ def test_claude_provider_retries_on_json_decode_error(monkeypatch):
 
     assert len(calls) == 2
     assert result == {"is_rfq": True}
+
+
+def test_claude_provider_pins_zero_temperature():
+    """Extraction must not inherit Anthropic's sampling default."""
+    from types import SimpleNamespace
+
+    from allenedwards.providers.claude import ClaudeProvider
+
+    captured = {}
+
+    def create(**kwargs):
+        captured.update(kwargs)
+        return _fake_claude_message("{}")
+
+    provider = ClaudeProvider.__new__(ClaudeProvider)
+    provider.client = SimpleNamespace(messages=SimpleNamespace(create=create))
+    provider._create_message("parse this", "system", 123)
+
+    assert captured["temperature"] == 0.0
 
 
 def test_claude_provider_raises_on_repeated_json_decode_error(monkeypatch):

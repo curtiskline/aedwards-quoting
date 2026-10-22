@@ -203,12 +203,18 @@ def test_pricing_admin_page_and_inline_update(tmp_path: Path) -> None:
             follow_redirects=True,
         )
 
+        # Default tab is Shipping defaults; the other sections are link tabs (T514).
         page = client.get("/admin/pricing")
         assert page.status_code == 200
-        assert b"Admin" in page.data
-        assert b"Auto-Ship Pricing Defaults" in page.data
-        assert b"Product Types" in page.data
-        assert b"Product Catalog" in page.data
+        assert b"Shipping defaults" in page.data
+        assert b"Product types" in page.data
+        assert b"Product catalog" in page.data
+        types_page = client.get("/admin/pricing?tab=types")
+        assert types_page.status_code == 200
+        assert b"Product types" in types_page.data
+        catalog_page = client.get("/admin/pricing?tab=catalog")
+        assert catalog_page.status_code == 200
+        assert b"Product catalog" in catalog_page.data
 
         conn = sqlite3.connect(db_path)
         try:
@@ -331,6 +337,8 @@ def test_pricing_admin_page_and_inline_update(tmp_path: Path) -> None:
         )
         assert added_catalog_item.status_code == 200
         assert b"FS-001" in added_catalog_item.data
+        assert b"Showing all products: active and inactive." in added_catalog_item.data
+        assert b'aria-current="page">All</a>' in added_catalog_item.data
 
         conn = sqlite3.connect(db_path)
         try:
@@ -357,13 +365,8 @@ def test_pricing_admin_page_and_inline_update(tmp_path: Path) -> None:
         search_before_deactivation = client.get("/api/product-catalog/search?q=FS-002")
         assert search_before_deactivation.get_json()[0]["part_number"] == "FS-002"
         deactivated_catalog_item = client.post(
-            f"/admin/catalog/{catalog_item_id}/update",
-            data={
-                "part_number": "FS-002",
-                "description": "Updated field service visit",
-                "product_type": "accessory",
-                "catalog_filter": "active",
-            },
+            f"/admin/catalog/{catalog_item_id}/delete",
+            data={"catalog_filter": "active"},
         )
         assert deactivated_catalog_item.status_code == 200
         assert b"FS-002 moved to Inactive" in deactivated_catalog_item.data
@@ -389,9 +392,18 @@ def test_pricing_admin_page_and_inline_update(tmp_path: Path) -> None:
             == 200
         )
 
-        active_catalog = client.get("/admin/pricing?tab=catalog")
+        default_catalog = client.get("/admin/pricing?tab=catalog")
+        assert default_catalog.status_code == 200
+        assert b"Showing all products: active and inactive." in default_catalog.data
+        assert b"catalog_filter=all" in default_catalog.data
+        assert b'aria-current="page">All</a>' in default_catalog.data
+        assert default_catalog.data.index(b"AA-001") < default_catalog.data.index(b"ZZ-001")
+        assert default_catalog.data.index(b"ZZ-001") < default_catalog.data.index(b"FS-002")
+
+        active_catalog = client.get("/admin/pricing?tab=catalog&catalog_filter=active")
         assert active_catalog.status_code == 200
-        assert b"catalog_filter=active" in active_catalog.data
+        assert b"Showing active products only. Inactive products are hidden." in active_catalog.data
+        assert b'aria-current="page">Active</a>' in active_catalog.data
         assert b"FS-002" not in active_catalog.data
         assert b"AA-001" in active_catalog.data
         assert b"ZZ-001" in active_catalog.data
@@ -403,6 +415,7 @@ def test_pricing_admin_page_and_inline_update(tmp_path: Path) -> None:
 
         inactive_catalog = client.get("/admin/pricing?tab=catalog&catalog_filter=inactive")
         assert inactive_catalog.status_code == 200
+        assert b"Showing inactive products only. Active products are hidden." in inactive_catalog.data
         assert b"FS-002" in inactive_catalog.data
         assert b"AA-001" not in inactive_catalog.data
         assert b'id="catalog-search"' in inactive_catalog.data
