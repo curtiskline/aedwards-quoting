@@ -117,7 +117,7 @@ check "fresh host takes deploy ENABLE_MONITOR default" \
 FAKE_REPO="${WORK}/repo"
 mkdir -p "${FAKE_REPO}/deploy"
 cp "${REPO_ROOT}/deploy/deploy_web.sh" "${REPO_ROOT}/deploy/deploy.sh" \
-   "${REPO_ROOT}/deploy/merge_env.sh" \
+   "${REPO_ROOT}/deploy/merge_env.sh" "${REPO_ROOT}/deploy/redact_env.sh" \
    "${REPO_ROOT}/deploy/merge_nginx_timeouts.sh" \
    "${REPO_ROOT}/deploy/aedwards-web.service" \
    "${REPO_ROOT}/deploy/aedwards-monitor.service" \
@@ -167,6 +167,7 @@ run_deploy() { # run_deploy <args...>
   PATH="${STUBS}:${PATH}" KEY_PATH="${FAKE_KEY}" DATABASE_URL="" \
     EMAIL_DELIVERY_ENABLED="" SECRET_KEY="" \
     O365_EMAIL="" O365_CLIENT_ID="" O365_SCOPES="" \
+    ANTHROPIC_API_KEY="" MINIMAX_API_KEY="" \
     bash "${FAKE_REPO}/deploy/deploy_web.sh" "$@" \
     > "${WORK}/deploy-stdout" 2> "${WORK}/deploy-stderr"
   DEPLOY_RC=$?
@@ -184,7 +185,9 @@ check "dry run's only ssh call is the .env read" \
 check "fixture host .env unchanged by dry run" \
   cmp -s "${FAKE_HOST_DIR}/.env" "${WORK}/host-env-before"
 check "dry-run diff keeps host DATABASE_URL (no sqlite regress)" \
-  bash -c "! grep -q -- '-DATABASE_URL=postgresql' '${WORK}/deploy-stdout'"
+  bash -c "! grep -q -- '-DATABASE_URL=' '${WORK}/deploy-stdout'"
+check "dry run never prints the host secret value" \
+  bash -c "! grep -q stagingsecret '${WORK}/deploy-stdout' '${WORK}/deploy-stderr'"
 check "dry-run diff never introduces EMAIL_DELIVERY_ENABLED=true" \
   bash -c "! grep -q '+EMAIL_DELIVERY_ENABLED=true' '${WORK}/deploy-stdout'"
 check "no local env file: host O365_CLIENT_ID neither removed nor replaced" \
@@ -211,12 +214,57 @@ printf 'O365_CLIENT_ID=envfile-client-id\n' > "${WORK}/explicit.env"
 : > "${CALL_LOG}"
 run_deploy --dry-run --env-file "${WORK}/explicit.env" 134.122.29.15
 check "--env-file dry run exits 0" test "${DEPLOY_RC}" -eq 0
-check "--env-file O365_CLIENT_ID reaches the merged preview" \
-  grep -q '+O365_CLIENT_ID=envfile-client-id' "${WORK}/deploy-stdout"
+check "--env-file O365_CLIENT_ID reaches the merged preview (redacted)" \
+  grep -q -- '+O365_CLIENT_ID=<redacted:' "${WORK}/deploy-stdout"
+check "--env-file O365_CLIENT_ID value itself never printed" \
+  bash -c "! grep -q 'envfile-client-id' '${WORK}/deploy-stdout' '${WORK}/deploy-stderr'"
 run_deploy --dry-run --env-file "${WORK}/does-not-exist.env" 134.122.29.15
 check "missing --env-file path is a hard error" test "${DEPLOY_RC}" -ne 0
 check "missing --env-file error names the path" \
   grep -q -- '--env-file not found' "${WORK}/deploy-stderr"
+
+# 7d. Redaction (task 527): no secret value — host-side or deploy-side — may
+#     ever appear in dry-run output. A changed secret must still be visible
+#     as -/+ KEY=<redacted:...> lines with DIFFERENT fingerprints, an added
+#     secret as a single +KEY=<redacted:...> line, and an unchanged secret
+#     as no diff line at all.
+mv "${FAKE_HOST_DIR}/.env" "${FAKE_HOST_DIR}/.env.saved"
+cat > "${FAKE_HOST_DIR}/.env" <<'EOF'
+DATABASE_URL=postgresql://aedwards:dbpass-fake-123@dbhost/aedwards
+EMAIL_DELIVERY_ENABLED=false
+SECRET_KEY=hostsecret-fake-456
+O365_CLIENT_ID=host-client-id
+ANTHROPIC_API_KEY=sk-ant-oldfakekey-789
+EOF
+printf 'ANTHROPIC_API_KEY=sk-ant-newfakekey-012\nMINIMAX_API_KEY=mmx-fakekey-345\n' > "${WORK}/secrets.env"
+: > "${CALL_LOG}"
+run_deploy --dry-run --env-file "${WORK}/secrets.env" 134.122.29.15
+REDACT_OUT="${WORK}/redaction-output"
+cat "${WORK}/deploy-stdout" "${WORK}/deploy-stderr" > "${REDACT_OUT}"
+check "redaction dry run exits 0" test "${DEPLOY_RC}" -eq 0
+check "host SECRET_KEY value never printed" \
+  bash -c "! grep -q 'hostsecret-fake-456' '${REDACT_OUT}'"
+check "DATABASE_URL password never printed" \
+  bash -c "! grep -q 'dbpass-fake-123' '${REDACT_OUT}'"
+check "host-side old ANTHROPIC_API_KEY value never printed" \
+  bash -c "! grep -q 'sk-ant-oldfakekey-789' '${REDACT_OUT}'"
+check "deploy-side new ANTHROPIC_API_KEY value never printed" \
+  bash -c "! grep -q 'sk-ant-newfakekey-012' '${REDACT_OUT}'"
+check "deploy-side MINIMAX_API_KEY value never printed" \
+  bash -c "! grep -q 'mmx-fakekey-345' '${REDACT_OUT}'"
+check "changed ANTHROPIC_API_KEY shows a redacted removal line" \
+  bash -c "grep -q -- '-ANTHROPIC_API_KEY=<redacted:' '${WORK}/deploy-stdout'"
+check "changed ANTHROPIC_API_KEY shows a redacted addition line" \
+  grep -q '+ANTHROPIC_API_KEY=<redacted:' "${WORK}/deploy-stdout"
+check "changed secret's two fingerprints differ" \
+  bash -c "[[ \$(grep -oE '^[-+]ANTHROPIC_API_KEY=<redacted:[0-9a-f]{8}>' '${WORK}/deploy-stdout' | sed 's/^[-+]//' | sort -u | wc -l) -eq 2 ]]"
+check "added MINIMAX_API_KEY appears only as a redacted marker" \
+  grep -q '+MINIMAX_API_KEY=<redacted:' "${WORK}/deploy-stdout"
+check "unchanged SECRET_KEY produces no diff line" \
+  bash -c "! grep -qE '^[-+]SECRET_KEY=' '${WORK}/deploy-stdout'"
+check "unchanged DATABASE_URL produces no diff line" \
+  bash -c "! grep -qE '^[-+]DATABASE_URL=' '${WORK}/deploy-stdout'"
+mv "${FAKE_HOST_DIR}/.env.saved" "${FAKE_HOST_DIR}/.env"
 
 # 8. Host with no DATABASE_URL and none provided: preflight hard-fails
 #    before anything is copied (the fail-loudly guard itself).
@@ -318,6 +366,7 @@ run_monitor() { # run_monitor <args...>
     EMAIL_DELIVERY_ENABLED="" SECRET_KEY="" ENABLE_MONITOR="" \
     O365_EMAIL="${MONITOR_O365_EMAIL-monitor-stub@example.invalid}" \
     O365_CLIENT_ID="" O365_SCOPES="" \
+    ANTHROPIC_API_KEY="" MINIMAX_API_KEY="" \
     bash "${FAKE_REPO}/deploy/deploy.sh" "$@" \
     > "${WORK}/monitor-stdout" 2> "${WORK}/monitor-stderr"
   MONITOR_RC=$?
@@ -342,7 +391,9 @@ check "monitor-off host stays off (no +ENABLE_MONITOR=true in diff)" \
 check "host ENABLE_MONITOR=false not removed by diff" \
   bash -c "! grep -q -- '-ENABLE_MONITOR=false' '${WORK}/monitor-stdout'"
 check "monitor diff keeps host DATABASE_URL (no sqlite regress)" \
-  bash -c "! grep -q -- '-DATABASE_URL=postgresql' '${WORK}/monitor-stdout'"
+  bash -c "! grep -q -- '-DATABASE_URL=' '${WORK}/monitor-stdout'"
+check "monitor dry run never prints the host secret value" \
+  bash -c "! grep -q stagingsecret '${WORK}/monitor-stdout' '${WORK}/monitor-stderr'"
 check "monitor diff never introduces sqlite" \
   bash -c "! grep -q sqlite '${WORK}/monitor-stdout'"
 check "monitor diff never introduces EMAIL_DELIVERY_ENABLED=true" \
@@ -360,7 +411,7 @@ check "fresh-host monitor dry run exits 0" test "${MONITOR_RC}" -eq 0
 check "fresh host gets ENABLE_MONITOR=true default" \
   grep -q '+ENABLE_MONITOR=true' "${WORK}/monitor-stdout"
 check "fresh host keeps its DATABASE_URL" \
-  bash -c "! grep -q -- '-DATABASE_URL=postgresql://fresh' '${WORK}/monitor-stdout'"
+  bash -c "! grep -q -- '-DATABASE_URL=' '${WORK}/monitor-stdout'"
 mv "${FAKE_HOST_DIR}/.env.saved" "${FAKE_HOST_DIR}/.env"
 
 # 12. Host with no DATABASE_URL and none provided: monitor preflight

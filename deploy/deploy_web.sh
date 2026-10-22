@@ -67,6 +67,7 @@ fi
 NGINX_FILE="${ROOT_DIR}/deploy/nginx-aedwards-web.conf"
 MERGE_ENV_FILE="${ROOT_DIR}/deploy/merge_env.sh"
 MERGE_NGINX_TIMEOUTS_FILE="${ROOT_DIR}/deploy/merge_nginx_timeouts.sh"
+REDACT_ENV_FILE="${ROOT_DIR}/deploy/redact_env.sh"
 
 # Known host map (docs/runbooks/postgres-cutover.md). Anything else is "unknown"
 # and deploys with a loud warning; --env only cross-checks, it cannot re-label.
@@ -287,9 +288,17 @@ sed "s|__SERVER_NAME__|${SERVER_NAME}|g" "${NGINX_FILE}" > "${RENDERED_NGINX_FIL
 MERGED_PREVIEW="${TMP_DIR}/merged-preview.env"
 bash "${MERGE_ENV_FILE}" "${HOST_ENV_SNAPSHOT}" "${ENV_FILE}" "${MERGED_PREVIEW}"
 
+# The preview diff must never print secret values (task 527): both sides are
+# filtered through redact_env.sh with one per-run salt, so changed secrets
+# still show as -/+ KEY=<redacted:...> lines while the values stay out of
+# terminal scrollback and session logs.
+REDACT_SALT="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+bash "${REDACT_ENV_FILE}" "${REDACT_SALT}" < "${HOST_ENV_SNAPSHOT}" > "${HOST_ENV_SNAPSHOT}.redacted"
+bash "${REDACT_ENV_FILE}" "${REDACT_SALT}" < "${MERGED_PREVIEW}" > "${MERGED_PREVIEW}.redacted"
+
 echo ""
-echo "Resulting host .env change (current -> after deploy; SECRET_KEY may additionally be generated host-side if absent):"
-if diff -u "${HOST_ENV_SNAPSHOT}" "${MERGED_PREVIEW}"; then
+echo "Resulting host .env change (current -> after deploy; secret values shown as <redacted:fingerprint>; SECRET_KEY may additionally be generated host-side if absent):"
+if diff -u --label current --label after-deploy "${HOST_ENV_SNAPSHOT}.redacted" "${MERGED_PREVIEW}.redacted"; then
   echo "(no .env changes)"
 fi
 echo ""
