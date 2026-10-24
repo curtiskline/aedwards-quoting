@@ -259,7 +259,11 @@ def apply_catalog_identity(
     if result.row is not None:
         # Quote rows remain point-in-time snapshots, but the catalog supplies
         # their identity and canonical text at the moment of resolution.
-        item.part_number = result.row.part_number
+        # A range row may carry no part number of its own (girth welds: the
+        # catalog holds per-set diameter ranges, but Chip wants per-size part
+        # numbers on the line, so the generated number must survive the match).
+        if _normalized(result.row.part_number):
+            item.part_number = result.row.part_number
         item.description = _frozen_description(item, result.row)
         if result.row.product_type:
             item.product_type = result.row.product_type
