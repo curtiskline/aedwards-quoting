@@ -220,6 +220,33 @@ def test_pdf_hides_a_stale_pallet_note():
     assert "30 pcs" not in text
 
 
+def test_girth_weld_part_number_wall_default_never_becomes_customer_text():
+    """Chip flagged this on quote 126-174 (task 530).
+
+    Girth welds are priced per set by diameter range; wall thickness is only
+    defaulted to build the part number. "Priced at 3/8\" wall" is therefore
+    wrong on a girth-weld line — the customer did not buy wall-priced steel.
+    The "... for part number" clause stays in the editor only; the plain
+    sleeve wording, where wall genuinely prices the line, still prints.
+    """
+    girth_note = 'wall thickness defaulted to 3/8" for part number'
+    assert customer_note(girth_note) is None
+    assert customer_note(f"grade defaulted to GR65; {girth_note}") == "Priced at Grade 65"
+    assert customer_note('wall thickness defaulted to 3/8"') == 'Priced at 3/8" wall'
+
+
+def test_pdf_hides_the_girth_weld_part_number_wall_default():
+    text = _pdf_text(
+        _quote_with_note(
+            'wall thickness defaulted to 3/8" for part number',
+            description='Girth Weld Sleeve, 10-3/4" ID, 3/8" w/t, A572 GR65',
+        )
+    )
+    assert "wall" not in text.lower()
+    assert "defaulted" not in text
+    assert "Priced at" not in text
+
+
 def test_unrecognized_clause_is_treated_as_internal():
     """Fail closed: a note added to pricing later must not leak to the customer."""
     assert customer_note("some brand new provenance note nobody has classified") is None

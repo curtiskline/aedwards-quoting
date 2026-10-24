@@ -328,11 +328,130 @@ def test_active_catalog_range_supersedes_inactive_generated_variant(app):
 
         assert line.catalog_id == catalog_range.id
         assert line.catalog_match_status == "active"
-        assert line.part_number is None
+        # A part-numberless range row must not blank the generated per-size
+        # number — Chip wants per-size part numbers on the line (task 530).
+        assert line.part_number == "G-18-14-50"
         # A range row covers many sizes; the line keeps its size-stating
         # description instead of being clobbered with the ranged canonical text.
         assert line.description == 'Girth Weld Sleeve, 18" ID, 1/4" w/t, A572 GR50'
         assert float(line.unit_price) == 550
+
+
+def _girth_weld_range_rows() -> list[ProductCatalog]:
+    """The per-set range rows migration 20261024_0001 seeds (task 530)."""
+    return [
+        ProductCatalog(
+            part_number=None,
+            description=f'Girth Weld Sleeve (per set), fits {low}"-{high}" pipe, any wall/grade',
+            product_type="girth_weld",
+            diameter_min=low,
+            diameter_max=high,
+            is_active=True,
+        )
+        for low, high in ((2, 16), (18, 30), (32, 44))
+    ]
+
+
+def test_gr65_girth_weld_resolves_to_the_per_set_range_row(app):
+    """Quote 126-174 (task 530): a GR65 girth weld priced fine ($325 per set)
+    but flagged "Not found in Product Catalog". Grade and wall do not
+    differentiate girth-weld pricing, so the per-set diameter-range row must
+    match regardless of grade, and the line must keep its generated per-size
+    part number, description, and price.
+    """
+    with app.app_context():
+        db.session.add_all(_girth_weld_range_rows())
+        db.session.commit()
+
+        line = build_db_line_item(
+            999,
+            PricingLineItem(
+                sort_order=1,
+                product_type="girth_weld",
+                part_number="G-10.34-38-65",
+                description='Girth Weld Sleeve, 10-3/4" ID, 3/8" w/t, A572 GR65',
+                quantity=40,
+                unit_price=Decimal("325.00"),
+                total=Decimal("13000.00"),
+                diameter=10.75,
+                wall_thickness=0.375,
+                grade=65,
+            ),
+        )
+
+        assert line.catalog_match_status == "active"
+        assert line.catalog_id is not None
+        assert line.part_number == "G-10.34-38-65"
+        assert line.description == 'Girth Weld Sleeve, 10-3/4" ID, 3/8" w/t, A572 GR65'
+        assert float(line.unit_price) == 325
+
+
+def test_girth_weld_without_wall_thickness_still_matches_the_range_row(app):
+    """Wall bounds are NULL on the seeded rows: a girth weld whose RFQ never
+    stated a wall (it is only defaulted for the part number) must still match.
+    """
+    with app.app_context():
+        db.session.add_all(_girth_weld_range_rows())
+        db.session.commit()
+
+        line = build_db_line_item(
+            999,
+            PricingLineItem(
+                sort_order=1,
+                product_type="girth_weld",
+                part_number="G-24-38-50",
+                description='Girth Weld Sleeve, 24" ID, 3/8" w/t, A572 GR50',
+                quantity=2,
+                unit_price=Decimal("550.00"),
+                total=Decimal("1100.00"),
+                diameter=24,
+                grade=50,
+            ),
+        )
+
+        assert line.catalog_match_status == "active"
+        assert line.part_number == "G-24-38-50"
+
+
+def test_unknown_product_still_flags_unmatched_beside_girth_range_rows(app):
+    """The seeded range rows must not weaken the flag for genuinely unknown
+    products: a diameter outside every per-set range stays unmatched, and so
+    does a product type with no catalog identity at all.
+    """
+    with app.app_context():
+        db.session.add_all(_girth_weld_range_rows())
+        db.session.commit()
+
+        oversize = build_db_line_item(
+            999,
+            PricingLineItem(
+                sort_order=1,
+                product_type="girth_weld",
+                part_number="G-60-38-50",
+                description='Girth Weld Sleeve, 60" ID, 3/8" w/t, A572 GR50',
+                quantity=1,
+                unit_price=Decimal("0.00"),
+                total=Decimal("0.00"),
+                diameter=60,
+                wall_thickness=0.375,
+                grade=50,
+            ),
+        )
+        assert oversize.catalog_match_status == "unmatched"
+
+        mystery = build_db_line_item(
+            999,
+            PricingLineItem(
+                sort_order=2,
+                product_type="accessory",
+                part_number="XX-NOT-A-PRODUCT",
+                description="Mystery widget nobody sells",
+                quantity=1,
+                unit_price=Decimal("0.00"),
+                total=Decimal("0.00"),
+            ),
+        )
+        assert mystery.catalog_match_status == "unmatched"
 
 
 def test_range_row_freeze_keeps_requested_size_through_pricing_and_resolution(app, msg, rfq):

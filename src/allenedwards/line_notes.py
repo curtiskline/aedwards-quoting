@@ -46,9 +46,16 @@ _RULES: list[tuple[re.Pattern[str], Callable[[re.Match[str]], str | None]]] = [
         re.compile(r"^grade defaulted to GR(\d+)$", re.I),
         lambda m: f"Priced at Grade {m.group(1)}",
     ),
+    # The "... for part number" variant is the girth-weld clause: wall is only
+    # defaulted there to build the part number/description, it does not price
+    # the line (girth welds are priced per set by diameter range). Chip flagged
+    # "Priced at 3/8\" wall" leaking onto the girth-weld line of quote 126-174
+    # (task 530) — wrong for the customer, since wall never affected the price.
+    # It stays editor-only; only the plain sleeve/oversleeve wording below,
+    # where wall genuinely prices the line, gets customer text.
     (
-        re.compile(r"^wall thickness defaulted to (.+?)(?: for part number)?$", re.I),
-        lambda m: f"Priced at {m.group(1)} wall",
+        re.compile(r"^wall thickness defaulted to (.+?)( for part number)?$", re.I),
+        lambda m: None if m.group(2) else f"Priced at {m.group(1)} wall",
     ),
     (
         re.compile(r"^length defaulted to ([\d.]+)\s*ft$", re.I),
