@@ -101,6 +101,25 @@ class TestMechanicalAnchor:
         assert out.isolation_wrap_resin_qt == 3
 
 
+class TestCeilingBoundary:
+    """OD 8, WT 1 makes L_over exactly 2.5*sqrt(4) = 5, so the repair length
+    is CEILING(10 + length, 12) with no float fuzz. length 2.1 puts the sum
+    just past 12: any drift in the 2.5 coefficient flips the CEILING and
+    these pin it (the anchor points sit too far from a 12-boundary to)."""
+
+    def test_corrosion_just_past_the_boundary(self):
+        out = corrosion_outputs(8, 1, "X52", 72, 0.1, 2.1, 2)
+        assert out.linear_length_of_repair_in == 24
+
+    def test_corrosion_exactly_on_the_boundary(self):
+        out = corrosion_outputs(8, 1, "X52", 72, 0.1, 2, 2)
+        assert out.linear_length_of_repair_in == 12
+
+    def test_mechanical_boundary(self):
+        assert mechanical_outputs(8, 1, "X52", 72, 0.1, 2.1, 2).linear_length_of_repair_in == 24
+        assert mechanical_outputs(8, 1, "X52", 72, 0.1, 2, 2).linear_length_of_repair_in == 12
+
+
 class TestGates:
     def test_corrosion_depth_at_wall_is_an_error(self):
         # Corrosion Calculations I20 flags depth >= wall; outputs become '-'.

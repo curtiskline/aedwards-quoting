@@ -6,7 +6,7 @@ cell-for-cell port of the 'Corrosion Calculations' and 'Mechanical
 Calculations' sheets (ASME PCC-2-2018 Article 401), with the source cell named
 next to each line. Verified against the workbook by
 scripts/verify_omegawrap_xlsm.py; report in
-docs/research/omegawrap-formula-port-T531.md.
+docs/research/omegawrap-formula-port-T531-verification.md.
 
 Fixed choices the workbook leaves as inputs, pinned to its shipped defaults
 because the T525 page does not ask for them:
