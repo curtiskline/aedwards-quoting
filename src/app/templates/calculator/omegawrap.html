@@ -7,13 +7,6 @@
     and how much OmegaWrap the repair needs.
   </p>
 
-  <div class="flash info" style="border-color: #f59e0b; background: #fffbeb;">
-    <strong>The repair length numbers are not ready yet.</strong>
-    They come from the AE Composite Calculator Excel file, which we are still
-    waiting on. Until it is in and checked against Excel, this page shows the
-    fabric and wrap rules but no lengths. It never shows a guessed number.
-  </div>
-
   {% for error in errors %}
     <div class="flash error">{{ error }}</div>
   {% endfor %}
@@ -101,21 +94,74 @@
     <div class="panel">
       <h2>How much OmegaWrap</h2>
       {% if result.results_available %}
+        {% set d = result.details %}
         <table>
           <tr>
             <th>Repair length</th>
-            <td><strong>{{ result.repair_length_in }} inches</strong></td>
+            <td><strong>{{ result.repair_length_in|round(2) }} inches</strong></td>
+            <td>How much of the pipe the wrap covers, end to end.</td>
           </tr>
           {% if result.isolation_wrap %}
             <tr>
               <th>Isolation wrap length</th>
-              <td><strong>{{ result.isolation_wrap_length_in }} inches</strong></td>
+              <td><strong>{{ result.isolation_wrap_length_in|round(2) }} inches</strong></td>
+              <td>The isolation wrap goes under the repair, 12 inches longer.</td>
             </tr>
           {% endif %}
+          <tr>
+            <th>Number of layers</th>
+            <td><strong>{{ d.number_of_layers }}</strong></td>
+            <td>{% if d.minimum_layers_applied %}Raised to the 3-layer minimum.{% else %}Wrap layers over the defect.{% endif %}</td>
+          </tr>
+          <tr>
+            <th>Wrap sets</th>
+            <td><strong>{{ d.wrap_segments|round(2) }}</strong></td>
+            <td>How many 12-inch-wide wrap sections cover the repair length.</td>
+          </tr>
+          <tr>
+            <th>Repair thickness</th>
+            <td><strong>{{ d.repair_thickness_in|round(3) }} inches</strong></td>
+            <td>Thickness of the finished wrap.</td>
+          </tr>
+          <tr>
+            <th>Fabric per set</th>
+            <td><strong>{{ d.fabric_length_per_set_ft|round(2) }} feet</strong></td>
+            <td>Fabric length in one wrap set.</td>
+          </tr>
+          <tr>
+            <th>Total fabric</th>
+            <td><strong>{{ d.total_fabric_length_ft|round(2) }} feet</strong></td>
+            <td>Fabric for the whole repair.</td>
+          </tr>
+          <tr>
+            <th>Total resin</th>
+            <td><strong>{{ d.total_resin_qt|round(2) }} quarts</strong></td>
+            <td>Resin to wet out all the fabric.</td>
+          </tr>
+          <tr>
+            <th>Primer resin</th>
+            <td><strong>{{ d.primer_resin_qt|round(2) }} quarts</strong></td>
+            <td>Resin to prime the pipe first.</td>
+          </tr>
+          <tr>
+            <th>Putty</th>
+            <td><strong>{{ d.putty_pt|round(2) }} pints</strong></td>
+            <td>Putty to fill the defect before wrapping.</td>
+          </tr>
+          <tr>
+            <th>MAOP</th>
+            <td><strong>{{ d.maop_psig|round(0)|int }} psig</strong></td>
+            <td>Maximum allowable operating pressure used in the math.</td>
+          </tr>
         </table>
+        <p class="field-help">
+          Formulas from the AE Composite Calculator (ASME PCC-2-2018),
+          checked cell for cell against the Excel file. For estimating;
+          OmegaWrap should review and validate the application.
+        </p>
       {% else %}
         <div class="flash error">
-          <strong>No length yet - waiting on the calculator file.</strong><br />
+          <strong>No numbers for this one.</strong><br />
           {{ result.engine_note }}
         </div>
       {% endif %}

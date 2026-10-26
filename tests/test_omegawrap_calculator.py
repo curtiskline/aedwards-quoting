@@ -105,7 +105,7 @@ def test_fabric_for_type(text, fabric):
     assert fabric_for_type(text)[0] == fabric
 
 
-# ---------- run_calculator with the pending engine ----------
+# ---------- run_calculator with the ported engine (T531) ----------
 
 def _inputs(anomaly_type="External Corrosion", class_location=1):
     return CalculatorInputs(
@@ -120,15 +120,16 @@ def _inputs(anomaly_type="External Corrosion", class_location=1):
     )
 
 
-def test_corrosion_repair_is_eglass_no_isolation_pending_numbers():
+def test_corrosion_repair_is_eglass_no_isolation():
     result = run_calculator(_inputs("External Corrosion"))
     assert result.fabric == "E-Glass"
     assert result.sheet == "Corrosion"
     assert result.output_cell == "C27"
     assert result.isolation_wrap is False
-    assert result.results_available is False
-    assert result.repair_length_in is None
-    assert result.isolation_wrap_length_in is None
+    assert result.results_available is True
+    # CEILING(2 * 2.5*SQRT(20*0.375/2) + 6, 12) — Corrosion Calculations J52
+    assert result.repair_length_in == 24
+    assert result.isolation_wrap_length_in is None  # E-Glass never gets one
 
 
 def test_dent_repair_is_carbon_with_isolation_wrap():
@@ -138,7 +139,9 @@ def test_dent_repair_is_carbon_with_isolation_wrap():
     assert result.output_cell == "C26"
     assert result.isolation_wrap is True
     assert result.design_factor == 50
-    assert result.results_available is False
+    assert result.results_available is True
+    assert result.repair_length_in == 24
+    assert result.isolation_wrap_length_in == 36  # repair + 12
 
 
 def test_pluggable_engine_supplies_lengths():
@@ -161,8 +164,25 @@ def test_pluggable_engine_supplies_lengths():
         set_engine(original)
 
 
-def test_default_engine_is_the_pending_stub():
-    assert isinstance(get_engine(), PendingExcelEngine)
+def test_default_engine_is_the_ported_pcc2_engine():
+    from app.omegawrap_formulas import PCC2FormulaEngine
+
+    set_engine(None)  # force the lazy default to re-resolve
+    try:
+        assert isinstance(get_engine(), PCC2FormulaEngine)
+    finally:
+        set_engine(None)
+
+
+def test_pending_stub_still_refuses_numbers():
+    original = get_engine()
+    try:
+        set_engine(PendingExcelEngine())
+        result = run_calculator(_inputs("Dent"))
+        assert result.results_available is False
+        assert result.repair_length_in is None
+    finally:
+        set_engine(original)
 
 
 # ---------- the page ----------
@@ -227,22 +247,24 @@ def test_page_requires_login():
     assert "/auth/login" in response.headers["Location"]
 
 
-def test_page_shows_form_and_pending_banner(client):
+def test_page_shows_form_without_pending_banner(client):
     response = client.get("/calculator")
     html = response.get_data(as_text=True)
     assert response.status_code == 200
     assert "OmegaWrap calculator" in html
-    assert "The repair length numbers are not ready yet" in html
+    # T531: the formulas are in and verified; the waiting banner is gone.
+    assert "not ready yet" not in html
     for grade in PIPE_GRADES:
         assert f">{grade}</option>" in html
 
 
-def test_corrosion_submit_shows_eglass_and_no_numbers(client):
+def test_corrosion_submit_shows_eglass_and_numbers(client):
     html = _post(client).get_data(as_text=True)
     assert "E-Glass" in html
     assert "cell C27" in html
-    assert "No length yet - waiting on the calculator file" in html
-    assert "inches</strong>" not in html  # no fabricated repair length anywhere
+    assert "24 inches" in html  # repair length for the VALID_FORM inputs
+    assert "Number of layers" in html
+    assert "waiting" not in html
 
 
 def test_dent_submit_shows_carbon_and_isolation(client):
@@ -251,13 +273,19 @@ def test_dent_submit_shows_carbon_and_isolation(client):
     assert "cell C26" in html
     assert "isolation wrap under it, 12 inches longer" in html
     assert "Design factor 50" in html
-    assert "No length yet" in html
+    assert "36 inches" in html  # isolation wrap = repair 24 + 12
+
+
+def test_depth_at_wall_shows_error_not_numbers(client):
+    html = _post(client, depth="0.375").get_data(as_text=True)
+    assert "No numbers for this one" in html
+    assert "Defect depth must be less than wall thickness" in html
+    assert "Number of layers" not in html
 
 
 def test_smys_maps_to_grade(client):
     html = _post(client, pipe_grade="", pipe_grade_smys="52,200").get_data(as_text=True)
     assert "X52" in html
-    assert "No length yet" in html
 
 
 def test_smys_and_dropdown_disagree_is_an_error(client):

@@ -5,12 +5,13 @@ The deterministic parts of Maxim Dessiatov's Composite Code Reader
 without the OCR: pipe-grade/SMYS mapping (S456), class-location mapping
 (S457), and the fabric pick rule (S443).
 
-The actual Linear Length of Repair formulas live in the AE Composite
-Calculator Excel file (AE_Composite_Calculator.xlsm), which we do not have
-yet. They are exposed behind FormulaEngine; the only engine today is
-PendingExcelEngine, which returns no numbers. NEVER invent or approximate
-those formulas here — they must be ported from the xlsm and verified
-cell-for-cell against Excel output.
+The Linear Length of Repair formulas are ported from the AE Composite
+Calculator Excel file in omegawrap_formulas (T531), behind the FormulaEngine
+interface, and verified cell-for-cell against the workbook
+(scripts/verify_omegawrap_xlsm.py). PendingExcelEngine remains as the
+fail-safe default until calculator_routes installs the ported engine. NEVER
+invent or approximate engineering formulas here — anything not derivable from
+the xlsm stays unavailable.
 """
 
 from __future__ import annotations
@@ -129,6 +130,9 @@ class EngineResult:
     available: bool
     repair_length_in: float | None  # Linear Length of Repair (C27 or C26)
     note: str
+    # The sheet's full REPAIR OUTPUTS block (omegawrap_formulas.RepairOutputs)
+    # when the engine computes more than the repair length; None otherwise.
+    details: object | None = None
 
 
 class FormulaEngine:
@@ -160,10 +164,16 @@ class PendingExcelEngine(FormulaEngine):
         )
 
 
-_engine: FormulaEngine = PendingExcelEngine()
+_engine: FormulaEngine | None = None
 
 
 def get_engine() -> FormulaEngine:
+    global _engine
+    if _engine is None:
+        # Imported lazily: omegawrap_formulas imports this module.
+        from .omegawrap_formulas import PCC2FormulaEngine
+
+        _engine = PCC2FormulaEngine()
     return _engine
 
 
@@ -184,6 +194,7 @@ class CalculationResult:
     repair_length_in: float | None
     isolation_wrap_length_in: float | None  # repair length + 12, Carbon only
     engine_note: str
+    details: object | None = None  # full RepairOutputs when the engine has them
 
 
 def run_calculator(inputs: CalculatorInputs) -> CalculationResult:
@@ -208,4 +219,5 @@ def run_calculator(inputs: CalculatorInputs) -> CalculationResult:
         repair_length_in=result.repair_length_in if result.available else None,
         isolation_wrap_length_in=isolation_length,
         engine_note=result.note,
+        details=result.details if result.available else None,
     )
