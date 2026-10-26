@@ -39,6 +39,9 @@ dev = [
     # when playwright or its chromium build is missing; install with:
     #   pip install playwright && playwright install chromium-headless-shell
     "playwright>=1.40",
+    # Independent Excel-formula evaluator for the OmegaWrap cell-for-cell
+    # verification harness (scripts/verify_omegawrap_xlsm.py, T531).
+    "formulas>=1.2",
 ]
 
 [project.scripts]

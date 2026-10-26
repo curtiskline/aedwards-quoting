@@ -1,8 +1,8 @@
-"""OmegaWrap calculator page (T525, phase 1).
+"""OmegaWrap calculator page (T525 form, T531 formulas).
 
 One form, the Excel calculator's exact input surface, plain labels. The
-repair-length numbers come from the pluggable engine in omegawrap_calc —
-today that engine has no formulas (the xlsm is pending), and the page says so.
+repair numbers come from the PCC-2 engine ported from the AE Composite
+Calculator workbook and verified against it (see omegawrap_formulas).
 """
 
 from __future__ import annotations
